@@ -27,11 +27,14 @@ public static class WebBuild
         }
 
         PlayerSettings.SetScriptingBackend(NamedBuildTarget.WebGL, ScriptingImplementation.IL2CPP);
-        // Plain .data/.wasm files: every static host (GitHub Pages, itch.io) serves them as-is.
-        PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
+        // Brotli plus Unity's JS decompression fallback: a ~20 MB download that still works
+        // on hosts which cannot set Content-Encoding headers (GitHub Pages, itch.io).
+        PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Brotli;
+        PlayerSettings.WebGL.decompressionFallback = true;
         PlayerSettings.WebGL.dataCaching = true;
         PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
-        PlayerSettings.WebGL.template = "APPLICATION:Minimal";
+        PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, ManagedStrippingLevel.Medium);
+        PlayerSettings.WebGL.template = "PROJECT:Apogee";   // Assets/WebGLTemplates/Apogee: portrait canvas, phone-friendly
         PlayerSettings.runInBackground = true;
         PlayerSettings.defaultWebScreenWidth = 540;
         PlayerSettings.defaultWebScreenHeight = 960;

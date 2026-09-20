@@ -85,3 +85,4 @@ crashlytics-build.properties
 
 # WebGL test builds (upload them to itch.io instead of committing)
 /WebBuild/
+/apogee-web.zip
