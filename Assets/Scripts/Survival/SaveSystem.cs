@@ -31,6 +31,27 @@ namespace Platformer.Survival
             set => PlayerPrefs.SetFloat(BestDistanceKey, value);
         }
 
+        /// <summary>Best score in the Fusion (Suika-style) mini-game.</summary>
+        public static int FusionBest
+        {
+            get => PlayerPrefs.GetInt("fusion_best", 0);
+            set { PlayerPrefs.SetInt("fusion_best", value); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>Total bosses beaten in the Arena mini-game; drives which boss comes next and how strong.</summary>
+        public static int ArenaBossesBeaten
+        {
+            get => PlayerPrefs.GetInt("arena_bosses_beaten", 0);
+            set { PlayerPrefs.SetInt("arena_bosses_beaten", value); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>Highest wave fully survived in the Barricade mini-game.</summary>
+        public static int BarricadeBestWave
+        {
+            get => PlayerPrefs.GetInt("barricade_best_wave", 0);
+            set { PlayerPrefs.SetInt("barricade_best_wave", value); PlayerPrefs.Save(); }
+        }
+
         public static void AddCoins(int amount)
         {
             Coins += amount;

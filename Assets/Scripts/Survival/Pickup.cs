@@ -3,10 +3,11 @@ using Platformer.Mechanics;
 
 namespace Platformer.Survival
 {
-    public enum PickupType { Coin, Material }
+    public enum PickupType { Coin, Material, Medkit }
 
     /// <summary>
-    /// Ground pickup collected by the player; credits SaveSystem's persistent wallet.
+    /// Ground pickup collected by the player; coins and materials credit SaveSystem's
+    /// persistent wallet, a medkit heals the player on the spot.
     /// </summary>
     [RequireComponent(typeof(Collider2D))]
     public class Pickup : MonoBehaviour
@@ -37,8 +38,28 @@ namespace Platformer.Survival
             if (controller == null) return;
 
             collected = true;
-            if (type == PickupType.Coin) SaveSystem.AddCoins(value);
-            else SaveSystem.AddMaterials(value);
+            var pos = transform.position;
+            switch (type)
+            {
+                case PickupType.Coin:
+                    SaveSystem.AddCoins(value);
+                    Sfx.Coin();
+                    Fx.Text(pos, $"+{value}", PlaceholderVisuals.CoinColor);
+                    Fx.Burst(pos, PlaceholderVisuals.CoinColor, 5, 1.8f, 0.07f);
+                    break;
+                case PickupType.Material:
+                    SaveSystem.AddMaterials(value);
+                    Sfx.Material();
+                    Fx.Text(pos, $"+{value} mat.", PlaceholderVisuals.MaterialColor);
+                    Fx.Burst(pos, PlaceholderVisuals.MaterialColor, 5, 1.8f, 0.07f);
+                    break;
+                case PickupType.Medkit:
+                    if (controller.health != null) controller.health.Increment(value);
+                    Sfx.Medkit();
+                    Fx.Text(pos, $"+{value} PV", new Color(0.4f, 1f, 0.4f), 1.1f);
+                    Fx.Burst(pos, new Color(0.5f, 1f, 0.5f), 10, 2.2f, 0.09f);
+                    break;
+            }
 
             SurvivalDirector.Instance?.OnPickupCollected(this);
             Destroy(gameObject);

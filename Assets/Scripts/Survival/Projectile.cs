@@ -35,6 +35,7 @@ namespace Platformer.Survival
         {
             var zombie = other.GetComponent<Zombie>();
             if (zombie == null || !zombie.IsAlive) return;
+            Fx.Burst(transform.position, PlaceholderVisuals.ProjectileColor, 4, 2f, 0.06f, 0.2f);
             zombie.TakeDamage(damage);
             gameObject.SetActive(false);
         }

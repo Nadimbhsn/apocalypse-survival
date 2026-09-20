@@ -10,7 +10,8 @@ namespace Platformer.Survival
     /// load time, without editing any scene or prefab file: disables the sample's own win
     /// condition, patrolling enemy, hand-painted level geometry and camera confiner
     /// (SetActive/enabled = false, never destroyed - fully reversible), attaches combat to
-    /// the existing Player, and spins up the runtime-built SurvivalDirector + UI.
+    /// the existing Player, and spins up the runtime-built SurvivalDirector, the hub UI and
+    /// the extra mini-games (Fusion, Arena).
     /// </summary>
     public static class GameBootstrap
     {
@@ -28,6 +29,11 @@ namespace Platformer.Survival
 
             if (player.GetComponent<PlayerCombat>() == null)
                 player.gameObject.AddComponent<PlayerCombat>();
+            if (player.GetComponent<PlayerDamageFeedback>() == null)
+                player.gameObject.AddComponent<PlayerDamageFeedback>();
+            if (player.GetComponent<PlayerJuice>() == null)
+                player.gameObject.AddComponent<PlayerJuice>();
+            AdService.Ensure();
 
             var directorGo = new GameObject("SurvivalDirector");
             var director = directorGo.AddComponent<SurvivalDirector>();
@@ -35,8 +41,13 @@ namespace Platformer.Survival
             var uiGo = new GameObject("RuntimeUI");
             var ui = uiGo.AddComponent<RuntimeUI>();
 
+            // Self-contained mini-games launched from the hub (the runner is the scene itself).
+            var fusion = new GameObject("FusionGame").AddComponent<FusionGame>();
+            var arena = new GameObject("ArenaGame").AddComponent<ArenaGame>();
+            var barricade = new GameObject("BarricadeGame").AddComponent<BarricadeGame>();
+
             director.Configure(player, ui);
-            ui.Init(director);
+            ui.Init(director, new MiniGame[] { fusion, arena, barricade });
         }
 
         static void DisableSampleContent()

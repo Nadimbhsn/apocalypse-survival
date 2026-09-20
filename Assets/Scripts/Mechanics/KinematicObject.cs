@@ -20,6 +20,12 @@ namespace Platformer.Mechanics
         public float gravityModifier = 1f;
 
         /// <summary>
+        /// Terminal fall speed. Keeps long drops (tower, shaft) readable and stops thin
+        /// triggers from being skipped between physics steps.
+        /// </summary>
+        public float maxFallSpeed = 16f;
+
+        /// <summary>
         /// The current velocity of the entity.
         /// </summary>
         public Vector2 velocity;
@@ -107,6 +113,7 @@ namespace Platformer.Mechanics
             else
                 velocity += Physics2D.gravity * Time.deltaTime;
 
+            if (velocity.y < -maxFallSpeed) velocity.y = -maxFallSpeed;
             velocity.x = targetVelocity.x;
 
             IsGrounded = false;

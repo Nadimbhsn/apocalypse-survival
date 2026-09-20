@@ -1,10 +1,11 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Platformer.Gameplay;
 using static Platformer.Core.Simulation;
 using Platformer.Model;
 using Platformer.Core;
+using Platformer.Survival;
 using UnityEngine.InputSystem;
 
 namespace Platformer.Mechanics
@@ -12,6 +13,11 @@ namespace Platformer.Mechanics
     /// <summary>
     /// This is the main class used to implement control of the player.
     /// It is a superset of the AnimationController class, but is inlined to allow for any kind of customisation.
+    ///
+    /// Survival-mode additions: input is blended with MobileInput (on-screen joystick and
+    /// jump button), jumps get coyote time (a jump pressed just after running off a ledge
+    /// still fires) and a jump buffer (a press just before landing fires on landing), and
+    /// upgrades can grant extra mid-air jumps.
     /// </summary>
     public class PlayerController : KinematicObject
     {
@@ -27,6 +33,20 @@ namespace Platformer.Mechanics
         /// Initial jump velocity at the start of a jump.
         /// </summary>
         public float jumpTakeOffSpeed = 7;
+
+        [Header("Feel")]
+        public float coyoteTime = 0.1f;
+        public float jumpBufferTime = 0.12f;
+        /// <summary>Extra jumps allowed while airborne (granted by the Double Jump upgrade).</summary>
+        public int airJumps = 0;
+
+        [Header("Jetpack (runner Survol section)")]
+        public bool jetpackActive;
+        public float jetpackThrust = 26f;
+        public float jetpackMaxRise = 6.5f;
+        public float jetpackCeilingY = float.MaxValue;
+        /// <summary>True while the jetpack is actually pushing (for the flame effect).</summary>
+        public bool JetpackThrusting { get; private set; }
 
         public JumpState jumpState = JumpState.Grounded;
         private bool stopJump;
@@ -44,7 +64,13 @@ namespace Platformer.Mechanics
         private InputAction m_MoveAction;
         private InputAction m_JumpAction;
 
+        float lastGroundedTime = -10f;
+        float jumpPressedTime = -10f;
+        int airJumpsUsed;
+
         public Bounds Bounds => collider2d.bounds;
+        /// <summary>Horizontal input currently applied (-1..1), after auto-run/touch blending.</summary>
+        public float MoveX => move.x;
 
         void Awake()
         {
@@ -65,10 +91,13 @@ namespace Platformer.Mechanics
         {
             if (controlEnabled)
             {
-                move.x = m_MoveAction.ReadValue<Vector2>().x;
-                if (jumpState == JumpState.Grounded && m_JumpAction.WasPressedThisFrame())
-                    jumpState = JumpState.PrepareToJump;
-                else if (m_JumpAction.WasReleasedThisFrame())
+                float inputX = m_MoveAction.ReadValue<Vector2>().x;
+                move.x = MobileInput.Active ? MobileInput.ResolveMoveX(inputX) : inputX;
+
+                bool pressed = m_JumpAction.WasPressedThisFrame() || MobileInput.ConsumeJumpPressed();
+                bool released = m_JumpAction.WasReleasedThisFrame() || MobileInput.ConsumeJumpReleased();
+                if (pressed) jumpPressedTime = Time.time;
+                if (released)
                 {
                     stopJump = true;
                     Schedule<PlayerStopJump>().player = this;
@@ -77,6 +106,8 @@ namespace Platformer.Mechanics
             else
             {
                 move.x = 0;
+                MobileInput.ConsumeJumpPressed();
+                MobileInput.ConsumeJumpReleased();
             }
             UpdateJumpState();
             base.Update();
@@ -85,12 +116,39 @@ namespace Platformer.Mechanics
         void UpdateJumpState()
         {
             jump = false;
+            if (IsGrounded)
+            {
+                lastGroundedTime = Time.time;
+                airJumpsUsed = 0;
+            }
+
+            if (jetpackActive)
+            {
+                // Flight replaces the jump state machine entirely.
+                jumpPressedTime = -10f;
+                jumpState = IsGrounded ? JumpState.Grounded : JumpState.InFlight;
+                return;
+            }
+
+            bool wantsJump = Time.time - jumpPressedTime <= jumpBufferTime;
+            bool withinCoyote = Time.time - lastGroundedTime <= coyoteTime;
+
             switch (jumpState)
             {
+                case JumpState.Grounded:
+                    if (wantsJump && (IsGrounded || withinCoyote))
+                    {
+                        jumpState = JumpState.PrepareToJump;
+                        goto case JumpState.PrepareToJump;
+                    }
+                    if (!IsGrounded && !withinCoyote)
+                        jumpState = JumpState.InFlight; // walked off a ledge
+                    break;
                 case JumpState.PrepareToJump:
                     jumpState = JumpState.Jumping;
                     jump = true;
                     stopJump = false;
+                    jumpPressedTime = -10f;
                     break;
                 case JumpState.Jumping:
                     if (!IsGrounded)
@@ -105,6 +163,14 @@ namespace Platformer.Mechanics
                         Schedule<PlayerLanded>().player = this;
                         jumpState = JumpState.Landed;
                     }
+                    else if (wantsJump && airJumpsUsed < airJumps)
+                    {
+                        airJumpsUsed++;
+                        jump = true;
+                        stopJump = false;
+                        jumpPressedTime = -10f;
+                        Schedule<PlayerJumped>().player = this;
+                    }
                     break;
                 case JumpState.Landed:
                     jumpState = JumpState.Grounded;
@@ -114,7 +180,21 @@ namespace Platformer.Mechanics
 
         protected override void ComputeVelocity()
         {
-            if (jump && IsGrounded)
+            if (jetpackActive)
+            {
+                bool held = controlEnabled && (m_JumpAction.IsPressed() || MobileInput.JumpHeld);
+                JetpackThrusting = held;
+                if (held) velocity.y = Mathf.Min(velocity.y + jetpackThrust * Time.deltaTime, jetpackMaxRise);
+                if (transform.position.y > jetpackCeilingY && velocity.y > 0f) velocity.y = 0f;
+                stopJump = false;
+                jump = false;
+            }
+            else
+            {
+                JetpackThrusting = false;
+            }
+
+            if (jump)
             {
                 velocity.y = jumpTakeOffSpeed * model.jumpModifier;
                 jump = false;

@@ -78,3 +78,7 @@ crashlytics-build.properties
 
 # Claude Code local session/tooling state (not project content)
 .claude/
+
+# Unity crash-recovery copies of scenes (auto-generated, large)
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta

@@ -1,23 +1,28 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using Platformer.Mechanics;
 
 namespace Platformer.Survival
 {
     /// <summary>
-    /// Auto-fire weapon attached to the player: targets the nearest living zombie in range
-    /// and fires a pooled projectile at a fixed rate. Damage scales with the FirePower upgrade.
+    /// The player's gun. Fires while the FIRE button (or F / left Ctrl / gamepad West /
+    /// right trigger) is held, at a fixed rate: aim-assisted toward the nearest living
+    /// zombie in range, otherwise straight ahead in the facing direction. Projectiles are
+    /// pooled. Damage scales with the FirePower upgrade.
     /// </summary>
     [RequireComponent(typeof(PlayerController))]
     public class PlayerCombat : MonoBehaviour
     {
-        public float range = 6f;
-        public float baseFireRate = 1.4f;
+        public float range = 7f;
+        public float fireRate = 3f;
         public int baseDamage = 1;
-        public float projectileSpeed = 12f;
+        public float projectileSpeed = 14f;
 
         readonly List<Projectile> pool = new();
         Transform poolParent;
+        PlayerController player;
+        SpriteRenderer spriteRenderer;
         float fireCooldown;
 
         int Damage => Mathf.Max(1, Mathf.RoundToInt(baseDamage * UpgradeManager.FirePowerMultiplier));
@@ -25,18 +30,35 @@ namespace Platformer.Survival
         void Awake()
         {
             poolParent = new GameObject("ProjectilePool").transform;
+            player = GetComponent<PlayerController>();
+            spriteRenderer = GetComponent<SpriteRenderer>();
         }
 
         void Update()
         {
             fireCooldown -= Time.deltaTime;
             if (fireCooldown > 0f) return;
+            if (!player.controlEnabled || !WantsFire()) return;
+            var director = SurvivalDirector.Instance;
+            if (director != null && !director.IsRunning) return;
 
+            Vector2 origin = (Vector2)transform.position + Vector2.up * 0.1f;
             var target = FindNearestZombie();
-            if (target == null) return;
+            Vector2 dir = target != null
+                ? (Vector2)target.transform.position - origin
+                : (spriteRenderer != null && spriteRenderer.flipX ? Vector2.left : Vector2.right);
 
-            Fire(target);
-            fireCooldown = 1f / baseFireRate;
+            Fire(origin, dir);
+            fireCooldown = 1f / fireRate;
+        }
+
+        static bool WantsFire()
+        {
+            if (MobileInput.FireHeld) return true;
+            var kb = Keyboard.current;
+            if (kb != null && (kb.fKey.isPressed || kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed)) return true;
+            var pad = Gamepad.current;
+            return pad != null && (pad.buttonWest.isPressed || pad.rightTrigger.isPressed);
         }
 
         Zombie FindNearestZombie()
@@ -56,13 +78,13 @@ namespace Platformer.Survival
             return nearest;
         }
 
-        void Fire(Zombie target)
+        void Fire(Vector2 origin, Vector2 dir)
         {
-            Vector2 origin = transform.position;
-            Vector2 dir = (Vector2)target.transform.position - origin;
             var projectile = GetPooledProjectile();
             projectile.speed = projectileSpeed;
             projectile.Launch(origin, dir, Damage);
+            Sfx.Shoot();
+            Fx.Burst(origin + dir.normalized * 0.45f, PlaceholderVisuals.ProjectileColor, 3, 1.5f, 0.05f, 0f);
         }
 
         Projectile GetPooledProjectile()

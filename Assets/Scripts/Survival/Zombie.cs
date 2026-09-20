@@ -5,7 +5,7 @@ using Platformer.Mechanics;
 
 namespace Platformer.Survival
 {
-    public enum ZombieKind { Walker, Runner, Spitter }
+    public enum ZombieKind { Walker, Runner, Spitter, Brute }
 
     /// <summary>
     /// Ground-based zombie: drifts toward the player, charging once within aggro range,
@@ -13,7 +13,10 @@ namespace Platformer.Survival
     /// snapped to the procedurally generated ground via SurvivalDirector rather than
     /// using physics, so it tracks terrain height without needing gravity/raycasts.
     /// The Spitter kind also lobs an occasional ranged shot - not a constant barrage,
-    /// just a randomized cooldown so it reads as an unpredictable extra threat.
+    /// just a randomized cooldown so it reads as an unpredictable extra threat. The
+    /// Brute is a slow, huge tank that hits for double damage. Only Runners leap over
+    /// gaps; every other kind stops at the edge, so jumping a gap is a real way to
+    /// shake off a pack.
     /// </summary>
     [RequireComponent(typeof(Health))]
     public class Zombie : MonoBehaviour
@@ -41,6 +44,14 @@ namespace Platformer.Survival
         float nextContactTime;
         float nextSpitTime;
 
+        // Optional Kenney 3D body (see AttachModel); the SpriteRenderer is hidden when present.
+        ModelMotion motion;
+        Renderer[] modelRenderers;
+        Color bloodColor = PlaceholderVisuals.ZombieColor;
+        Coroutine flashRoutine;
+
+        bool IsRising => motion != null && motion.IsRising;
+
         public bool IsAlive => health != null && health.IsAlive;
 
         void Awake()
@@ -53,9 +64,41 @@ namespace Platformer.Survival
 
         public void SetTarget(Transform target) => player = target;
 
+        /// <summary>Gives this zombie a 3D body; blood is the particle color when it gets shot.</summary>
+        public void AttachModel(Transform rig, ModelMotion modelMotion, Color blood)
+        {
+            motion = modelMotion;
+            modelRenderers = rig.GetComponentsInChildren<Renderer>();
+            bloodColor = blood;
+            var sr = GetComponent<SpriteRenderer>();
+            if (sr != null) sr.enabled = false;
+        }
+
+        /// <summary>Bursts out of the ground: frozen and harmless until the rise animation ends.</summary>
+        public void RiseFromGround(float duration)
+        {
+            if (motion != null) motion.Rise(duration);
+        }
+
         void Update()
         {
             if (!IsAlive || player == null) return;
+            if (IsRising)
+            {
+                var d = SurvivalDirector.Instance;
+                if (d != null)
+                {
+                    var p = transform.position;
+                    p.y = d.GetGroundHeightAt(p.x) + groundOffset;
+                    transform.position = p;
+                }
+                // Face the player while climbing out.
+                float face = Mathf.Sign(player.position.x - transform.position.x);
+                var sc = transform.localScale;
+                sc.x = Mathf.Abs(sc.x) * (face == 0f ? 1f : face);
+                transform.localScale = sc;
+                return;
+            }
 
             float toPlayerX = player.position.x - transform.position.x;
             float dist = Mathf.Abs(toPlayerX);
@@ -63,9 +106,25 @@ namespace Platformer.Survival
             float dir = dist > 0.05f ? Mathf.Sign(toPlayerX) : 0f;
 
             var pos = transform.position;
-            pos.x += dir * speed * Time.deltaTime;
-            if (SurvivalDirector.Instance != null)
-                pos.y = SurvivalDirector.Instance.GetGroundHeightAt(pos.x) + groundOffset;
+            float nextX = pos.x + dir * speed * Time.deltaTime;
+            var director = SurvivalDirector.Instance;
+            if (director != null)
+            {
+                // Probe a little ahead of the sprite's center so the body stops at the ledge
+                // rather than hanging halfway over it.
+                float probeX = nextX + dir * 0.3f;
+                // Runners leap ordinary gaps (up to about a player's jump); nothing crosses
+                // a pit, so the Ascent column can't be followed.
+                float leapable = kind == ZombieKind.Runner ? 3.2f : 0f;
+                bool cliff = director.GetGroundHeightAt(pos.x) - director.GetGroundHeightAt(probeX) > 3.6f;
+                if (director.IsWalkable(probeX, leapable) && !cliff)
+                    pos.x = nextX;
+                pos.y = director.GetGroundHeightAt(pos.x) + groundOffset;
+            }
+            else
+            {
+                pos.x = nextX;
+            }
             transform.position = pos;
 
             if (dir != 0f)
@@ -116,7 +175,7 @@ namespace Platformer.Survival
 
         void TryDamagePlayer(Collider2D other)
         {
-            if (!IsAlive || Time.time < nextContactTime) return;
+            if (!IsAlive || IsRising || Time.time < nextContactTime) return;
             var controller = other.GetComponent<PlayerController>();
             if (controller == null || controller.health == null || !controller.health.IsAlive) return;
 
@@ -128,11 +187,41 @@ namespace Platformer.Survival
         {
             if (!IsAlive) return;
             health.Decrement(amount);
+            var sr = GetComponent<SpriteRenderer>();
+            var tint = motion != null ? bloodColor
+                : sr != null ? sr.color * PlaceholderVisuals.ZombieColor : PlaceholderVisuals.ZombieColor;
+            tint.a = 1f;
+            if (modelRenderers != null)
+            {
+                if (flashRoutine != null) StopCoroutine(flashRoutine);
+                flashRoutine = StartCoroutine(HitFlash());
+            }
             if (!IsAlive)
             {
+                Fx.Burst(transform.position, tint, kind == ZombieKind.Brute ? 26 : 14, 3.5f, 0.12f);
+                Fx.Text(transform.position + Vector3.up * 0.6f, "KILL", new Color(0.95f, 0.35f, 0.25f), 0.9f);
+                Sfx.Kill();
                 SurvivalDirector.Instance?.OnZombieKilled(this);
                 Die();
             }
+            else
+            {
+                Fx.Burst(transform.position, tint, 4, 2f, 0.07f);
+            }
+        }
+
+        IEnumerator HitFlash()
+        {
+            const float duration = 0.12f;
+            float t = 0f;
+            while (t < duration)
+            {
+                t += Time.deltaTime;
+                KenneyProps.SetFlash(modelRenderers, 0.85f * (1f - t / duration));
+                yield return null;
+            }
+            KenneyProps.SetFlash(modelRenderers, 0f);
+            flashRoutine = null;
         }
 
         void Die()
