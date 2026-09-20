@@ -41,6 +41,7 @@ namespace Platformer.Survival
 
         Health health;
         Transform player;
+        PlayerController playerController;
         float nextContactTime;
         float nextSpitTime;
 
@@ -62,7 +63,11 @@ namespace Platformer.Survival
         void OnEnable() => Active.Add(this);
         void OnDisable() => Active.Remove(this);
 
-        public void SetTarget(Transform target) => player = target;
+        public void SetTarget(Transform target)
+        {
+            player = target;
+            playerController = target != null ? target.GetComponent<PlayerController>() : null;
+        }
 
         /// <summary>Gives this zombie a 3D body; blood is the particle color when it gets shot.</summary>
         public void AttachModel(Transform rig, ModelMotion modelMotion, Color blood)
@@ -150,7 +155,7 @@ namespace Platformer.Survival
         void FireSpit()
         {
             var go = new GameObject("ZombieSpit");
-            go.transform.position = transform.position + Vector3.up * 0.4f;
+            go.transform.position = transform.position - Vector3.up * 0.1f;
             go.transform.localScale = Vector3.one * 0.35f;
 
             var sr = go.AddComponent<SpriteRenderer>();
@@ -165,7 +170,12 @@ namespace Platformer.Survival
             rb.gravityScale = 0f;
 
             var proj = go.AddComponent<EnemyProjectile>();
-            Vector2 dir = new Vector2(Mathf.Sign(player.position.x - transform.position.x), 0f);
+            // Aim at the player's body, not straight ahead from the shooter's own height:
+            // the spitters stand taller than the player and used to shoot over their head.
+            Vector2 target = playerController != null && playerController.collider2d != null
+                ? (Vector2)playerController.collider2d.bounds.center
+                : (Vector2)player.position + Vector2.up * 0.3f;
+            Vector2 dir = target - (Vector2)go.transform.position;
             proj.speed = spitProjectileSpeed;
             proj.Launch(go.transform.position, dir, spitDamage);
         }

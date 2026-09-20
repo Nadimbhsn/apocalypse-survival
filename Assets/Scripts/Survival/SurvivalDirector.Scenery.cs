@@ -182,6 +182,13 @@ namespace Platformer.Survival
         /// </summary>
         void DecorateSegment(GameObject segmentGo, float xStart, float width, float topY)
         {
+            // Decoration is cosmetic: never let it break the terrain the player runs on.
+            try { DecorateSegmentInternal(segmentGo, xStart, width, topY); }
+            catch (System.Exception e) { Debug.LogError($"[Survival] Scenery failed on segment at x={xStart:0}: {e}"); }
+        }
+
+        void DecorateSegmentInternal(GameObject segmentGo, float xStart, float width, float topY)
+        {
             bool castleZone = genZone.Kind == ZoneKind.Rooftops || genZone.Kind == ZoneKind.Descent || genZone.Kind == ZoneKind.Ascent;
             bool high = castleZone && topY > 1.5f;
 
@@ -243,6 +250,29 @@ namespace Platformer.Survival
                 island.transform.position = new Vector3(xStart + width / 2f, topY - 1f + 0.04f, 0f);
                 scenery.Add(island);
             }
+        }
+
+        /// <summary>
+        /// One islet of the Archipel: a small solid platform with crimson grass on top, a
+        /// rocky underside, drifting sideways (see MovingIsland).
+        /// </summary>
+        GameObject CreateDriftingIsland(float centerX, float topY, float width, float amplitude, float speed)
+        {
+            const float thickness = 0.5f;
+            var go = CreateSolidPlatform($"Islet_{centerX:0}", centerX, topY - thickness / 2f, width, thickness, genZone.Ground);
+            AddLip(go, GrassColor);
+
+            var rock = CreateIslandSprite(width * 1.05f, Mathf.Clamp(width * 0.9f, 1.2f, 3.2f), IslandTint(genZone.Ground), -2);
+            var world = rock.transform.localScale;
+            rock.transform.SetParent(go.transform, false);
+            rock.transform.localScale = new Vector3(world.x / width, world.y / thickness, 1f);
+            rock.transform.localPosition = new Vector3(0f, -0.5f + 0.04f / thickness, 0f);
+
+            var drift = go.AddComponent<MovingIsland>();
+            drift.amplitude = amplitude;
+            drift.speed = speed;
+            drift.phase = Random.Range(0f, Mathf.PI * 2f);
+            return go;
         }
 
         /// <summary>An island underside sprite of the given world size (pivot at its top center).</summary>

@@ -74,6 +74,10 @@ namespace Platformer.Survival
                         BuildShaft(frontierX);
                         BeginZone(PickNextZone());
                         break;
+                    case ZoneKind.Archipel:
+                        BuildArchipelago(frontierX);
+                        BeginZone(PickNextZone());
+                        break;
                     case ZoneKind.Jetpack:
                         GenerateJetpackStretch();
                         break;
@@ -92,7 +96,7 @@ namespace Platformer.Survival
         void BeginZone(ZoneKind kind, float fixedLength = -1f)
         {
             genZone = ZoneCatalog.Get(kind);
-            if (kind == ZoneKind.Descent || kind == ZoneKind.Ascent || kind == ZoneKind.Shaft)
+            if (kind == ZoneKind.Descent || kind == ZoneKind.Ascent || kind == ZoneKind.Shaft || kind == ZoneKind.Archipel)
                 genZoneEndX = float.MaxValue; // these end on their own terms
             else
                 genZoneEndX = frontierX + (fixedLength > 0f ? fixedLength : Random.Range(genZone.LengthMin, genZone.LengthMax));
@@ -111,9 +115,10 @@ namespace Platformer.Survival
         }
 
         /// <summary>
-        /// Ascent always chains into Rooftops then Descent. Otherwise rotate through the
-        /// street-level zones without repeating the last one. The first tower comes after
-        /// one street zone past the city (around 150 m); later ones after two.
+        /// Keeps the run alternating: one short street sector, then a set piece (tower climb,
+        /// jetpack flight or drifting archipelago), so the player is never running straight
+        /// for long. The tower chains into the ramparts and then back down by staircase or
+        /// free-fall shaft, which counts as one long set piece.
         /// </summary>
         ZoneKind PickNextZone()
         {
@@ -123,30 +128,89 @@ namespace Platformer.Survival
                 // Back down from the rooftops either by staircase or by free-falling down a shaft.
                 case ZoneKind.Rooftops: return lastTopY >= 15f && Random.value < 0.55f ? ZoneKind.Shaft : ZoneKind.Descent;
                 case ZoneKind.Descent:
-                case ZoneKind.Shaft: zonesSinceAscent = -1; break;
+                case ZoneKind.Shaft:
+                case ZoneKind.Jetpack:
+                case ZoneKind.Archipel:
+                case ZoneKind.Storm:
+                    sinceSetPiece = 0;
+                    return PickStreetZone();
             }
 
-            // A flight must always be followed by plain street so the jetpack has real ground
-            // to land on (a tower pit right after the lake would break both mechanics).
-            if (genZone.Kind == ZoneKind.Jetpack)
-            {
-                var street = new[] { ZoneKind.City, ZoneKind.Highway, ZoneKind.Infested, ZoneKind.Wasteland };
-                return street[Random.Range(0, street.Length)];
-            }
+            // Street sector just finished: time for the next set piece.
+            sinceSetPiece++;
+            if (sinceSetPiece >= 1) return PickSetPiece();
+            return PickStreetZone();
+        }
 
-            zonesSinceAscent++;
-            if (zonesSinceAscent >= 2) return ZoneKind.Ascent;
-
-            // Street-level rotation; the jetpack flight joins it once the player has warmed up,
-            // but never as the zone right before a tower (see above).
-            bool towerNext = zonesSinceAscent >= 1;
-            var candidates = Ramp > 0.05f && !towerNext
-                ? new[] { ZoneKind.City, ZoneKind.Highway, ZoneKind.Infested, ZoneKind.Wasteland, ZoneKind.Jetpack }
-                : new[] { ZoneKind.City, ZoneKind.Highway, ZoneKind.Infested, ZoneKind.Wasteland };
+        ZoneKind PickStreetZone()
+        {
+            var candidates = new[] { ZoneKind.City, ZoneKind.Highway, ZoneKind.Infested, ZoneKind.Wasteland };
             ZoneKind pick;
             do pick = candidates[Random.Range(0, candidates.Length)];
-            while (pick == genZone.Kind);
+            while (pick == lastStreetZone);
+            lastStreetZone = pick;
             return pick;
+        }
+
+        /// <summary>Draws from a bag so the three set pieces alternate instead of repeating.</summary>
+        ZoneKind PickSetPiece()
+        {
+            if (setPieceBag.Count == 0)
+            {
+                setPieceBag.Add(ZoneKind.Ascent);
+                setPieceBag.Add(ZoneKind.Jetpack);
+                setPieceBag.Add(ZoneKind.Archipel);
+                setPieceBag.Add(ZoneKind.Storm);
+                // shuffle
+                for (int i = setPieceBag.Count - 1; i > 0; i--)
+                {
+                    int j = Random.Range(0, i + 1);
+                    (setPieceBag[i], setPieceBag[j]) = (setPieceBag[j], setPieceBag[i]);
+                }
+            }
+            var pick = setPieceBag[0];
+            setPieceBag.RemoveAt(0);
+            return pick;
+        }
+
+        /// <summary>
+        /// A chain of small islands drifting sideways over the void, each with a coin above
+        /// it. Spacing and drift are derived from the player's jump reach so even the worst
+        /// phase (two neighbours drifting apart) stays clearly jumpable.
+        /// </summary>
+        void BuildArchipelago(float xStart)
+        {
+            float reach = RunReach;
+            // Islets are ~2.2 m wide, so the empty span between two of them is
+            // spacing - width; with the drift this keeps the worst case around 0.7 reach.
+            float spacing = 0.95f * reach;
+            float amp = 0.12f * reach;
+            int count = Random.Range(6, 10);
+            float total = spacing * count + 1.5f;
+            float baseY = lastTopY;
+
+            RegisterGap(xStart, total);
+
+            float y = baseY;
+            for (int i = 0; i < count; i++)
+            {
+                float x = xStart + 1.2f + i * spacing;
+                y = Mathf.Clamp(y + Random.Range(-0.9f, 0.9f), baseY - 1.6f, baseY + 2.2f);
+                float width = Random.Range(1.9f, 2.6f);
+                var island = CreateDriftingIsland(x, y, width, amp * Random.Range(0.55f, 1f), Random.Range(0.7f, 1.4f));
+                props.Add(island);
+                SpawnPickupAt(x, y + 1.0f, i == count - 1 ? PickupType.Material : PickupType.Coin);
+            }
+
+            lastTopY = baseY;
+            lastSegmentWasGap = true;
+            lastSegmentWasUnstable = false;
+
+            // Solid landing on the far side.
+            float landing = 9f * ReachScale;
+            GenerateSegment(frontierX, landing, baseY, allowBonusPlatform: false);
+            lastSegmentWasGap = false;
+            lastSegmentWidth = landing;
         }
 
         // ---- intro ---------------------------------------------------------------------

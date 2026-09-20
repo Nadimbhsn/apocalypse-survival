@@ -64,9 +64,16 @@ namespace Platformer.Survival
             ui.ShowHub();
         }
 
-        protected void TakeOverCamera(Vector3 position, float orthoSize, Color background)
+        /// <summary>
+        /// Points the main camera at this mini-game's world. orthoSize frames it by height;
+        /// minVisibleWidth (world units) additionally zooms out on narrow screens, so a tall
+        /// phone never cuts the playfield off at the sides.
+        /// </summary>
+        protected void TakeOverCamera(Vector3 position, float orthoSize, Color background, float minVisibleWidth = 0f)
         {
             if (cam == null) return;
+            if (minVisibleWidth > 0f && cam.aspect > 0.01f)
+                orthoSize = Mathf.Max(orthoSize, minVisibleWidth / (2f * cam.aspect));
             if (cinemachineBrain != null && cinemachineBrain.enabled)
             {
                 savedOrthoSize = cam.orthographicSize;

@@ -108,7 +108,9 @@ namespace Platformer.Survival
         protected override void OnEnter()
         {
             BuildWorld();
-            TakeOverCamera(new Vector3(Origin.x, Origin.y + 0.3f, -10f), 5.3f, ApogeeTheme.SkyAverage);
+            // The bin (walls included) plus a small margin must always be on screen.
+            const float binWidth = (HalfWidth + WallThickness) * 2f + 0.5f;
+            TakeOverCamera(new Vector3(Origin.x, Origin.y + 0.3f, -10f), 5.3f, ApogeeTheme.SkyAverage, binWidth);
             ResetGame();
         }
 
@@ -176,21 +178,33 @@ namespace Platformer.Survival
             RefreshNextPreview();
         }
 
+        /// <summary>
+        /// World scale that makes a sprite exactly `diameter` wide, whatever its pixels-per-unit
+        /// (the generated circles are 1 unit; imported art in Resources/Fusion is usually 100 PPU).
+        /// </summary>
+        static float ScaleFor(Sprite sprite, float diameter)
+        {
+            float unit = sprite != null ? Mathf.Max(0.0001f, sprite.bounds.size.x) : 1f;
+            return diameter / unit;
+        }
+
         FusionPiece CreatePiece(int tier, Vector2 position, bool heldPiece)
         {
             float radius = Radii[tier];
+            var sprite = PieceSprite(tier);
+            float unit = sprite != null ? Mathf.Max(0.0001f, sprite.bounds.size.x) : 1f;
             var go = new GameObject($"Piece_{Names[tier]}");
             go.transform.SetParent(root, false);
             go.transform.position = position;
-            go.transform.localScale = Vector3.one * (radius * 2f);
+            go.transform.localScale = Vector3.one * ScaleFor(sprite, radius * 2f);
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = PieceSprite(tier);
+            sr.sprite = sprite;
             sr.color = Color.white;
             sr.sortingOrder = 2;
 
             var col = go.AddComponent<CircleCollider2D>();
-            col.radius = 0.5f;
+            col.radius = 0.5f * unit;   // half the sprite, so the world radius stays Radii[tier]
             col.enabled = !heldPiece;
 
             var rb = go.AddComponent<Rigidbody2D>();
@@ -269,7 +283,7 @@ namespace Platformer.Survival
                 Sfx.Merge(tier);
                 Fx.Burst(mid, Colors[tier + 1], 8 + tier * 2, 2.5f, 0.1f, 0.5f);
                 Fx.Text(mid, $"+{MergeScores[tier + 1]}", UiKit.Gold, 0.9f);
-                StartCoroutine(Pop(merged.transform, Radii[tier + 1] * 2f));
+                StartCoroutine(Pop(merged.transform, ScaleFor(PieceSprite(tier + 1), Radii[tier + 1] * 2f)));
             }
             else
             {
@@ -281,6 +295,7 @@ namespace Platformer.Survival
             RefreshScore();
         }
 
+        /// <summary>Squash-and-stretch pop when two pieces merge; finalScale is a transform scale.</summary>
         IEnumerator Pop(Transform target, float finalScale)
         {
             const float duration = 0.18f;

@@ -82,3 +82,6 @@ crashlytics-build.properties
 # Unity crash-recovery copies of scenes (auto-generated, large)
 /[Aa]ssets/_Recovery/
 /[Aa]ssets/_Recovery.meta
+
+# WebGL test builds (upload them to itch.io instead of committing)
+/WebBuild/

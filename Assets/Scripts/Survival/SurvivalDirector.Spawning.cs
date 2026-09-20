@@ -21,8 +21,11 @@ namespace Platformer.Survival
             zombieTimer -= Time.deltaTime;
             if (zombieTimer <= 0f)
             {
-                zombieTimer = Mathf.Max(0.5f, zombieBaseInterval * zone.ZombieIntervalMult / Difficulty);
-                TrySpawnAhead(x => SpawnZombieGroup(x, zone));
+                // Spawns get faster with distance, but far more gently than the enemies' stats,
+                // and never below a floor - the runner is about the course, not a crowd.
+                zombieTimer = Mathf.Max(1.5f, zombieBaseInterval * zone.ZombieIntervalMult / (1f + Distance / 250f));
+                if (AliveZombies() < MaxAliveZombies)
+                    TrySpawnAhead(x => SpawnZombieGroup(x, zone));
             }
 
             pickupTimer -= Time.deltaTime;
@@ -37,8 +40,19 @@ namespace Platformer.Survival
             if (Distance >= nextHordeDistance && Difficulty > 1.6f && !ascentActive)
             {
                 if (TrySpawnAhead(SpawnHorde))
-                    nextHordeDistance = Distance + UnityEngine.Random.Range(70f, 110f);
+                    nextHordeDistance = Distance + UnityEngine.Random.Range(110f, 160f);
             }
+        }
+
+        /// <summary>How many zombies may be alive at once (they also despawn behind the player).</summary>
+        int MaxAliveZombies => 5 + Mathf.FloorToInt(Ramp * 4f);
+
+        int AliveZombies()
+        {
+            int n = 0;
+            for (int i = 0; i < zombies.Count; i++)
+                if (zombies[i] != null && zombies[i].IsAlive) n++;
+            return n;
         }
 
         /// <summary>Runs spawn at a random point ahead on solid, already-generated ground. Returns false if no valid spot was found this time.</summary>
@@ -57,8 +71,9 @@ namespace Platformer.Survival
         void SpawnZombieGroup(float x, ZoneDef zone)
         {
             int count = 1;
-            if (UnityEngine.Random.value < zone.PackChance)
-                count = UnityEngine.Random.Range(2, Difficulty > 2.5f ? 4 : 3);
+            if (UnityEngine.Random.value < zone.PackChance * 0.7f)
+                count = UnityEngine.Random.Range(2, Difficulty > 3f ? 4 : 3);
+            count = Mathf.Min(count, Mathf.Max(1, MaxAliveZombies - AliveZombies()));
             SpawnPack(x, count, zone.AllowBrute);
         }
 
@@ -76,7 +91,7 @@ namespace Platformer.Survival
         /// <summary>A wall of 4-7 walkers/runners spread over several meters, announced on screen.</summary>
         void SpawnHorde(float x)
         {
-            int count = 4 + Mathf.FloorToInt(Ramp * 3f);
+            int count = Mathf.Min(4 + Mathf.FloorToInt(Ramp * 3f), Mathf.Max(2, MaxAliveZombies - AliveZombies()));
             int spawned = 0;
             for (int i = 0; i < count; i++)
             {

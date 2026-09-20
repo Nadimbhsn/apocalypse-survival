@@ -94,6 +94,9 @@ namespace Platformer.Survival
         ZoneDef genZone;
         float genZoneEndX;
         int zonesSinceAscent;
+        int sinceSetPiece;
+        ZoneKind lastStreetZone = ZoneKind.Highway;
+        readonly List<ZoneKind> setPieceBag = new();
         float lastTowerBaseY;
         float shaftXStart, shaftXEnd, shaftTop;
         /// <summary>Frontier x where the current/last jetpack zone hands back to solid ground.</summary>
@@ -115,6 +118,7 @@ namespace Platformer.Survival
         bool running;
 
         GameObject fallDeathZone;
+        ChaseWall chaseWall;
         ParticleSystem ashDrift;
         Transform entityParent;
         Camera mainCamera;
@@ -213,7 +217,15 @@ namespace Platformer.Survival
 
         void PlacePlayerAtStart()
         {
-            player.Teleport(new Vector3(1f, 2f, 0f));
+            // Teleport() only moves the Rigidbody2D, and a body move is applied to the
+            // Transform at the next physics step - so the transform must be set as well.
+            // Otherwise everything reading player.transform.position this frame (terrain
+            // generation, Distance, Ramp, RunReach) still sees the spot where the previous
+            // run ended, and the whole course gets built at end-game difficulty with jumps
+            // sized for end-game speed while the player restarts slow at the beginning.
+            var start = new Vector3(1f, 2f, player.transform.position.z);
+            player.transform.position = start;
+            player.Teleport(start);
             player.jumpState = PlayerController.JumpState.Grounded;
         }
 
@@ -314,6 +326,9 @@ namespace Platformer.Survival
             decorFrontierX = 0f;
             introIndex = 0;
             zonesSinceAscent = 0;
+            sinceSetPiece = 0;
+            lastStreetZone = ZoneKind.City;
+            setPieceBag.Clear();
             genZone = ZoneCatalog.Get(ZoneKind.City);
             genZoneEndX = float.MaxValue;
             zoneMarkers.Clear();
@@ -332,6 +347,7 @@ namespace Platformer.Survival
             props.Clear();
             foreach (var r in ruins) if (r != null) Destroy(r);
             ruins.Clear();
+            if (chaseWall != null) { Destroy(chaseWall.gameObject); chaseWall = null; }
             ResetScenery();
         }
 
@@ -347,6 +363,7 @@ namespace Platformer.Survival
             GenerateGroundAhead();
             GenerateBackgroundDecorOrScenery();
             RecycleBehind();
+            EnsureGroundAhead();
 
             UpdateZoneMarkers();
             UpdateAscent();
@@ -364,6 +381,24 @@ namespace Platformer.Survival
 
             if (ashDrift != null)
                 ashDrift.transform.position = new Vector3(player.transform.position.x, player.transform.position.y + 4f, 0f);
+        }
+
+        /// <summary>
+        /// Last-resort safety net: if the ground ever stops being generated (a bug in the
+        /// terrain or its decoration), lay down a plain platform ahead instead of letting
+        /// the player run into an empty void.
+        /// </summary>
+        void EnsureGroundAhead()
+        {
+            float x = player.transform.position.x;
+            if (frontierX > x + 6f) return;
+
+            Debug.LogWarning($"[Survival] Terrain generation fell behind at x={x:0} (frontier {frontierX:0}); extending with flat ground.");
+            float width = 14f * ReachScale;
+            GenerateSegment(frontierX, width, lastTopY, allowBonusPlatform: false);
+            lastSegmentWasGap = false;
+            lastSegmentWasUnstable = false;
+            lastSegmentWidth = width;
         }
 
         // ---- zones (player-space) ---------------------------------------------------
@@ -389,7 +424,20 @@ namespace Platformer.Survival
 
             // Entering the infested zone is greeted by a welcoming committee.
             if (kind == ZoneKind.Infested)
-                TrySpawnAhead(x => SpawnPack(x, 3, allowBrute: true));
+                TrySpawnAhead(x => SpawnPack(x, 2, allowBrute: false));
+
+            // The storm sector: a wall of cloud sweeps in from behind and chases the player.
+            if (kind == ZoneKind.Storm)
+            {
+                if (chaseWall != null) chaseWall.Dissipate();
+                chaseWall = ChaseWall.Create(entityParent, this, player, player.transform.position.x - 16f);
+                Fx.Shake(0.4f, 0.5f);
+            }
+            else if (chaseWall != null)
+            {
+                chaseWall.Dissipate();
+                chaseWall = null;
+            }
 
             if (kind == ZoneKind.Jetpack)
             {

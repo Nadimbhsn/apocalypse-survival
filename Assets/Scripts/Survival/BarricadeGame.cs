@@ -197,7 +197,9 @@ namespace Platformer.Survival
         protected override void OnEnter()
         {
             BuildWorld();
-            TakeOverCamera(new Vector3(Origin.x, Origin.y + 0.9f, -10f), CameraOrtho, ApogeeTheme.SkyAverage);
+            // The three lanes plus a margin must always be on screen.
+            const float lanesWidth = LaneWidth * LaneCount + 0.7f;
+            TakeOverCamera(new Vector3(Origin.x, Origin.y + 0.9f, -10f), CameraOrtho, ApogeeTheme.SkyAverage, lanesWidth);
             ResetGame();
         }
 

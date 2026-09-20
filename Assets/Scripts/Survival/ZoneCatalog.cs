@@ -9,7 +9,7 @@ namespace Platformer.Survival
     /// one flat strip. Ascent is the Doodle-Jump-style vertical climb, always followed by
     /// Rooftops (running along the top) and Descent (a staircase back down).
     /// </summary>
-    public enum ZoneKind { City, Highway, Infested, Wasteland, Ascent, Rooftops, Descent, Shaft, Jetpack }
+    public enum ZoneKind { City, Highway, Infested, Wasteland, Ascent, Rooftops, Descent, Shaft, Jetpack, Archipel, Storm }
 
     public struct ZoneDef
     {
@@ -70,7 +70,7 @@ namespace Platformer.Survival
                         HeightChance = 0.35f, MaxStepUp = 1.2f, MaxDrop = 3.0f, SegMin = 3f, SegMax = 6f,
                         HazardChance = 0.06f, Spikes = true, Toxic = false, BonusPlatformChance = 0.25f, UnstableChance = 0.35f,
                         ZombieIntervalMult = 1.6f, PackChance = 0.1f, AllowBrute = false,
-                        RuinSpacingMin = 14f, RuinSpacingMax = 26f, LengthMin = 70f, LengthMax = 100f,
+                        RuinSpacingMin = 14f, RuinSpacingMax = 26f, LengthMin = 50f, LengthMax = 75f,
                     };
 
                 case ZoneKind.Infested:
@@ -82,7 +82,7 @@ namespace Platformer.Survival
                         HeightChance = 0.15f, MaxStepUp = 1.2f, MaxDrop = 2.0f, SegMin = 7f, SegMax = 12f,
                         HazardChance = 0.04f, Spikes = true, Toxic = false, BonusPlatformChance = 0.15f, UnstableChance = 0f,
                         ZombieIntervalMult = 1.15f, PackChance = 0.2f, AllowBrute = false,
-                        RuinSpacingMin = 8f, RuinSpacingMax = 16f, LengthMin = 60f, LengthMax = 90f,
+                        RuinSpacingMin = 8f, RuinSpacingMax = 16f, LengthMin = 45f, LengthMax = 70f,
                     };
 
                 case ZoneKind.Wasteland:
@@ -90,11 +90,11 @@ namespace Platformer.Survival
                     {
                         Kind = kind, Title = "TERRES BRÛLÉES", Subtitle = "Ne touche pas les flaques toxiques",
                         Tint = new Color(1.02f, 0.92f, 0.72f), Ground = new Color(0.40f, 0.26f, 0.14f),
-                        GapChance = 0.12f, GapMin = 1.8f, GapMax = 2.6f, SteppingStoneChance = 0.1f,
+                        GapChance = 0.18f, GapMin = 1.8f, GapMax = 2.6f, SteppingStoneChance = 0.12f,
                         HeightChance = 0.30f, MaxStepUp = 1.5f, MaxDrop = 2.5f, SegMin = 4f, SegMax = 8f,
-                        HazardChance = 0.50f, Spikes = true, Toxic = true, BonusPlatformChance = 0.18f, UnstableChance = 0f,
+                        HazardChance = 0.50f, Spikes = true, Toxic = true, BonusPlatformChance = 0.24f, UnstableChance = 0f,
                         ZombieIntervalMult = 1.2f, PackChance = 0.15f, AllowBrute = false,
-                        RuinSpacingMin = 12f, RuinSpacingMax = 24f, LengthMin = 70f, LengthMax = 100f,
+                        RuinSpacingMin = 12f, RuinSpacingMax = 24f, LengthMin = 45f, LengthMax = 70f,
                     };
 
                 case ZoneKind.Ascent:
@@ -114,7 +114,28 @@ namespace Platformer.Survival
                         HeightChance = 0.50f, MaxStepUp = 1.5f, MaxDrop = 3.0f, SegMin = 3f, SegMax = 6f,
                         HazardChance = 0.12f, Spikes = true, Toxic = false, BonusPlatformChance = 0.2f, UnstableChance = 0.1f,
                         ZombieIntervalMult = 1.3f, PackChance = 0.15f, AllowBrute = false,
-                        RuinSpacingMin = 6f, RuinSpacingMax = 12f, LengthMin = 50f, LengthMax = 75f,
+                        RuinSpacingMin = 6f, RuinSpacingMax = 12f, LengthMin = 40f, LengthMax = 60f,
+                    };
+
+                case ZoneKind.Storm:
+                    return new ZoneDef
+                    {
+                        Kind = kind, Title = "LA DÉFERLANTE", Subtitle = "Cours ! La tempête arrive derrière toi",
+                        Tint = new Color(0.72f, 0.58f, 0.78f), Ground = new Color(0.33f, 0.20f, 0.20f),
+                        // Wide, flowing ground: the sector is about speed, not precision.
+                        GapChance = 0.12f, GapMin = 1.6f, GapMax = 2.2f, SteppingStoneChance = 0f,
+                        HeightChance = 0.18f, MaxStepUp = 1.0f, MaxDrop = 1.8f, SegMin = 7f, SegMax = 11f,
+                        HazardChance = 0.05f, Spikes = true, Toxic = false, BonusPlatformChance = 0.12f, UnstableChance = 0f,
+                        ZombieIntervalMult = 2.4f, PackChance = 0f, AllowBrute = false,
+                        RuinSpacingMin = 9f, RuinSpacingMax = 18f, LengthMin = 75f, LengthMax = 105f,
+                    };
+
+                case ZoneKind.Archipel:
+                    return new ZoneDef
+                    {
+                        Kind = kind, Title = "ARCHIPEL", Subtitle = "Les îlots dérivent : vise bien tes sauts !",
+                        Tint = new Color(1.0f, 0.94f, 0.92f), Ground = new Color(0.38f, 0.24f, 0.20f),
+                        ZombieIntervalMult = 3f, RuinSpacingMin = 10f, RuinSpacingMax = 20f,
                     };
 
                 case ZoneKind.Shaft:
@@ -150,11 +171,11 @@ namespace Platformer.Survival
                     {
                         Kind = ZoneKind.City, Title = "RUINES CÉLESTES", Subtitle = "Les îles de la cité perdue",
                         Tint = Color.white, Ground = PlaceholderVisuals.GroundColor,
-                        GapChance = 0.15f, GapMin = 1.6f, GapMax = 2.6f, SteppingStoneChance = 0.1f,
+                        GapChance = 0.22f, GapMin = 1.6f, GapMax = 2.6f, SteppingStoneChance = 0.14f,
                         HeightChance = 0.25f, MaxStepUp = 1.5f, MaxDrop = 2.0f, SegMin = 4f, SegMax = 9f,
-                        HazardChance = 0.10f, Spikes = true, Toxic = false, BonusPlatformChance = 0.18f, UnstableChance = 0.08f,
+                        HazardChance = 0.10f, Spikes = true, Toxic = false, BonusPlatformChance = 0.26f, UnstableChance = 0.10f,
                         ZombieIntervalMult = 1f, PackChance = 0.2f, AllowBrute = true,
-                        RuinSpacingMin = 10f, RuinSpacingMax = 22f, LengthMin = 60f, LengthMax = 90f,
+                        RuinSpacingMin = 10f, RuinSpacingMax = 22f, LengthMin = 45f, LengthMax = 70f,
                     };
             }
         }
