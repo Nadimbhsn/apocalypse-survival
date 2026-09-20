@@ -37,8 +37,9 @@ public static class WebBuild
         PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, ManagedStrippingLevel.Medium);
         PlayerSettings.WebGL.template = "PROJECT:Apogee";   // Assets/WebGLTemplates/Apogee: portrait canvas, phone-friendly
         PlayerSettings.runInBackground = true;
-        PlayerSettings.defaultWebScreenWidth = 540;
-        PlayerSettings.defaultWebScreenHeight = 960;
+        // The page resizes the canvas to the window; these are only the starting values.
+        PlayerSettings.defaultWebScreenWidth = 960;
+        PlayerSettings.defaultWebScreenHeight = 540;
 
         var scenes = new[] { "Assets/Scenes/SampleScene.unity" };
         Directory.CreateDirectory(OutputDir);

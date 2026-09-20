@@ -156,6 +156,7 @@ namespace Platformer.Survival
             scaler.referenceResolution = new Vector2(1080, 1920);
             scaler.matchWidthOrHeight = 0.5f;
 
+            canvasGo.AddComponent<CanvasOrientation>();
             canvasGo.AddComponent<GraphicRaycaster>();
         }
 
