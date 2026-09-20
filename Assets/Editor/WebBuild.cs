@@ -5,9 +5,10 @@ using UnityEditor.Build.Reporting;
 using UnityEngine;
 
 /// <summary>
-/// One-click WebGL build so testers can play Apogée from a link (itch.io, GitHub Pages,
-/// Unity Play...). Settings are tuned for "drop the folder on a plain static host":
-/// no server-side compression headers needed, and the canvas fills the browser window.
+/// One-click WebGL build so testers can play Apogée from a link. The output folder is
+/// zipped and uploaded to itch.io (project kind: HTML, "play in the browser"). Settings are
+/// tuned for a plain static host: Brotli with Unity's JS decompression fallback, so no
+/// server-side Content-Encoding header is needed, and a portrait canvas for phones.
 ///
 /// From the editor:  menu  Apogée > Build WebGL
 /// From a terminal:  Unity -batchmode -quit -projectPath . -executeMethod WebBuild.BuildWeb
