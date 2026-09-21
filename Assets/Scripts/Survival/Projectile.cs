@@ -34,10 +34,21 @@ namespace Platformer.Survival
         void OnTriggerEnter2D(Collider2D other)
         {
             var zombie = other.GetComponent<Zombie>();
-            if (zombie == null || !zombie.IsAlive) return;
-            Fx.Burst(transform.position, PlaceholderVisuals.ProjectileColor, 4, 2f, 0.06f, 0.2f);
-            zombie.TakeDamage(damage);
-            gameObject.SetActive(false);
+            if (zombie != null && zombie.IsAlive)
+            {
+                Fx.Burst(transform.position, PlaceholderVisuals.ProjectileColor, 4, 2f, 0.06f, 0.2f);
+                zombie.TakeDamage(damage);
+                gameObject.SetActive(false);
+                return;
+            }
+
+            // Cracked slabs sealing a campaign secret are the other thing the gun opens.
+            var wall = other.GetComponent<BreakableWall>();
+            if (wall != null)
+            {
+                wall.Hit(damage);
+                gameObject.SetActive(false);
+            }
         }
     }
 }

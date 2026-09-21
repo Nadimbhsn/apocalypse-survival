@@ -4,6 +4,17 @@ using UnityEngine.UI;
 
 namespace Platformer.Survival
 {
+    /// <summary>How the duel that closes a campaign level ended.</summary>
+    public enum CampaignDuelOutcome
+    {
+        /// <summary>The boss went down: the level is cleared and its stars are awarded.</summary>
+        Won,
+        /// <summary>The player was beaten and wants to run the level again for more health.</summary>
+        RetryLevel,
+        /// <summary>The player backed out to the level list.</summary>
+        Quit,
+    }
+
     /// <summary>
     /// "ARÈNE": a Pokémon-style turn-based duel between the equipped character and the
     /// next boss on the ladder (see ArenaCatalog). Four moves with PP, accuracy rolls,
@@ -46,6 +57,16 @@ namespace Platformer.Survival
         int bossIndex;
         float levelMult;
         bool busy;
+
+        // ---- campaign duel ---------------------------------------------------------------
+        // Set by SurvivalDirector when a level's gate is reached: the same arena, but the
+        // boss is the level's own and the fighter walks in with the health they had left,
+        // so how well the level was played decides how hard its boss is.
+        bool campaignDuel;
+        int campaignBossIndex;
+        float campaignHealth = 1f;
+        string campaignTitle;
+        System.Action<CampaignDuelOutcome> campaignOnDone;
 
         Text messageText, bossNameText, playerNameText, bossLevelText;
         readonly Button[] moveButtons = new Button[4];
@@ -137,8 +158,8 @@ namespace Platformer.Survival
             UiKit.CreateFrame("ResultFrame", resultRt, new Vector2(0.08f, 0.24f), new Vector2(0.92f, 0.8f));
             resultTitle = UiKit.Outlined(UiKit.CreateText("ResultTitle", resultRt, "", 56, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.64f), new Vector2(0.95f, 0.76f), ApogeeTheme.Gold), 2.5f);
             resultBody = UiKit.CreateText("ResultBody", resultRt, "", 28, TextAnchor.MiddleCenter, new Vector2(0.1f, 0.50f), new Vector2(0.9f, 0.63f), ApogeeTheme.Cream);
-            resultContinue = UiKit.CreateButton("ResultContinue", resultRt, "CONTINUER", new Vector2(0.25f, 0.38f), new Vector2(0.75f, 0.45f), StartBattle);
-            UiKit.CreateButton("ResultMenu", resultRt, "MENU", new Vector2(0.25f, 0.29f), new Vector2(0.75f, 0.36f), ReturnToHub);
+            resultContinue = UiKit.CreateButton("ResultContinue", resultRt, "CONTINUER", new Vector2(0.25f, 0.38f), new Vector2(0.75f, 0.45f), OnResultContinue);
+            UiKit.CreateButton("ResultMenu", resultRt, "MENU", new Vector2(0.25f, 0.29f), new Vector2(0.75f, 0.36f), OnResultMenu);
             resultPanel.SetActive(false);
         }
 
@@ -150,7 +171,46 @@ namespace Platformer.Survival
         {
             StopAllCoroutines();
             busy = false;
+            campaignDuel = false;
+            campaignOnDone = null;
             if (bossStage != null) bossStage.SetActive(false);
+        }
+
+        /// <summary>
+        /// Opens the duel that closes a campaign level. healthLeft (0..1) is the health bar
+        /// the player finished the level with and becomes the health they start the fight
+        /// with, so reaching the gate in good shape is the real reward for playing well.
+        /// onDone is called with whether the boss went down.
+        /// </summary>
+        public void StartCampaignDuel(int levelBossIndex, float healthLeft, string levelName, System.Action<CampaignDuelOutcome> onDone)
+        {
+            campaignDuel = true;
+            campaignBossIndex = levelBossIndex;
+            campaignHealth = Mathf.Clamp(healthLeft, 0.15f, 1f); // never walk in already dead
+            campaignTitle = levelName;
+            campaignOnDone = onDone;
+            Enter();
+        }
+
+        void FinishCampaignDuel(CampaignDuelOutcome outcome)
+        {
+            var done = campaignOnDone;
+            campaignDuel = false;
+            campaignOnDone = null;
+            Exit();
+            done?.Invoke(outcome);
+        }
+
+        void OnResultMenu()
+        {
+            if (campaignDuel) FinishCampaignDuel(CampaignDuelOutcome.Quit);
+            else ReturnToHub();
+        }
+
+        void OnResultContinue()
+        {
+            if (!campaignDuel) { StartBattle(); return; }
+            FinishCampaignDuel(boss.Alive ? CampaignDuelOutcome.RetryLevel : CampaignDuelOutcome.Won);
         }
 
         void StartBattle()
@@ -159,16 +219,29 @@ namespace Platformer.Survival
             resultPanel.SetActive(false);
 
             int beaten = SaveSystem.ArenaBossesBeaten;
-            bossIndex = beaten % ArenaCatalog.Bosses.Length;
-            int cycle = beaten / ArenaCatalog.Bosses.Length;
-            levelMult = 1f + cycle * 0.35f;
+            int cycle;
+            if (campaignDuel)
+            {
+                // A level's boss is fixed and always fought at its base strength: the
+                // difficulty of a campaign fight comes from the health left, not from how
+                // far up the endless ladder the player happens to be.
+                bossIndex = Mathf.Clamp(campaignBossIndex, 0, ArenaCatalog.Bosses.Length - 1);
+                cycle = 0;
+                levelMult = 1f;
+            }
+            else
+            {
+                bossIndex = beaten % ArenaCatalog.Bosses.Length;
+                cycle = beaten / ArenaCatalog.Bosses.Length;
+                levelMult = 1f + cycle * 0.35f;
+            }
             bossDef = ArenaCatalog.Bosses[bossIndex];
 
             // Player from the equipped character + shop upgrades.
             var skin = SkinCatalog.Find(SaveSystem.SelectedSkinId);
             player.Name = skin.Name;
             player.MaxHP = 100 + SaveSystem.GetLevel(UpgradeStat.MaxHealth) * 12;
-            player.HP = player.MaxHP;
+            player.HP = campaignDuel ? Mathf.Max(1, Mathf.RoundToInt(player.MaxHP * campaignHealth)) : player.MaxHP;
             player.Attack = 20 + SaveSystem.GetLevel(UpgradeStat.FirePower) * 2;
             player.Defense = 12 + SaveSystem.GetLevel(UpgradeStat.Armor) * 2;
             player.Moves = ArenaCatalog.MovesFor(skin.Id);
@@ -212,7 +285,8 @@ namespace Platformer.Survival
             bossImage.color = Color.white;
             boss.Sprite.rectTransform.localScale = Vector3.one * Mathf.Lerp(0.85f, 1.1f, (bossDef.Scale - 1f) / 0.45f);
             bossNameText.text = boss.Name;
-            bossLevelText.text = cycle > 0 ? $"Boss {bossIndex + 1}  •  Niv. {cycle + 1}" : $"Boss {bossIndex + 1}";
+            bossLevelText.text = campaignDuel ? campaignTitle
+                : cycle > 0 ? $"Boss {bossIndex + 1}  •  Niv. {cycle + 1}" : $"Boss {bossIndex + 1}";
 
             RefreshFighter(player, true);
             RefreshFighter(boss, true);
@@ -233,6 +307,8 @@ namespace Platformer.Survival
             SetMovesInteractable(false);
             yield return Say($"{boss.Name} apparaît !", 1.2f);
             yield return Say(bossDef.Intro, 1.4f);
+            if (campaignDuel)
+                yield return Say($"{player.Name} entre avec {Mathf.RoundToInt(campaignHealth * 100f)} % de vie.", 1.3f);
             yield return Say($"Que doit faire {player.Name} ?", 0f);
             busy = false;
             SetMovesInteractable(true);
@@ -384,13 +460,16 @@ namespace Platformer.Survival
             int materials = Mathf.RoundToInt(bossDef.RewardMaterials * levelMult);
             SaveSystem.AddCoins(coins);
             SaveSystem.AddMaterials(materials);
-            SaveSystem.ArenaBossesBeaten = SaveSystem.ArenaBossesBeaten + 1;
+            // The endless ladder only advances when the ladder itself is being played.
+            if (!campaignDuel) SaveSystem.ArenaBossesBeaten = SaveSystem.ArenaBossesBeaten + 1;
 
             Sfx.Milestone();
             resultTitle.text = "VICTOIRE !";
             resultTitle.color = UiKit.Gold;
-            resultBody.text = $"+{coins} pièces   +{materials} matériaux\nProchain boss débloqué";
-            UiKit.ButtonLabel(resultContinue).text = "BOSS SUIVANT";
+            resultBody.text = campaignDuel
+                ? $"+{coins} pièces   +{materials} matériaux\nNiveau terminé !"
+                : $"+{coins} pièces   +{materials} matériaux\nProchain boss débloqué";
+            UiKit.ButtonLabel(resultContinue).text = campaignDuel ? "VOIR LES ÉTOILES" : "BOSS SUIVANT";
             resultPanel.SetActive(true);
             busy = false;
         }
@@ -402,8 +481,10 @@ namespace Platformer.Survival
             AdService.OnPlayerDeath();
             resultTitle.text = "DÉFAITE";
             resultTitle.color = new Color(0.75f, 0.15f, 0.1f);
-            resultBody.text = "Améliore ton personnage dans la boutique\nou change de combattant.";
-            UiKit.ButtonLabel(resultContinue).text = "RÉESSAYER";
+            resultBody.text = campaignDuel
+                ? "Refais le niveau et arrive au portail\navec plus de vie."
+                : "Améliore ton personnage dans la boutique\nou change de combattant.";
+            UiKit.ButtonLabel(resultContinue).text = campaignDuel ? "REFAIRE LE NIVEAU" : "RÉESSAYER";
             resultPanel.SetActive(true);
             busy = false;
         }

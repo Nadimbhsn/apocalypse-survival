@@ -125,5 +125,53 @@ namespace Platformer.Survival
 
         const string SelectedSkinKey = "survival_selected_skin";
         static string SkinUnlockKey(string skinId) => $"survival_skin_unlocked_{skinId}";
+
+        // ---- campaign progress ---------------------------------------------------------
+
+        /// <summary>
+        /// Stars earned on a campaign level, as a bitmask: 1 = level finished and boss
+        /// beaten, 2 = every secret found, 4 = reached the boss above 60 % health. Stars
+        /// are cumulative across attempts, so a player can come back for the ones they
+        /// missed without losing the ones they have.
+        /// </summary>
+        public static int GetLevelStars(int index) => PlayerPrefs.GetInt(LevelStarsKey(index), 0);
+
+        public static void AddLevelStars(int index, int starMask)
+        {
+            int merged = GetLevelStars(index) | starMask;
+            PlayerPrefs.SetInt(LevelStarsKey(index), merged);
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>True once the level has been finished at least once (its first star).</summary>
+        public static bool IsLevelCleared(int index) => (GetLevelStars(index) & 1) != 0;
+
+        /// <summary>Total stars across the whole campaign, for the expedition card on the hub.</summary>
+        public static int TotalStars
+        {
+            get
+            {
+                int total = 0;
+                for (int i = 0; i < LevelCatalog.Count; i++)
+                {
+                    int mask = GetLevelStars(i);
+                    for (int bit = 0; bit < 3; bit++) if ((mask & (1 << bit)) != 0) total++;
+                }
+                return total;
+            }
+        }
+
+        /// <summary>Best remaining health (0..1) carried into a level's boss duel.</summary>
+        public static float GetLevelBestHealth(int index) => PlayerPrefs.GetFloat(LevelHealthKey(index), 0f);
+
+        public static void SetLevelBestHealth(int index, float fraction)
+        {
+            if (fraction <= GetLevelBestHealth(index)) return;
+            PlayerPrefs.SetFloat(LevelHealthKey(index), Mathf.Clamp01(fraction));
+            PlayerPrefs.Save();
+        }
+
+        static string LevelStarsKey(int index) => $"campaign_stars_{index}";
+        static string LevelHealthKey(int index) => $"campaign_health_{index}";
     }
 }

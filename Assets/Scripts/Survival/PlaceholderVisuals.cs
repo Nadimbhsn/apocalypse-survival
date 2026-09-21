@@ -66,6 +66,69 @@ namespace Platformer.Survival
             return padlockCache;
         }
 
+        static Sprite starCache;
+
+        /// <summary>
+        /// A five-pointed star for campaign level ratings, drawn as a filled polygon so it
+        /// stays crisp at any card size (the UI font cannot be relied on for the glyph).
+        /// Tint it gold when earned, dark when not.
+        /// </summary>
+        public static Sprite Star()
+        {
+            if (starCache != null) return starCache;
+
+            const int size = 96;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            // Ten alternating outer/inner vertices around the centre.
+            var points = new Vector2[10];
+            const float outer = size * 0.48f, inner = outer * 0.42f;
+            var centre = new Vector2(size * 0.5f, size * 0.47f);
+            for (int i = 0; i < 10; i++)
+            {
+                float angle = Mathf.PI / 2f + i * Mathf.PI / 5f;
+                float radius = i % 2 == 0 ? outer : inner;
+                points[i] = centre + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+            }
+
+            var pixels = new Color32[size * size];
+            var clear = new Color32(0, 0, 0, 0);
+            var solid = new Color32(255, 255, 255, 255);
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    // 2x2 supersampling so the points do not look like staircases.
+                    int hits = 0;
+                    for (int sy = 0; sy < 2; sy++)
+                        for (int sx = 0; sx < 2; sx++)
+                            if (InsidePolygon(points, new Vector2(x + 0.25f + sx * 0.5f, y + 0.25f + sy * 0.5f))) hits++;
+                    pixels[y * size + x] = hits == 0 ? clear : new Color32(solid.r, solid.g, solid.b, (byte)(hits * 255 / 4));
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply();
+            starCache = Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+            return starCache;
+        }
+
+        static bool InsidePolygon(Vector2[] poly, Vector2 p)
+        {
+            bool inside = false;
+            for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+            {
+                if (poly[i].y > p.y == poly[j].y > p.y) continue;
+                float t = (p.y - poly[i].y) / (poly[j].y - poly[i].y);
+                if (p.x < poly[i].x + t * (poly[j].x - poly[i].x)) inside = !inside;
+            }
+            return inside;
+        }
+
         static Sprite spikesCache;
 
         /// <summary>A row of three jagged rubble spikes on a transparent background, exactly 1x1 world unit so it scales to any footprint.</summary>

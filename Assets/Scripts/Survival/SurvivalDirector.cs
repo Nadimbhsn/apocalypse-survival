@@ -132,11 +132,20 @@ namespace Platformer.Survival
         public bool IsFlying => player != null && player.jetpackActive;
         /// <summary>Distance travelled this run, in meters (1 world unit = 1 meter) - the game's scoring metric.</summary>
         public float Distance => player != null ? Mathf.Max(0f, player.transform.position.x - runStartX) : 0f;
-        /// <summary>Enemy stat scaler: 1 at the start, +1 every 40 m, uncapped (individual stats clamp themselves).</summary>
-        float Difficulty => 1f + Distance / 40f;
-        /// <summary>Terrain harshness scaler: 0 at the start of a run, 1 after 350 m.</summary>
-        float Ramp => Mathf.Clamp01(Distance / 350f);
-        float SpeedRamp => Mathf.Clamp01(Distance / runSpeedRampDistance);
+        /// <summary>
+        /// Enemy stat scaler: 1 at the start, +1 every 40 m, uncapped (individual stats
+        /// clamp themselves). A campaign level sets it once and never moves it, so an
+        /// authored fight plays the same whether it is met on the first try or the tenth.
+        /// </summary>
+        float Difficulty => inCampaign ? level.EnemyTier : 1f + Distance / 40f;
+        /// <summary>Terrain harshness scaler: 0 at the start of a run, 1 after 350 m; fixed per campaign level.</summary>
+        float Ramp => inCampaign ? level.Harshness : Mathf.Clamp01(Distance / 350f);
+        /// <summary>
+        /// How far along the run's speed ramp we are. Always 0 in the campaign: a level is
+        /// designed around one jump arc, and a jump that grows as the level goes on would
+        /// quietly invalidate every gap measured before it.
+        /// </summary>
+        float SpeedRamp => inCampaign ? 0f : Mathf.Clamp01(Distance / runSpeedRampDistance);
 
         /// <summary>Max run speed right now: base, ramping up with distance, times the Speed upgrade.</summary>
         public float CurrentRunSpeed => baseRunSpeed * (1f + runSpeedRampBonus * SpeedRamp) * UpgradeManager.SpeedMultiplier;
@@ -237,6 +246,7 @@ namespace Platformer.Survival
         void HandlePlayerDeath(PlayerDeath ev)
         {
             if (!running) return;
+            if (inCampaign) { HandleCampaignDeath(); return; }
             running = false;
             SaveSystem.BestDistance = Mathf.Max(SaveSystem.BestDistance, Distance);
             Sfx.Death();
@@ -254,6 +264,8 @@ namespace Platformer.Survival
         public void StartRun()
         {
             Time.timeScale = 1f;
+            inCampaign = false;
+            levelFinished = false;
             // The sample's PlayerDeath schedules a PlayerSpawn 2 s later that would teleport
             // the player back to the disabled level's spawn point and freeze input; drop it
             // (and anything else left over from the previous run) before starting fresh.
@@ -355,7 +367,10 @@ namespace Platformer.Survival
         {
             if (!running || player == null) return;
 
-            ui.UpdateHud(player.health, Distance, SaveSystem.Coins, SaveSystem.Materials);
+            if (inCampaign)
+                ui.UpdateCampaignHud(player.health, LevelProgress, secretsFound, level.SecretCount);
+            else
+                ui.UpdateHud(player.health, Distance, SaveSystem.Coins, SaveSystem.Materials);
 
             // Slower, more precise steering while climbing the tower.
             player.maxSpeed = ascentActive ? ascentSteerSpeed : CurrentRunSpeed;
@@ -374,10 +389,15 @@ namespace Platformer.Survival
             UpdateAtmosphere();
             UpdateScenery();
             UpdateMagnet();
-            UpdateMilestones();
 
-            // Random spawns only kick in past the fixed, always-identical intro stretch.
-            if (introIndex >= IntroLayout.Length) UpdateSpawnTimers();
+            // A campaign level places every enemy, pickup and reward by hand, so neither
+            // the random spawner nor the distance milestones have anything to do there.
+            if (!inCampaign)
+            {
+                UpdateMilestones();
+                // Random spawns only kick in past the fixed, always-identical intro stretch.
+                if (introIndex >= IntroLayout.Length) UpdateSpawnTimers();
+            }
 
             if (ashDrift != null)
                 ashDrift.transform.position = new Vector3(player.transform.position.x, player.transform.position.y + 4f, 0f);
@@ -392,6 +412,9 @@ namespace Platformer.Survival
         {
             float x = player.transform.position.x;
             if (frontierX > x + 6f) return;
+            // An authored level legitimately stops generating once its script is spent:
+            // past the gate there is nothing left to build, and nothing left to fall into.
+            if (inCampaign && cmdIndex >= level.Script.Length) return;
 
             Debug.LogWarning($"[Survival] Terrain generation fell behind at x={x:0} (frontier {frontierX:0}); extending with flat ground.");
             float width = 14f * ReachScale;
@@ -422,6 +445,14 @@ namespace Platformer.Survival
             ui.ShowBanner(def.Title, def.Subtitle);
             ui.SetZoneLabel(def.Title);
 
+            // A campaign level owns its own ambushes and its own storm (see the Storm and
+            // Foes commands), so a theme change there must only repaint the world.
+            if (inCampaign)
+            {
+                if (kind == ZoneKind.Jetpack) StartJetpack();
+                return;
+            }
+
             // Entering the infested zone is greeted by a welcoming committee.
             if (kind == ZoneKind.Infested)
                 TrySpawnAhead(x => SpawnPack(x, 2, allowBrute: false));
@@ -439,13 +470,15 @@ namespace Platformer.Survival
                 chaseWall = null;
             }
 
-            if (kind == ZoneKind.Jetpack)
-            {
-                player.jetpackActive = true;
-                player.jetpackCeilingY = baselineY + 9f;
-                Sfx.Spring();
-                Fx.Burst(player.transform.position, new Color(1f, 0.7f, 0.2f), 16, 3f, 0.1f, 0f);
-            }
+            if (kind == ZoneKind.Jetpack) StartJetpack();
+        }
+
+        void StartJetpack()
+        {
+            player.jetpackActive = true;
+            player.jetpackCeilingY = baselineY + 9f;
+            Sfx.Spring();
+            Fx.Burst(player.transform.position, new Color(1f, 0.7f, 0.2f), 16, 3f, 0.1f, 0f);
         }
 
         // ---- shaft & jetpack (player-space) ------------------------------------------------

@@ -19,9 +19,11 @@ namespace Platformer.Survival
     {
         SurvivalDirector director;
         MiniGame[] miniGames = Array.Empty<MiniGame>();
+        ArenaGame arena;
 
         Canvas canvas;
         GameObject hubPanel, charactersPanel, hudPanel, gameOverPanel, shopPanel;
+        GameObject expeditionPanel, levelClearedPanel, levelFailedPanel, levelStarsPanel;
 
         const int PreviewLayer = 31;
         Camera previewCamera;
@@ -57,6 +59,24 @@ namespace Platformer.Survival
         readonly Dictionary<UpgradeStat, Text> shopLevelTexts = new();
         readonly Dictionary<UpgradeStat, Button> shopButtons = new();
 
+        // campaign
+        struct LevelCard
+        {
+            public Button button;
+            public Text title, subtitle, status;
+            public Image[] stars;
+            public GameObject lockOverlay;
+        }
+        readonly List<LevelCard> levelCards = new();
+        Text expeditionStarsText;
+        Text hudSecretsText;
+        Image hudProgressFill;
+        GameObject hudProgressRoot;
+        Text levelClearedTitle, levelClearedBody, levelFailedTitle, levelFailedBody, levelStarsTitle, levelStarsBody;
+        Button levelFailedResumeButton;
+        readonly Image[] levelStarsIcons = new Image[3];
+        float pendingBossHealth;
+
         GameObject adOverlay;
         Text adOverlayText;
 
@@ -67,6 +87,7 @@ namespace Platformer.Survival
         {
             director = survivalDirector;
             miniGames = games ?? Array.Empty<MiniGame>();
+            foreach (var game in miniGames) if (game is ArenaGame arenaGame) arena = arenaGame;
 
             EnsureEventSystem();
             SetupCharacterPreview();
@@ -74,8 +95,10 @@ namespace Platformer.Survival
             BuildVignette();
             BuildHubPanel();
             BuildCharactersPanel();
+            BuildExpeditionPanel();
             BuildHudPanel();
             BuildGameOverPanel();
+            BuildCampaignPanels();
             BuildShopPanel();
             BuildAdOverlay();
 
@@ -242,6 +265,8 @@ namespace Platformer.Survival
             {
                 ("RUNNER", "Cours d'île en île, affronte les morts", StartRunner,
                     () => SaveSystem.BestDistance > 0f ? $"Record : {FormatDistance(SaveSystem.BestDistance)}" : "Aucun record"),
+                ("EXPÉDITION", "Des niveaux avec un début, une fin et un boss", ShowExpedition,
+                    () => $"Étoiles : {SaveSystem.TotalStars} / {LevelCatalog.Count * 3}"),
             };
             foreach (var game in miniGames)
             {
@@ -466,6 +491,277 @@ namespace Platformer.Survival
             }
         }
 
+        // ---- expedition (campaign level select) ------------------------------------------
+
+        /// <summary>
+        /// The campaign's front page: one card per authored level with its three stars,
+        /// locked until the level before it has been cleared. Deliberately a short list -
+        /// a level here is a three to five minute run with a boss at the end, not a stage
+        /// in a grid of eighty.
+        /// </summary>
+        void BuildExpeditionPanel()
+        {
+            var rt = UiKit.CreatePanel("ExpeditionPanel", canvas.transform, Color.white);
+            expeditionPanel = rt.gameObject;
+            ApplyOpaqueBackdrop(rt);
+
+            CreateTitle(rt, "EXPÉDITION", 0.905f, 0.965f);
+            expeditionStarsText = CreateChip("Stars", rt, new Vector2(0.28f, 0.852f), new Vector2(0.72f, 0.892f), 24);
+
+            const float top = 0.825f, bottom = 0.155f;
+            int count = LevelCatalog.Count;
+            float slot = (top - bottom) / count;
+
+            levelCards.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                var def = LevelCatalog.Get(i);
+                int captured = i;
+                float yMax = top - i * slot;
+                float yMin = yMax - slot + 0.018f;
+
+                var card = UiKit.CreateButton($"Level_{def.Id}", rt, "", new Vector2(0.05f, yMin), new Vector2(0.95f, yMax),
+                    () => OnLevelCardClicked(captured), 30, UiKit.CardColor);
+
+                var title = UiKit.Outlined(UiKit.CreateText("LevelTitle", card.transform, def.Name, 32, TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, 0.62f), new Vector2(0.72f, 0.95f), ApogeeTheme.Gold), 1.5f);
+                UiKit.FitLabel(title, 32);
+                var subtitle = UiKit.CreateText("LevelSubtitle", card.transform, def.Subtitle, 20, TextAnchor.UpperLeft,
+                    new Vector2(0.06f, 0.33f), new Vector2(0.75f, 0.62f), UiKit.TextDim);
+                UiKit.FitLabel(subtitle, 20);
+                var status = UiKit.CreateText("LevelStatus", card.transform, "", 19, TextAnchor.LowerLeft,
+                    new Vector2(0.06f, 0.06f), new Vector2(0.95f, 0.33f), ApogeeTheme.Cream);
+                UiKit.FitLabel(status, 19);
+
+                var stars = new Image[3];
+                for (int s = 0; s < 3; s++)
+                {
+                    float x0 = 0.74f + s * 0.082f;
+                    stars[s] = UiKit.CreateImage($"Star_{s}", card.transform, new Vector2(x0, 0.6f), new Vector2(x0 + 0.075f, 0.95f),
+                        PlaceholderVisuals.Star(), ApogeeTheme.GoldDark);
+                }
+
+                var lockRt = UiKit.CreateRect("Lock", card.transform, Vector2.zero, Vector2.one);
+                lockRt.offsetMin = new Vector2(4, 4);
+                lockRt.offsetMax = new Vector2(-4, -4);
+                var lockImg = lockRt.gameObject.AddComponent<Image>();
+                lockImg.sprite = ApogeeTheme.FrameFill;
+                lockImg.type = Image.Type.Sliced;
+                lockImg.color = new Color(0.12f, 0.02f, 0.02f, 0.72f);
+                lockImg.raycastTarget = false;
+                UiKit.CreateImage("Padlock", lockRt, new Vector2(0.44f, 0.22f), new Vector2(0.56f, 0.78f), PlaceholderVisuals.Padlock(), Color.white);
+
+                levelCards.Add(new LevelCard { button = card, title = title, subtitle = subtitle, status = status, stars = stars, lockOverlay = lockRt.gameObject });
+            }
+
+            UiKit.CreateText("ExpeditionHint", rt, "Vitesse constante · 3 étoiles par niveau : terminer, tous les secrets, arriver au boss au-dessus de 60 % de vie",
+                18, TextAnchor.UpperCenter, new Vector2(0.06f, 0.105f), new Vector2(0.94f, 0.15f), UiKit.TextDim);
+            UiKit.CreateButton("ExpeditionBack", rt, "RETOUR", new Vector2(0.32f, 0.025f), new Vector2(0.68f, 0.098f), ShowHub);
+        }
+
+        public void ShowExpedition()
+        {
+            Time.timeScale = 1f;
+            HideAllShellPanels();
+            UiKit.SetPanel(expeditionPanel, true);
+            RefreshExpedition();
+        }
+
+        void RefreshExpedition()
+        {
+            expeditionStarsText.text = $"{SaveSystem.TotalStars} / {LevelCatalog.Count * 3} étoiles";
+            for (int i = 0; i < levelCards.Count; i++)
+            {
+                var def = LevelCatalog.Get(i);
+                bool unlocked = LevelCatalog.IsUnlocked(i);
+                int mask = SaveSystem.GetLevelStars(i);
+
+                levelCards[i].lockOverlay.SetActive(!unlocked);
+                levelCards[i].button.interactable = unlocked;
+                for (int s = 0; s < 3; s++)
+                    levelCards[i].stars[s].color = (mask & (1 << s)) != 0 ? ApogeeTheme.Gold : new Color(0.35f, 0.22f, 0.16f, 0.8f);
+
+                if (!unlocked)
+                    levelCards[i].status.text = $"Verrouillé — termine {LevelCatalog.Get(i - 1).Name}";
+                else if ((mask & 1) != 0)
+                    levelCards[i].status.text = $"Terminé · Meilleure vie au boss : {Mathf.RoundToInt(SaveSystem.GetLevelBestHealth(i) * 100f)} %";
+                else
+                    levelCards[i].status.text = $"{def.SecretCount} secrets · Boss : {ArenaCatalog.Bosses[def.BossIndex].Name}";
+            }
+        }
+
+        void OnLevelCardClicked(int index)
+        {
+            if (!LevelCatalog.IsUnlocked(index)) return;
+            HideAllShellPanels();
+            UiKit.SetPanel(hudPanel, true);
+            director.StartLevel(index);
+        }
+
+        // ---- campaign result panels --------------------------------------------------------
+
+        void BuildCampaignPanels()
+        {
+            // Gate reached: the level is run, the boss is still to come.
+            var clearedRt = UiKit.CreatePanel("LevelClearedPanel", canvas.transform, UiKit.Overlay);
+            levelClearedPanel = clearedRt.gameObject;
+            UiKit.CreateFrame("ClearedFrame", clearedRt, new Vector2(0.08f, 0.26f), new Vector2(0.92f, 0.78f));
+            levelClearedTitle = UiKit.Outlined(UiKit.CreateText("ClearedTitle", clearedRt, "PORTAIL ATTEINT", 50, TextAnchor.MiddleCenter,
+                new Vector2(0.1f, 0.64f), new Vector2(0.9f, 0.74f), ApogeeTheme.Gold), 2.5f);
+            levelClearedBody = UiKit.CreateText("ClearedBody", clearedRt, "", 26, TextAnchor.UpperCenter,
+                new Vector2(0.1f, 0.44f), new Vector2(0.9f, 0.63f), ApogeeTheme.Cream);
+            UiKit.CreateButton("ClearedFight", clearedRt, "AU COMBAT !", new Vector2(0.22f, 0.355f), new Vector2(0.78f, 0.43f), StartBossDuel);
+            UiKit.CreateButton("ClearedQuit", clearedRt, "ABANDONNER", new Vector2(0.22f, 0.275f), new Vector2(0.78f, 0.345f), AbandonCampaign);
+
+            // Death: back to the last flag, or back to the start.
+            var failedRt = UiKit.CreatePanel("LevelFailedPanel", canvas.transform, UiKit.Overlay);
+            levelFailedPanel = failedRt.gameObject;
+            UiKit.CreateFrame("FailedFrame", failedRt, new Vector2(0.08f, 0.24f), new Vector2(0.92f, 0.78f));
+            levelFailedTitle = UiKit.Outlined(UiKit.CreateText("FailedTitle", failedRt, "TU ES TOMBÉ", 50, TextAnchor.MiddleCenter,
+                new Vector2(0.1f, 0.64f), new Vector2(0.9f, 0.74f), new Color(0.88f, 0.32f, 0.22f)), 2.5f);
+            levelFailedBody = UiKit.CreateText("FailedBody", failedRt, "", 26, TextAnchor.UpperCenter,
+                new Vector2(0.1f, 0.5f), new Vector2(0.9f, 0.63f), ApogeeTheme.Cream);
+            levelFailedResumeButton = UiKit.CreateButton("FailedResume", failedRt, "REPRENDRE AU DRAPEAU", new Vector2(0.18f, 0.41f), new Vector2(0.82f, 0.485f), ResumeFromCheckpoint);
+            UiKit.CreateButton("FailedRestart", failedRt, "RECOMMENCER LE NIVEAU", new Vector2(0.18f, 0.33f), new Vector2(0.82f, 0.405f), RestartCurrentLevel);
+            UiKit.CreateButton("FailedQuit", failedRt, "ABANDONNER", new Vector2(0.18f, 0.25f), new Vector2(0.82f, 0.325f), AbandonCampaign);
+
+            // Boss beaten: the stars.
+            var starsRt = UiKit.CreatePanel("LevelStarsPanel", canvas.transform, UiKit.Overlay);
+            levelStarsPanel = starsRt.gameObject;
+            UiKit.CreateFrame("StarsFrame", starsRt, new Vector2(0.08f, 0.27f), new Vector2(0.92f, 0.8f));
+            levelStarsTitle = UiKit.Outlined(UiKit.CreateText("StarsTitle", starsRt, "NIVEAU TERMINÉ", 50, TextAnchor.MiddleCenter,
+                new Vector2(0.1f, 0.68f), new Vector2(0.9f, 0.77f), ApogeeTheme.Gold), 2.5f);
+            for (int s = 0; s < 3; s++)
+            {
+                float x0 = 0.22f + s * 0.20f;
+                levelStarsIcons[s] = UiKit.CreateImage($"BigStar_{s}", starsRt, new Vector2(x0, 0.53f), new Vector2(x0 + 0.17f, 0.66f),
+                    PlaceholderVisuals.Star(), ApogeeTheme.GoldDark);
+            }
+            levelStarsBody = UiKit.CreateText("StarsBody", starsRt, "", 24, TextAnchor.UpperCenter,
+                new Vector2(0.09f, 0.37f), new Vector2(0.91f, 0.52f), ApogeeTheme.Cream);
+            UiKit.CreateButton("StarsContinue", starsRt, "CONTINUER", new Vector2(0.25f, 0.29f), new Vector2(0.75f, 0.36f), ShowExpedition);
+
+            levelClearedPanel.SetActive(false);
+            levelFailedPanel.SetActive(false);
+            levelStarsPanel.SetActive(false);
+        }
+
+        /// <summary>The gate was reached: show the run's tally before the boss steps in.</summary>
+        public void ShowLevelCleared(int index, LevelDef def, int secretsFound, float healthLeft)
+        {
+            pendingBossHealth = healthLeft;
+            HideAllShellPanels();
+            HideBanner();
+            UiKit.SetPanel(levelClearedPanel, true);
+            levelClearedTitle.text = "PORTAIL ATTEINT";
+            string secrets = def.SecretCount > 0 ? $"Secrets : {secretsFound} / {def.SecretCount}\n" : "";
+            levelClearedBody.text = $"{def.Name}\n{secrets}Vie restante : {Mathf.RoundToInt(healthLeft * 100f)} %\n\n" +
+                                    $"{ArenaCatalog.Bosses[def.BossIndex].Name} t'attend.\nTu l'affrontes avec la vie qu'il te reste.";
+        }
+
+        /// <summary>Campaign death: the level restarts, it does not end.</summary>
+        public void ShowLevelFailed(string levelName, bool hasCheckpoint)
+        {
+            HideAllShellPanels();
+            HideBanner();
+            UiKit.SetPanel(levelFailedPanel, true);
+            levelFailedBody.text = hasCheckpoint
+                ? $"{levelName}\nTu repars du dernier drapeau,\navec toute ta vie."
+                : $"{levelName}\nAucun drapeau atteint :\nle niveau reprend au début.";
+            levelFailedResumeButton.gameObject.SetActive(hasCheckpoint);
+        }
+
+        void StartBossDuel()
+        {
+            var def = director.CurrentLevel;
+            int index = director.CurrentLevelIndex;
+            int secrets = director.SecretsFound;
+            float health = pendingBossHealth;
+
+            HideAllShellPanels();
+            if (arena == null) { ShowExpedition(); return; }
+
+            arena.StartCampaignDuel(def.BossIndex, health, def.Name, outcome =>
+            {
+                switch (outcome)
+                {
+                    case CampaignDuelOutcome.Won:
+                        int mask = 1;
+                        if (def.SecretCount > 0 && secrets >= def.SecretCount) mask |= 2;
+                        if (health >= 0.6f) mask |= 4;
+                        SaveSystem.AddLevelStars(index, mask);
+                        director.LeaveCampaign();
+                        ShowLevelStars(index, def, mask, secrets, health);
+                        break;
+
+                    case CampaignDuelOutcome.RetryLevel:
+                        HideAllShellPanels();
+                        UiKit.SetPanel(hudPanel, true);
+                        director.StartLevel(index);
+                        break;
+
+                    default:
+                        director.LeaveCampaign();
+                        ShowExpedition();
+                        break;
+                }
+            });
+        }
+
+        void ShowLevelStars(int index, LevelDef def, int earnedMask, int secrets, float health)
+        {
+            HideAllShellPanels();
+            UiKit.SetPanel(levelStarsPanel, true);
+
+            int total = SaveSystem.GetLevelStars(index);
+            for (int s = 0; s < 3; s++)
+                levelStarsIcons[s].color = (total & (1 << s)) != 0 ? ApogeeTheme.Gold : new Color(0.35f, 0.22f, 0.16f, 0.8f);
+
+            levelStarsTitle.text = def.Name;
+            string secretLine = def.SecretCount > 0
+                ? (secrets >= def.SecretCount ? "★ Tous les secrets trouvés" : $"☆ Secrets : {secrets} / {def.SecretCount}")
+                : "";
+            string healthLine = health >= 0.6f
+                ? $"★ Arrivé au boss à {Mathf.RoundToInt(health * 100f)} % de vie"
+                : $"☆ Arrivé au boss à {Mathf.RoundToInt(health * 100f)} % de vie (60 % requis)";
+            string nextLine = index + 1 < LevelCatalog.Count ? $"\n{LevelCatalog.Get(index + 1).Name} est débloqué !" : "\nTu as terminé l'expédition !";
+            levelStarsBody.text = $"★ Niveau terminé\n{secretLine}\n{healthLine}{nextLine}";
+        }
+
+        void ResumeFromCheckpoint()
+        {
+            HideAllShellPanels();
+            UiKit.SetPanel(hudPanel, true);
+            director.RetryFromCheckpoint();
+        }
+
+        void RestartCurrentLevel()
+        {
+            int index = director.CurrentLevelIndex;
+            HideAllShellPanels();
+            UiKit.SetPanel(hudPanel, true);
+            director.StartLevel(index);
+        }
+
+        void AbandonCampaign()
+        {
+            director.LeaveCampaign();
+            ShowExpedition();
+        }
+
+        /// <summary>HUD while an authored level is running: progress instead of distance.</summary>
+        public void UpdateCampaignHud(Health health, float progress, int secretsFound, int secretsTotal)
+        {
+            if (healthSlider != null && health != null) healthSlider.value = health.NormalizedHP;
+            if (hudDistanceText != null) hudDistanceText.text = $"{Mathf.RoundToInt(progress * 100f)} %";
+            if (hudProgressRoot != null && !hudProgressRoot.activeSelf) hudProgressRoot.SetActive(true);
+            if (hudProgressFill != null) hudProgressFill.fillAmount = progress;
+            if (hudCoinsText != null) hudCoinsText.text = $"Pièces: {SaveSystem.Coins}";
+            if (hudMaterialsText != null) hudMaterialsText.text = $"Matériaux: {SaveSystem.Materials}";
+            if (hudSecretsText != null)
+                hudSecretsText.text = secretsTotal > 0 ? $"Secrets {secretsFound}/{secretsTotal}" : "";
+        }
+
         // ---- runner HUD ----------------------------------------------------------------
 
         void BuildHudPanel()
@@ -514,6 +810,28 @@ namespace Platformer.Survival
                 new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(320, 45), new Vector2(-30, -74), ApogeeTheme.Cream));
             hudZoneText = UiKit.Outlined(UiKit.CreateTextFixed("ZoneText", rt, "", 24, TextAnchor.UpperCenter,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(640, 40), new Vector2(0, -86), ApogeeTheme.Gold));
+
+            // Campaign-only: how far through the authored level the player is, and how many
+            // of its secrets they have turned up. Hidden during an endless run.
+            var progressBg = CreateFixedRect("LevelProgressBg", rt, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(330, 16), new Vector2(30, -86));
+            hudProgressRoot = progressBg.gameObject;
+            var progressBgImg = progressBg.gameObject.AddComponent<Image>();
+            progressBgImg.sprite = ApogeeTheme.Chip;
+            progressBgImg.type = Image.Type.Sliced;
+            progressBgImg.raycastTarget = false;
+            var progressFillRt = UiKit.CreateRect("LevelProgressFill", progressBg, Vector2.zero, Vector2.one);
+            progressFillRt.offsetMin = new Vector2(4, 4);
+            progressFillRt.offsetMax = new Vector2(-4, -4);
+            hudProgressFill = progressFillRt.gameObject.AddComponent<Image>();
+            hudProgressFill.sprite = ApogeeTheme.FrameFill;
+            hudProgressFill.type = Image.Type.Filled;
+            hudProgressFill.fillMethod = Image.FillMethod.Horizontal;
+            hudProgressFill.color = ApogeeTheme.Gold;
+            hudProgressFill.raycastTarget = false;
+            hudProgressRoot.SetActive(false);
+
+            hudSecretsText = UiKit.Outlined(UiKit.CreateTextFixed("SecretsText", rt, "", 22, TextAnchor.UpperLeft,
+                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(330, 34), new Vector2(30, -106), ApogeeTheme.Cream));
 
             BuildVirtualControls(rt);
 
@@ -752,12 +1070,17 @@ namespace Platformer.Survival
             UiKit.SetPanel(hudPanel, false);
             UiKit.SetPanel(gameOverPanel, false);
             UiKit.SetPanel(shopPanel, false);
+            UiKit.SetPanel(expeditionPanel, false);
+            UiKit.SetPanel(levelClearedPanel, false);
+            UiKit.SetPanel(levelFailedPanel, false);
+            UiKit.SetPanel(levelStarsPanel, false);
             if (previewCamera != null) previewCamera.enabled = false;
         }
 
         public void ShowHub()
         {
             Time.timeScale = 1f;
+            if (director != null && director.InCampaign) director.LeaveCampaign();
             foreach (var game in miniGames) game.Exit();
             HideAllShellPanels();
             HideBanner();
@@ -811,6 +1134,8 @@ namespace Platformer.Survival
             if (hudDistanceText != null) hudDistanceText.text = FormatDistance(distance);
             if (hudCoinsText != null) hudCoinsText.text = $"Pièces: {coins}";
             if (hudMaterialsText != null) hudMaterialsText.text = $"Matériaux: {materials}";
+            if (hudProgressRoot != null && hudProgressRoot.activeSelf) hudProgressRoot.SetActive(false);
+            if (hudSecretsText != null && hudSecretsText.text.Length > 0) hudSecretsText.text = "";
         }
     }
 }

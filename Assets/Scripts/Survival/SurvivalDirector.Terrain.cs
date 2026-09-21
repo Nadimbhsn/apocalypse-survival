@@ -53,6 +53,10 @@ namespace Platformer.Survival
 
         void GenerateGroundAhead()
         {
+            // An authored level drives its own generation from its script (see
+            // SurvivalDirector.Campaign.cs); nothing below this line applies to it.
+            if (inCampaign) { GenerateCampaignAhead(); return; }
+
             while (frontierX < player.transform.position.x + genAheadDistance * ReachScale)
             {
                 if (introIndex < IntroLayout.Length)
@@ -178,14 +182,14 @@ namespace Platformer.Survival
         /// it. Spacing and drift are derived from the player's jump reach so even the worst
         /// phase (two neighbours drifting apart) stays clearly jumpable.
         /// </summary>
-        void BuildArchipelago(float xStart)
+        void BuildArchipelago(float xStart, int fixedCount = 0)
         {
             float reach = RunReach;
             // Islets are ~2.2 m wide, so the empty span between two of them is
             // spacing - width; with the drift this keeps the worst case around 0.7 reach.
             float spacing = 0.95f * reach;
             float amp = 0.12f * reach;
-            int count = Random.Range(6, 10);
+            int count = fixedCount > 0 ? fixedCount : Random.Range(6, 10);
             float total = spacing * count + 1.5f;
             float baseY = lastTopY;
 
