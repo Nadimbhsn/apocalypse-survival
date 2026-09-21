@@ -566,6 +566,11 @@ namespace Platformer.Survival
         /// A treasure room under the path, entered through a narrow hole in the floor that
         /// most players jump straight over. The room is walled at both ends and has a spring
         /// pad right under the hole, so getting out is never a puzzle - finding it is.
+        ///
+        /// The sealed variant puts a cracked wall across the room with the chest behind it.
+        /// The wall stands upright on purpose: the gun only ever fires horizontally (see
+        /// PlayerCombat), so a cracked slab lying in the floor would be unbreakable and the
+        /// secret unreachable. Standing it up puts it squarely in the line of fire.
         /// </summary>
         void BuildUndergroundSecret(bool sealedIn)
         {
@@ -581,47 +586,57 @@ namespace Platformer.Survival
             LayGround(1.7f * reach, 0f, unstable: false);
             // The ground after the hole is the anchor again, so a following Coins/Foes lands there.
 
-            float roomCx = holeX + holeW * 0.5f;
+            // The drop shaft sits under the hole; a sealed room adds a wing to its right,
+            // behind the cracked wall.
+            float holeCx = holeX + holeW * 0.5f;
             float roomY = groundY - 5f;
-            const float roomW = 6f;
+            float roomLeft = holeCx - 3f;
+            float roomRight = holeCx + (sealedIn ? 6f : 3f);
+            float roomW = roomRight - roomLeft;
+            float roomCx = (roomLeft + roomRight) * 0.5f;
+            const float ceilingY = -1.1f; // relative to the path above
             var stone = new Color(0.26f, 0.21f, 0.19f);
 
             props.Add(CreateSolidPlatform($"SecretFloor_{roomCx:0}", roomCx, roomY - 0.35f, roomW, 0.7f, stone));
-            foreach (float side in new[] { -1f, 1f })
+            foreach (float edge in new[] { roomLeft, roomRight })
+                props.Add(CreateSolidPlatform($"SecretWall_{edge:0}", edge, roomY + 1.9f, 0.5f, 4.4f, stone));
+
+            // Ceiling either side of the hole, so the room reads as a room and the only way
+            // back up is through the opening.
+            foreach (var (from, to) in new[] { (roomLeft, holeX), (holeX + holeW, roomRight) })
             {
-                var wall = CreateSolidPlatform($"SecretWall_{side}", roomCx + side * (roomW * 0.5f), roomY + 1.6f, 0.5f, 3.8f, stone);
-                props.Add(wall);
-            }
-            // Ceiling on both sides of the hole, so the room reads as a room and the only
-            // way back up is through the opening.
-            float ceilW = (roomW - holeW) * 0.5f;
-            if (ceilW > 0.4f)
-            {
-                foreach (float side in new[] { -1f, 1f })
-                {
-                    var ceil = CreateSolidPlatform($"SecretCeil_{side}", roomCx + side * (holeW + ceilW) * 0.5f, groundY - 1.1f, ceilW, 0.4f, stone);
-                    props.Add(ceil);
-                }
+                float w = to - from;
+                if (w < 0.4f) continue;
+                props.Add(CreateSolidPlatform($"SecretCeil_{from:0}", (from + to) * 0.5f, groundY + ceilingY, w, 0.4f, stone));
             }
 
-            var stash = SecretStash.Create(entityParent, roomCx - 1.8f, roomY + 0.6f);
-            stash.OnFound = OnSecretFound;
-            props.Add(stash.gameObject);
-
-            // Straight up through the hole.
-            var pad = BouncePlatform.Create(entityParent, roomCx, roomY + 0.4f, 1.9f, BounceKind.Spring, roomCx - 1f, roomCx + 1f);
+            // Straight up through the hole, always on the landing side of any wall.
+            var pad = BouncePlatform.Create(entityParent, holeCx, roomY + 0.4f, 1.9f, BounceKind.Spring, holeCx - 1f, holeCx + 1f);
             props.Add(pad.gameObject);
 
-            SpawnPickupAt(roomCx + 1.6f, roomY + 0.8f, PickupType.Material);
-            SpawnPickupAt(roomCx, roomY + 2.2f, PickupType.Coin);
-            SpawnPickupAt(roomCx, roomY + 3.4f, PickupType.Coin);
+            SpawnPickupAt(holeCx, roomY + 2.2f, PickupType.Coin);
+            SpawnPickupAt(holeCx, roomY + 3.4f, PickupType.Coin);
+            SpawnPickupAt(holeCx - 1f, roomY + 0.8f, PickupType.Coin);
 
+            float stashX = holeCx - 2f;
             if (sealedIn)
             {
-                // A cracked slab covering the hole: solid ground until it is shot open.
-                var cover = BreakableWall.Create(entityParent, roomCx, groundY - 0.25f, holeW, 0.5f);
-                props.Add(cover.gameObject);
+                // The cracked wall stands between the landing spot and the treasure wing:
+                // upright, at the height the player's gun actually fires, and tall enough
+                // that they cannot simply jump it.
+                float wallX = holeCx + 1.8f;
+                float wallHeight = (groundY + ceilingY) - roomY;
+                var cracked = BreakableWall.Create(entityParent, wallX, roomY + wallHeight * 0.5f, 0.5f, wallHeight);
+                props.Add(cracked.gameObject);
+
+                stashX = holeCx + 4f;
+                SpawnPickupAt(holeCx + 2.9f, roomY + 0.8f, PickupType.Material);
             }
+
+            var stash = SecretStash.Create(entityParent, stashX, roomY + 0.6f);
+            stash.OnFound = OnSecretFound;
+            props.Add(stash.gameObject);
+            SpawnPickupAt(sealedIn ? holeCx + 5f : holeCx + 1.8f, roomY + 0.8f, PickupType.Material);
         }
 
         /// <summary>

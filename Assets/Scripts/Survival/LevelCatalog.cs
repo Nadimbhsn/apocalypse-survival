@@ -264,7 +264,7 @@ namespace Platformer.Survival
                     Run(2.4f), Foes(ZombieKind.Walker, 3, 0.6f),
                     Flag(),
 
-                    Sign("Un sol fissuré se tire dessus"),
+                    Sign("Un mur fissuré se tire dessus"),
                     Run(1.4f),
                     Secret(SecretKind.Sealed),
                     Run(1.8f), Coins(3), Foes(ZombieKind.Spitter),
