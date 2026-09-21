@@ -86,3 +86,7 @@ crashlytics-build.properties
 # WebGL test builds (upload them to itch.io instead of committing)
 /WebBuild/
 /apogee-web.zip
+
+# Export pour la graphiste : copies d assets deja dans le depot
+/Dossier graphiste/
+/Dossier graphiste.zip
