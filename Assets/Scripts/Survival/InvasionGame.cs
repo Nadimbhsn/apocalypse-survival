@@ -473,9 +473,11 @@ namespace Platformer.Survival
             if (enemies.Count == 0) { WaveCleared(); return; }
             if (boss != null) return;   // the Colosse moves on its own
 
-            // Thinning the formation makes what is left move faster, like the original.
+            // Thinning the formation makes what is left move faster, like the original - but
+            // gently: the sideways speed sets how often the wave steps down, so a fast
+            // formation also falls fast.
             float alive = enemies.Count / (float)waveCount;
-            float speed = (0.9f + wave * 0.12f) * (1f + (1f - alive) * 1.9f);
+            float speed = (0.75f + wave * 0.07f) * (1f + (1f - alive) * 1.4f);
 
             float minX = float.MaxValue, maxX = float.MinValue;
             foreach (var e in enemies)
@@ -502,7 +504,7 @@ namespace Platformer.Survival
         void StepDown()
         {
             formationDir = -formationDir;
-            formation.y -= 0.42f;
+            formation.y -= 0.26f;
             Fx.Shake(0.12f, 0.12f);
         }
 
