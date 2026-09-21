@@ -92,6 +92,7 @@ namespace Platformer.Survival
 
         const float PlayerRadius = 0.42f;
         const float BulletSpeed = 13f;
+        const float BlockSize = 0.26f;
         const int MaxLives = 3;
 
         int ShotDamage => Mathf.Max(1, Mathf.RoundToInt(UpgradeManager.FirePowerMultiplier));
@@ -379,27 +380,48 @@ namespace Platformer.Survival
 
         Vector2 FormationSlot(Enemy e) => formation + new Vector2(e.column * SpacingX, -e.row * SpacingY);
 
-        /// <summary>Three rock shelters that both sides can chip away at, rebuilt each assault.</summary>
+        /// <summary>
+        /// Four small bunkers with wide firing lanes between them, rebuilt each assault. One
+        /// lane sits exactly where the player starts, so the gun is never blocked by default:
+        /// the shelters are cover to duck behind, not a wall in front of the barrel.
+        /// </summary>
         void BuildShelters()
         {
             foreach (var old in shelter) if (old.go != null) Destroy(old.go);
             shelter.Clear();
 
-            const int blocksX = 7, blocksY = 3;
-            const float block = 0.26f;
-            for (int s = 0; s < 3; s++)
+            const int blocksX = 4, blocksY = 3;
+            for (int s = 0; s < 4; s++)
             {
-                float centerX = -2.4f + s * 2.4f;
+                float centerX = -3f + s * 2f;
                 for (int y = 0; y < blocksY; y++)
                 {
                     for (int x = 0; x < blocksX; x++)
                     {
-                        // Carve a doorway in the middle of the bottom row, like the classic bunkers.
-                        if (y == 0 && x >= 2 && x <= 4) continue;
-                        var pos = new Vector2(centerX + (x - (blocksX - 1) / 2f) * block, ShelterY + y * block);
-                        var go = CreateQuad("Block", pos, new Vector2(block * 0.96f, block * 0.96f), new Color(0.52f, 0.34f, 0.28f), 1);
+                        var pos = new Vector2(centerX + (x - (blocksX - 1) / 2f) * BlockSize, ShelterY + y * BlockSize);
+                        var go = CreateQuad("Block", pos, new Vector2(BlockSize * 0.96f, BlockSize * 0.96f), new Color(0.52f, 0.34f, 0.28f), 1);
                         shelter.Add(new ShelterBlock { go = go, position = pos, hp = 2f });
                     }
+                }
+            }
+        }
+
+        /// <summary>The dead crush whatever shelter they drift into, as in the original game.</summary>
+        void CrushShelters()
+        {
+            for (int i = shelter.Count - 1; i >= 0; i--)
+            {
+                var block = shelter[i];
+                var blockPos = Origin + block.position;
+                foreach (var e in enemies)
+                {
+                    float reach = (e.kind == Invader.Boss ? 1.1f : 0.42f) + BlockSize * 0.5f;
+                    var d = (Vector2)e.go.transform.position - blockPos;
+                    if (Mathf.Abs(d.x) > reach || Mathf.Abs(d.y) > reach) continue;
+                    Fx.Burst(blockPos, new Color(0.55f, 0.36f, 0.3f), 6, 2.2f, 0.08f);
+                    Destroy(block.go);
+                    shelter.RemoveAt(i);
+                    break;
                 }
             }
         }
@@ -413,6 +435,7 @@ namespace Platformer.Survival
 
             UpdatePlayer(dt);
             UpdateFormation(dt);
+            CrushShelters();
             UpdateBoss(dt);
             UpdateEnemyFire(dt);
             UpdateBullets(dt);
@@ -572,10 +595,11 @@ namespace Platformer.Survival
             for (int i = shelter.Count - 1; i >= 0; i--)
             {
                 var block = shelter[i];
-                if (Mathf.Abs(block.position.x - b.position.x) > 0.17f + b.radius) continue;
-                if (Mathf.Abs(block.position.y - b.position.y) > 0.17f + b.radius) continue;
+                if (Mathf.Abs(block.position.x - b.position.x) > BlockSize * 0.5f + b.radius) continue;
+                if (Mathf.Abs(block.position.y - b.position.y) > BlockSize * 0.5f + b.radius) continue;
 
-                block.hp -= b.damage;
+                // The player carves a firing lane in one shot; the dead need two to breach it.
+                block.hp -= b.fromPlayer ? 2f : 1f;
                 Fx.Burst(block.go.transform.position, new Color(0.55f, 0.36f, 0.3f), 5, 2f, 0.07f);
                 if (block.hp <= 0f)
                 {
