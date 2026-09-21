@@ -861,8 +861,10 @@ namespace Platformer.Survival
         /// </summary>
         void BuildVirtualControls(RectTransform hud)
         {
-            // Joystick pad (gold-rimmed pill) + knob.
-            var pad = CreateFixedRect("Joystick", hud, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(440, 170), new Vector2(40, 70));
+            // Joystick pad (gold-rimmed pill) + knob. Held well clear of the bottom-left
+            // corner: phones reserve the screen edges for their own back and home swipes,
+            // and a pad sitting in that strip loses the touch mid-drag.
+            var pad = CreateFixedRect("Joystick", hud, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(440, 170), new Vector2(104, 96));
             var padImg = pad.gameObject.AddComponent<Image>();
             padImg.sprite = ApogeeTheme.Chip;
             padImg.type = Image.Type.Sliced;
