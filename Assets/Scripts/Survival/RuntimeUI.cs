@@ -23,7 +23,7 @@ namespace Platformer.Survival
 
         Canvas canvas;
         GameObject hubPanel, charactersPanel, hudPanel, gameOverPanel, shopPanel;
-        GameObject expeditionPanel, levelClearedPanel, levelFailedPanel, levelStarsPanel;
+        GameObject expeditionPanel, levelClearedPanel, levelFailedPanel, levelStarsPanel, runnerModesPanel;
 
         const int PreviewLayer = 31;
         Camera previewCamera;
@@ -95,6 +95,7 @@ namespace Platformer.Survival
             BuildVignette();
             BuildHubPanel();
             BuildCharactersPanel();
+            BuildRunnerModesPanel();
             BuildExpeditionPanel();
             BuildHudPanel();
             BuildGameOverPanel();
@@ -264,10 +265,10 @@ namespace Platformer.Survival
             // Mini-game cards: the runner first, then every registered mini-game.
             var cards = new List<(string title, string desc, Action onClick, Func<string> best)>
             {
-                ("RUNNER", "Cours d'île en île, affronte les morts", StartRunner,
-                    () => SaveSystem.BestDistance > 0f ? $"Record : {FormatDistance(SaveSystem.BestDistance)}" : "Aucun record"),
-                ("EXPÉDITION", "Des niveaux avec un début, une fin et un boss", ShowExpedition,
-                    () => $"Étoiles : {SaveSystem.TotalStars} / {LevelCatalog.Count * 3}"),
+                ("RUNNER", "Course sans fin ou niveaux à terminer", ShowRunnerModes,
+                    () => SaveSystem.BestDistance > 0f
+                        ? $"Record : {FormatDistance(SaveSystem.BestDistance)}   ·   {SaveSystem.TotalStars} étoiles"
+                        : "Aucun record"),
             };
             foreach (var game in miniGames)
             {
@@ -492,6 +493,73 @@ namespace Platformer.Survival
             }
         }
 
+        // ---- runner: endless or campaign --------------------------------------------------
+
+        /// <summary>
+        /// The two ways to play the runner, behind one hub card. They share the same world,
+        /// the same character and the same controls, and differ only in what is asked: run
+        /// as far as you can with the speed creeping up, or finish an authored level at a
+        /// fixed speed. Putting them side by side here says that better than two cards on
+        /// the home page did.
+        /// </summary>
+        void BuildRunnerModesPanel()
+        {
+            var rt = UiKit.CreatePanel("RunnerModesPanel", canvas.transform, Color.white);
+            runnerModesPanel = rt.gameObject;
+            ApplyOpaqueBackdrop(rt);
+
+            CreateTitle(rt, "RUNNER", 0.875f, 0.945f);
+
+            runnerModeBest.Clear();
+            var modes = new (string title, string desc, Action onClick, Func<string> best)[]
+            {
+                ("RUNNER INFINI", "Cours le plus loin possible. La vitesse monte,\nle terrain se génère sans jamais s'arrêter.", StartRunner,
+                    () => SaveSystem.BestDistance > 0f ? $"Record : {FormatDistance(SaveSystem.BestDistance)}" : "Aucun record"),
+                ("EXPÉDITION", "Des niveaux écrits à la main, avec un début,\nune fin et un boss. Vitesse constante.", ShowExpedition,
+                    () => $"Étoiles : {SaveSystem.TotalStars} / {LevelCatalog.Count * 3}"),
+            };
+
+            const float top = 0.82f, bottom = 0.17f;
+            float slot = (top - bottom) / modes.Length;
+            for (int i = 0; i < modes.Length; i++)
+            {
+                var (title, desc, onClick, best) = modes[i];
+                float yMax = top - i * slot;
+                float yMin = yMax - slot + 0.035f;
+
+                var card = UiKit.CreateButton($"Mode_{title}", rt, "", new Vector2(0.06f, yMin), new Vector2(0.94f, yMax),
+                    () => onClick(), 30, UiKit.CardColor);
+                UiKit.Outlined(UiKit.CreateText("ModeTitle", card.transform, title, 40, TextAnchor.MiddleLeft,
+                    new Vector2(0.07f, 0.66f), new Vector2(0.95f, 0.92f), ApogeeTheme.Gold), 2f);
+                var descText = UiKit.CreateText("ModeDesc", card.transform, desc, 22, TextAnchor.UpperLeft,
+                    new Vector2(0.07f, 0.28f), new Vector2(0.93f, 0.64f), UiKit.TextDim);
+                UiKit.FitLabel(descText, 22);
+                var bestText = UiKit.CreateText("ModeBest", card.transform, "", 20, TextAnchor.LowerLeft,
+                    new Vector2(0.07f, 0.07f), new Vector2(0.8f, 0.28f), ApogeeTheme.Cream);
+                UiKit.FitLabel(bestText, 20);
+                runnerModeBest.Add(bestText);
+                runnerModeBestProviders.Add(best);
+                UiKit.Outlined(UiKit.CreateText("ModeArrow", card.transform, "›", 60, TextAnchor.MiddleRight,
+                    new Vector2(0.78f, 0f), new Vector2(0.95f, 0.55f), ApogeeTheme.Gold), 1.5f);
+            }
+
+            UiKit.CreateButton("RunnerModesBack", rt, "RETOUR", new Vector2(0.32f, 0.04f), new Vector2(0.68f, 0.115f), ShowHub);
+        }
+
+        readonly List<Text> runnerModeBest = new();
+        readonly List<Func<string>> runnerModeBestProviders = new();
+
+        public void ShowRunnerModes()
+        {
+            Time.timeScale = 1f;
+            if (director != null && director.InCampaign) director.LeaveCampaign();
+            HideAllShellPanels();
+            HideBanner();
+            UiKit.SetPanel(runnerModesPanel, true);
+            for (int i = 0; i < runnerModeBest.Count && i < runnerModeBestProviders.Count; i++)
+                runnerModeBest[i].text = runnerModeBestProviders[i]() ?? "";
+        }
+
         // ---- expedition (campaign level select) ------------------------------------------
 
         /// <summary>
@@ -557,7 +625,7 @@ namespace Platformer.Survival
 
             UiKit.CreateText("ExpeditionHint", rt, "Vitesse constante · 3 étoiles par niveau : terminer, tous les secrets, arriver au boss au-dessus de 60 % de vie",
                 18, TextAnchor.UpperCenter, new Vector2(0.06f, 0.105f), new Vector2(0.94f, 0.15f), UiKit.TextDim);
-            UiKit.CreateButton("ExpeditionBack", rt, "RETOUR", new Vector2(0.32f, 0.025f), new Vector2(0.68f, 0.098f), ShowHub);
+            UiKit.CreateButton("ExpeditionBack", rt, "RETOUR", new Vector2(0.32f, 0.025f), new Vector2(0.68f, 0.098f), ShowRunnerModes);
         }
 
         public void ShowExpedition()
@@ -972,7 +1040,7 @@ namespace Platformer.Survival
 
             UiKit.CreateButton("RestartButton", rt, "REJOUER", new Vector2(0.25f, 0.40f), new Vector2(0.75f, 0.47f), StartRunner);
             UiKit.CreateButton("ShopButtonGameOver", rt, "AMÉLIORATIONS", new Vector2(0.25f, 0.31f), new Vector2(0.75f, 0.38f), ShowShop);
-            UiKit.CreateButton("MenuButtonGameOver", rt, "MENU", new Vector2(0.25f, 0.22f), new Vector2(0.75f, 0.29f), ShowHub);
+            UiKit.CreateButton("MenuButtonGameOver", rt, "MENU", new Vector2(0.25f, 0.22f), new Vector2(0.75f, 0.29f), ShowRunnerModes);
         }
 
         // ---- shop ----------------------------------------------------------------------
@@ -1076,6 +1144,7 @@ namespace Platformer.Survival
             UiKit.SetPanel(gameOverPanel, false);
             UiKit.SetPanel(shopPanel, false);
             UiKit.SetPanel(expeditionPanel, false);
+            UiKit.SetPanel(runnerModesPanel, false);
             UiKit.SetPanel(levelClearedPanel, false);
             UiKit.SetPanel(levelFailedPanel, false);
             UiKit.SetPanel(levelStarsPanel, false);

@@ -58,6 +58,8 @@ namespace Platformer.Survival
             public Vector2 position, velocity;
             public float damage, radius;
             public bool fromPlayer;
+            /// <summary>Drone fire passes through the player's own cover instead of wrecking it.</summary>
+            public bool sparesShelters;
         }
 
         class ShelterBlock
@@ -558,31 +560,32 @@ namespace Platformer.Survival
         }
 
         /// <summary>
-        /// The shop's companion drone, hovering over the ship and firing straight up on its
-        /// own. It shoots from just above the shelter line on purpose: a player shot carves
-        /// a shelter open in one hit, and a drone quietly demolishing the cover the player
-        /// is hiding behind would be a punishment, not a help.
+        /// The shop's companion drone, escorting the ship just over its shoulder and firing
+        /// straight up on its own. Its bolt is flagged to spare the shelters: a player shot
+        /// carves a shelter open in one hit, so a drone sitting behind the player's own
+        /// cover and quietly demolishing it would be a punishment, not a help.
         /// </summary>
         void SpawnDrone()
         {
             int level = UpgradeManager.DroneLevel;
             if (level <= 0) return;
 
-            // Two blocks of shelter stand on ShelterY, so their top is a little above it.
-            float muzzleY = ShelterY + BlockSize * 2f + 0.25f;
+            const float sideOffset = -0.8f, riseOffset = 0.95f;
 
             drone = Drone.Create(root, playerGo, level);
-            drone.offset = new Vector3(-0.95f, muzzleY - PlayerY - 0.2f, 0f);
+            drone.offset = new Vector3(sideOffset, riseOffset, 0f);
             drone.mirrorWithTarget = false;   // the ship never turns around
             drone.range = 40f;                // the whole formation is in reach
 
             drone.FindTarget = _ => playing && (enemies.Count > 0 || boss != null)
                 ? (Vector2?)(Origin + new Vector2(playerX, FormationTop))
                 : null;
-            drone.Fire = (_, __) => SpawnBullet(new Vector2(playerX, muzzleY), new Vector2(0f, BulletSpeed), 1f, true);
+            drone.Fire = (_, __) => SpawnBullet(
+                new Vector2(playerX + sideOffset, PlayerY + riseOffset + 0.2f),
+                new Vector2(0f, BulletSpeed), 1f, true, sparesShelters: true);
         }
 
-        void SpawnBullet(Vector2 localPos, Vector2 velocity, float damage, bool fromPlayer)
+        void SpawnBullet(Vector2 localPos, Vector2 velocity, float damage, bool fromPlayer, bool sparesShelters = false)
         {
             var go = new GameObject(fromPlayer ? "Shot" : "Spit");
             go.transform.SetParent(root, false);
@@ -599,6 +602,7 @@ namespace Platformer.Survival
                 damage = damage,
                 radius = fromPlayer ? 0.16f : 0.2f,
                 fromPlayer = fromPlayer,
+                sparesShelters = sparesShelters,
             });
         }
 
@@ -622,6 +626,7 @@ namespace Platformer.Survival
 
         bool HitShelter(Bullet b)
         {
+            if (b.sparesShelters) return false;
             for (int i = shelter.Count - 1; i >= 0; i--)
             {
                 var block = shelter[i];

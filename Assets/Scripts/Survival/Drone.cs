@@ -22,8 +22,10 @@ namespace Platformer.Survival
     {
         /// <summary>Who to escort. Null (or destroyed) parks the drone where it is.</summary>
         public Transform follow;
-        /// <summary>Resting position relative to the escorted transform, before mirroring.</summary>
-        public Vector3 offset = new Vector3(-1.05f, 1.55f, 0f);
+        /// <summary>Resting position relative to the escorted transform, before mirroring.
+        /// Kept low and tight: at arm's length over the shoulder the drone reads as part of
+        /// the character, where higher up it looked like a separate object drifting along.</summary>
+        public Vector3 offset = new Vector3(-0.7f, 0.9f, 0f);
         /// <summary>Set false for modes where the character does not turn around (Barricade, Invasion).</summary>
         public bool mirrorWithTarget = true;
 
@@ -117,7 +119,7 @@ namespace Platformer.Survival
             if (follow != null)
             {
                 var want = follow.position + new Vector3(offset.x * facing, offset.y, offset.z);
-                want.y += Mathf.Sin(bobPhase) * 0.13f;
+                want.y += Mathf.Sin(bobPhase) * 0.09f; // gentler bob, it flies close now
                 want.x -= recoil * 0.35f * facing;
                 // Frame-rate independent smoothing: the drone always takes the same time to
                 // catch up whether the phone renders at 30 or 120.

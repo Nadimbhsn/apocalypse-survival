@@ -257,7 +257,7 @@ namespace Platformer.Survival
             if (level <= 0) return;
 
             drone = Drone.Create(root, defender, level);
-            drone.offset = new Vector3(-1.0f, 1.5f, 0f);
+            drone.offset = new Vector3(-0.75f, 0.95f, 0f);
             drone.mirrorWithTarget = false;   // the defender never turns around here
             drone.range = 30f;                // a lane is its business all the way up
 
