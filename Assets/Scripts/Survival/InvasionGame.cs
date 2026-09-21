@@ -381,16 +381,17 @@ namespace Platformer.Survival
         Vector2 FormationSlot(Enemy e) => formation + new Vector2(e.column * SpacingX, -e.row * SpacingY);
 
         /// <summary>
-        /// Four small bunkers with wide firing lanes between them, rebuilt each assault. One
-        /// lane sits exactly where the player starts, so the gun is never blocked by default:
-        /// the shelters are cover to duck behind, not a wall in front of the barrel.
+        /// Four small bunkers (three blocks wide, two high) with firing lanes half again as
+        /// wide as the player between them, rebuilt each assault. One lane sits exactly where
+        /// the player starts, so the gun is never blocked by default: the shelters are cover
+        /// to duck behind, not a wall in front of the barrel.
         /// </summary>
         void BuildShelters()
         {
             foreach (var old in shelter) if (old.go != null) Destroy(old.go);
             shelter.Clear();
 
-            const int blocksX = 4, blocksY = 3;
+            const int blocksX = 3, blocksY = 2;
             for (int s = 0; s < 4; s++)
             {
                 float centerX = -3f + s * 2f;
