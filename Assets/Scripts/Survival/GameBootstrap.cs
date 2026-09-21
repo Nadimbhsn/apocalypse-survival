@@ -45,9 +45,10 @@ namespace Platformer.Survival
             var fusion = new GameObject("FusionGame").AddComponent<FusionGame>();
             var arena = new GameObject("ArenaGame").AddComponent<ArenaGame>();
             var barricade = new GameObject("BarricadeGame").AddComponent<BarricadeGame>();
+            var invasion = new GameObject("InvasionGame").AddComponent<InvasionGame>();
 
             director.Configure(player, ui);
-            ui.Init(director, new MiniGame[] { fusion, arena, barricade });
+            ui.Init(director, new MiniGame[] { fusion, arena, barricade, invasion });
         }
 
         static void DisableSampleContent()

@@ -45,6 +45,13 @@ namespace Platformer.Survival
             set { PlayerPrefs.SetInt("arena_bosses_beaten", value); PlayerPrefs.Save(); }
         }
 
+        /// <summary>Best score in the Invasion mini-game.</summary>
+        public static int InvasionBest
+        {
+            get => PlayerPrefs.GetInt("invasion_best", 0);
+            set { PlayerPrefs.SetInt("invasion_best", value); PlayerPrefs.Save(); }
+        }
+
         /// <summary>Highest wave fully survived in the Barricade mini-game.</summary>
         public static int BarricadeBestWave
         {
