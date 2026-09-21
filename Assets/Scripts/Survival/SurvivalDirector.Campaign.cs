@@ -105,6 +105,7 @@ namespace Platformer.Survival
             running = true;
 
             PlacePlayerAt(CampaignOriginX + 1.5f, 2f);
+            EnsureDrone();
             GenerateGroundAhead();
             SkinCatalog.ApplyToPlayer(player);
             damageFeedback?.ResetTracking();
@@ -209,6 +210,7 @@ namespace Platformer.Survival
             running = true;
 
             PlacePlayerAt(checkpoint.playerX, checkpoint.playerY + 0.6f);
+            EnsureDrone();
             GenerateGroundAhead();
             SkinCatalog.ApplyToPlayer(player);
             damageFeedback?.ResetTracking();

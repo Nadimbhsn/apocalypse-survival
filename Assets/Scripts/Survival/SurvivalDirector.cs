@@ -118,6 +118,7 @@ namespace Platformer.Survival
         bool running;
 
         GameObject fallDeathZone;
+        Drone drone;
         ChaseWall chaseWall;
         ParticleSystem ashDrift;
         Transform entityParent;
@@ -301,6 +302,7 @@ namespace Platformer.Survival
             running = true;
 
             PlacePlayerAtStart();
+            EnsureDrone();
             // Builds the fixed intro (see IntroLayout) up to genAheadDistance synchronously,
             // so the ground the player is standing on already exists before the first frame
             // renders; the rest fills in incrementally via Update() as they advance, exactly
@@ -360,7 +362,42 @@ namespace Platformer.Survival
             foreach (var r in ruins) if (r != null) Destroy(r);
             ruins.Clear();
             if (chaseWall != null) { Destroy(chaseWall.gameObject); chaseWall = null; }
+            if (drone != null) { Destroy(drone.gameObject); drone = null; }
             ResetScenery();
+        }
+
+        /// <summary>
+        /// Rebuilds the companion drone for the run about to start, at whatever level the
+        /// shop says right now. Called after the player has been placed, so the drone spawns
+        /// beside them instead of flying in from wherever the last run ended.
+        /// </summary>
+        void EnsureDrone()
+        {
+            if (drone != null) { Destroy(drone.gameObject); drone = null; }
+            int level = UpgradeManager.DroneLevel;
+            if (level <= 0) return;
+
+            drone = Drone.Create(entityParent, player.transform, level);
+            drone.FindTarget = from => running ? NearestLivingZombie(from) : null;
+            drone.Fire = (from, to) => DroneBolt.Launch(entityParent, from, to);
+        }
+
+        /// <summary>Aim point on the closest living zombie, or null when the coast is clear.</summary>
+        static Vector2? NearestLivingZombie(Vector2 from)
+        {
+            Zombie best = null;
+            float bestSq = float.MaxValue;
+            foreach (var zombie in Zombie.Active)
+            {
+                if (zombie == null || !zombie.IsAlive) continue;
+                float d = ((Vector2)zombie.transform.position - from).sqrMagnitude;
+                if (d >= bestSq) continue;
+                bestSq = d;
+                best = zombie;
+            }
+            if (best == null) return null;
+            var col = best.GetComponent<Collider2D>();
+            return col != null ? (Vector2)col.bounds.center : (Vector2)best.transform.position;
         }
 
         void Update()

@@ -233,6 +233,7 @@ namespace Platformer.Survival
             UpgradeStat.Armor => "Armure",
             UpgradeStat.DoubleJump => "Double saut",
             UpgradeStat.Magnet => "Aimant à pièces",
+            UpgradeStat.Drone => "Drone compagnon",
             _ => stat.ToString()
         };
 
@@ -984,13 +985,15 @@ namespace Platformer.Survival
 
             CreateTitle(rt, "AMÉLIORATIONS", 0.885f, 0.955f);
             shopWalletText = CreateChip("Wallet", rt, new Vector2(0.22f, 0.825f), new Vector2(0.78f, 0.868f), 26);
-            UiKit.CreateText("ShopHint", rt, "Elles comptent dans le Runner, l'Arène et la Barricade", 20, TextAnchor.MiddleCenter,
+            UiKit.CreateText("ShopHint", rt, "Elles comptent dans le Runner, l'Expédition, l'Arène, la Barricade et l'Invasion", 20, TextAnchor.MiddleCenter,
                 new Vector2(0.05f, 0.78f), new Vector2(0.95f, 0.815f), UiKit.TextDim);
             UiKit.CreateFrame("ShopFrame", rt, new Vector2(0.04f, 0.115f), new Vector2(0.96f, 0.77f));
 
-            var stats = new[] { UpgradeStat.Speed, UpgradeStat.FirePower, UpgradeStat.MaxHealth, UpgradeStat.Armor, UpgradeStat.DoubleJump, UpgradeStat.Magnet };
-            const float startY = 0.72f;
-            const float rowH = 0.10f;
+            var stats = new[] { UpgradeStat.Speed, UpgradeStat.FirePower, UpgradeStat.MaxHealth, UpgradeStat.Armor, UpgradeStat.DoubleJump, UpgradeStat.Magnet, UpgradeStat.Drone };
+            // Rows tightened when the drone was added, so the seventh still clears the
+            // frame's bottom edge and the RETOUR button under it.
+            const float startY = 0.725f;
+            const float rowH = 0.088f;
 
             for (int i = 0; i < stats.Length; i++)
             {
@@ -1038,7 +1041,7 @@ namespace Platformer.Survival
                 else
                 {
                     int cost = UpgradeManager.CostForNextLevel(stat);
-                    string currency = stat == UpgradeStat.Armor ? "mat." : "pièces";
+                    string currency = stat == UpgradeStat.Armor || stat == UpgradeStat.Drone ? "mat." : "pièces";
                     label.text = $"+1\n({cost} {currency})";
                     btn.interactable = true;
                 }

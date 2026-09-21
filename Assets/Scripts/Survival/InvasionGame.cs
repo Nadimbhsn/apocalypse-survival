@@ -69,6 +69,7 @@ namespace Platformer.Survival
 
         Transform root;
         Transform playerGo;
+        Drone drone;
         SpriteRenderer playerSprite;
 
         readonly List<Enemy> enemies = new();
@@ -251,6 +252,7 @@ namespace Platformer.Survival
             playerSprite.color = custom ? Color.white : skin.Tint;
             playerSprite.sortingOrder = 3;
             playerGo = go.transform;
+            SpawnDrone();
         }
 
         GameObject CreateQuad(string name, Vector2 localPos, Vector2 size, Color color, int order)
@@ -553,6 +555,31 @@ namespace Platformer.Survival
             foreach (var e in enemies)
                 if (e.column == column && (lowest == null || e.row > lowest.row)) lowest = e;
             return lowest;
+        }
+
+        /// <summary>
+        /// The shop's companion drone, hovering over the ship and firing straight up on its
+        /// own. It shoots from just above the shelter line on purpose: a player shot carves
+        /// a shelter open in one hit, and a drone quietly demolishing the cover the player
+        /// is hiding behind would be a punishment, not a help.
+        /// </summary>
+        void SpawnDrone()
+        {
+            int level = UpgradeManager.DroneLevel;
+            if (level <= 0) return;
+
+            // Two blocks of shelter stand on ShelterY, so their top is a little above it.
+            float muzzleY = ShelterY + BlockSize * 2f + 0.25f;
+
+            drone = Drone.Create(root, playerGo, level);
+            drone.offset = new Vector3(-0.95f, muzzleY - PlayerY - 0.2f, 0f);
+            drone.mirrorWithTarget = false;   // the ship never turns around
+            drone.range = 40f;                // the whole formation is in reach
+
+            drone.FindTarget = _ => playing && (enemies.Count > 0 || boss != null)
+                ? (Vector2?)(Origin + new Vector2(playerX, FormationTop))
+                : null;
+            drone.Fire = (_, __) => SpawnBullet(new Vector2(playerX, muzzleY), new Vector2(0f, BulletSpeed), 1f, true);
         }
 
         void SpawnBullet(Vector2 localPos, Vector2 velocity, float damage, bool fromPlayer)

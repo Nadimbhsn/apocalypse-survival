@@ -73,7 +73,8 @@ namespace Platformer.Survival
 
         public static bool TrySpend(UpgradeStat stat, int cost)
         {
-            if (stat == UpgradeStat.Armor)
+            // Armor and the drone are built, not bought: they cost materials.
+            if (stat == UpgradeStat.Armor || stat == UpgradeStat.Drone)
             {
                 if (Materials < cost) return false;
                 Materials -= cost;

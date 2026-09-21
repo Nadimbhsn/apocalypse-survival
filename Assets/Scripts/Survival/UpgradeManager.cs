@@ -3,7 +3,7 @@ using Platformer.Mechanics;
 
 namespace Platformer.Survival
 {
-    public enum UpgradeStat { Speed, FirePower, MaxHealth, Armor, DoubleJump, Magnet }
+    public enum UpgradeStat { Speed, FirePower, MaxHealth, Armor, DoubleJump, Magnet, Drone }
 
     /// <summary>
     /// Computes stat bonuses from persisted upgrade levels (see SaveSystem) and applies
@@ -18,6 +18,7 @@ namespace Platformer.Survival
         {
             UpgradeStat.DoubleJump => 1,
             UpgradeStat.Magnet => 3,
+            UpgradeStat.Drone => 3,
             _ => MaxLevel,
         };
 
@@ -28,6 +29,9 @@ namespace Platformer.Survival
             {
                 UpgradeStat.DoubleJump => 150,
                 UpgradeStat.Magnet => 40 + level * 50,
+                // Paid in materials, the scarcer currency: the drone is a machine, and its
+                // price is what keeps it a treat rather than something every run starts with.
+                UpgradeStat.Drone => 30 + level * 35,
                 _ => 10 + level * 8,
             };
         }
@@ -50,6 +54,8 @@ namespace Platformer.Survival
         public static int AirJumps => SaveSystem.GetLevel(UpgradeStat.DoubleJump);
         /// <summary>Radius within which coins are pulled to the player (0 = no magnet).</summary>
         public static float MagnetRadius => SaveSystem.GetLevel(UpgradeStat.Magnet) * 1.3f;
+        /// <summary>Companion drone level, 0 for none (see Drone).</summary>
+        public static int DroneLevel => SaveSystem.GetLevel(UpgradeStat.Drone);
 
         /// <summary>
         /// Applies all currently-owned upgrade levels to a freshly spawned run, computed

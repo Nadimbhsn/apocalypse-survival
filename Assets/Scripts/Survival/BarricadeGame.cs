@@ -92,6 +92,7 @@ namespace Platformer.Survival
         SpriteRenderer barricadeSr;
         Color barricadeBaseColor;
         SpriteRenderer playerSr;
+        Drone drone;
 
         Text waveText, debrisText, buildText, molotovText, messageText;
         Image barricadeFill;
@@ -240,6 +241,48 @@ namespace Platformer.Survival
             playerSr.sprite = custom ? portrait : ui.PlayerSprite;
             playerSr.color = custom ? Color.white : skin.Tint;
             playerSr.sortingOrder = 2;
+
+            SpawnDrone(player.transform);
+        }
+
+        /// <summary>
+        /// The shop's companion drone, hovering over the defender. It fires down whichever
+        /// lane holds the enemy nearest the barricade, once every couple of seconds for a
+        /// single point: enough to finish a crawler that got through, never enough to hold
+        /// a lane on its own. Parented to the world root, so it dies with the round.
+        /// </summary>
+        void SpawnDrone(Transform defender)
+        {
+            int level = UpgradeManager.DroneLevel;
+            if (level <= 0) return;
+
+            drone = Drone.Create(root, defender, level);
+            drone.offset = new Vector3(-1.0f, 1.5f, 0f);
+            drone.mirrorWithTarget = false;   // the defender never turns around here
+            drone.range = 30f;                // a lane is its business all the way up
+
+            drone.FindTarget = _ =>
+            {
+                if (phase == Phase.Over) return null;
+                Enemy best = null;
+                foreach (var e in enemies)
+                    if (e.hp > 0f && (best == null || e.y < best.y)) best = e;
+                return best == null ? (Vector2?)null : new Vector2(LaneX(best.lane), Origin.y + best.y);
+            };
+
+            drone.Fire = (_, target) =>
+            {
+                int lane = 0;
+                float nearest = float.MaxValue;
+                for (int l = 0; l < LaneCount; l++)
+                {
+                    float d = Mathf.Abs(LaneX(l) - target.x);
+                    if (d >= nearest) continue;
+                    nearest = d;
+                    lane = l;
+                }
+                FireShot(lane, PlayerY + 1.3f, 1f);
+            };
         }
 
         GameObject CreateBox(string name, Vector2 localPos, Vector2 size, Color color, int order)
