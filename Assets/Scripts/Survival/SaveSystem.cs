@@ -174,5 +174,36 @@ namespace Platformer.Survival
 
         static string LevelStarsKey(int index) => $"campaign_stars_{index}";
         static string LevelHealthKey(int index) => $"campaign_health_{index}";
+
+        // ---- barricade base (kept between runs) ---------------------------------------
+
+        /// <summary>
+        /// How many lanes the barricade defends: 3, then 6 and 9 once bought. A run resets
+        /// the wave and the barricade's health, never the base built around it.
+        /// </summary>
+        public static int BarricadeLanes
+        {
+            get { int n = PlayerPrefs.GetInt("barricade_lanes", 3); return n >= 9 ? 9 : n >= 6 ? 6 : 3; }
+            set { PlayerPrefs.SetInt("barricade_lanes", value); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>Barricade building currency. Starts at 12 on a fresh save, then carries over.</summary>
+        public static int BarricadeDebris
+        {
+            get => PlayerPrefs.GetInt("barricade_debris", 12);
+            set => PlayerPrefs.SetInt("barricade_debris", Mathf.Max(0, value));
+        }
+
+        public static int GetBarricadeTrap(int lane, int type) => PlayerPrefs.GetInt($"barricade_trap_{lane}_{type}", 0);
+        public static void SetBarricadeTrap(int lane, int type, int level) => PlayerPrefs.SetInt($"barricade_trap_{lane}_{type}", level);
+
+        /// <summary>Materials produced by the finished lanes and not yet collected.</summary>
+        public static float BarricadeFarmStock
+        {
+            get => PlayerPrefs.GetFloat("barricade_farm_stock", 0f);
+            set => PlayerPrefs.SetFloat("barricade_farm_stock", Mathf.Max(0f, value));
+        }
+
+        public static void Flush() => PlayerPrefs.Save();
     }
 }

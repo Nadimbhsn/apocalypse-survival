@@ -1131,6 +1131,9 @@ namespace Platformer.Survival
         {
             if (adOverlay == null) return;
             if (text != null) adOverlayText.text = text;
+            // Mini-game panels are built after this overlay, so they would sit on top of it:
+            // bring it to the front whenever it is shown.
+            if (visible) adOverlay.transform.SetAsLastSibling();
             adOverlay.SetActive(visible);
         }
 
