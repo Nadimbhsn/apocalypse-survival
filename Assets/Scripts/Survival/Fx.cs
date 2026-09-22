@@ -41,6 +41,17 @@ namespace Platformer.Survival
             if (positionComposer != null) positionComposer.TargetOffset = baseOffset;
         }
 
+        /// <summary>
+        /// Moves where the camera rests between shakes (the rhythm section pushes the player
+        /// to the left of the screen to show what is coming).
+        /// </summary>
+        public static void SetCameraRestOffset(Vector3 offset)
+        {
+            var fx = Ensure();
+            fx.composerBaseOffset = offset;
+            if (fx.composer != null && fx.shakeRoutine == null) fx.composer.TargetOffset = offset;
+        }
+
         public static void Burst(Vector3 position, Color color, int count, float speed = 3f, float size = 0.12f, float gravity = 0.8f)
         {
             var fx = Ensure();

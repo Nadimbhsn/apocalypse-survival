@@ -48,6 +48,33 @@ namespace Platformer.Mechanics
         /// <summary>True while the jetpack is actually pushing (for the flame effect).</summary>
         public bool JetpackThrusting { get; private set; }
 
+        [Header("Rhythm section (runner)")]
+        /// <summary>
+        /// Geometry-Dash rules for the runner's rhythm section: the character runs forward on
+        /// its own, every jump is the same fixed arc (releasing early no longer cuts it short,
+        /// so a jump can be timed to the beat), holding the button jumps again on landing,
+        /// and the Double Jump upgrade is ignored - an extra jump would skip the section.
+        /// </summary>
+        public bool rhythmMode;
+        public float rhythmJumpVelocity = 9.3f;
+
+        /// <summary>A jump press not yet used by a jump, within the buffer window (jump orbs read it).</summary>
+        public bool JumpPressedRecently => Time.time - jumpPressedTime <= jumpBufferTime;
+        public bool JumpHeldNow => controlEnabled && (m_JumpAction.IsPressed() || MobileInput.JumpHeld);
+
+        /// <summary>
+        /// Launches the player along gravity's "up" as a pad or an orb does, using up the
+        /// pending press so it does not also trigger a jump on the next landing.
+        /// </summary>
+        public void RhythmLaunch(float speed)
+        {
+            velocity.y = speed * gravitySign;
+            jumpPressedTime = -10f;
+            stopJump = false;
+            jump = false;
+            jumpState = JumpState.InFlight;
+        }
+
         public JumpState jumpState = JumpState.Grounded;
         private bool stopJump;
         /*internal new*/ public Collider2D collider2d;
@@ -93,11 +120,12 @@ namespace Platformer.Mechanics
             {
                 float inputX = m_MoveAction.ReadValue<Vector2>().x;
                 move.x = MobileInput.Active ? MobileInput.ResolveMoveX(inputX) : inputX;
+                if (rhythmMode) move.x = 1f; // the rhythm section runs by itself
 
                 bool pressed = m_JumpAction.WasPressedThisFrame() || MobileInput.ConsumeJumpPressed();
                 bool released = m_JumpAction.WasReleasedThisFrame() || MobileInput.ConsumeJumpReleased();
                 if (pressed) jumpPressedTime = Time.time;
-                if (released)
+                if (released && !rhythmMode)
                 {
                     stopJump = true;
                     Schedule<PlayerStopJump>().player = this;
@@ -130,7 +158,8 @@ namespace Platformer.Mechanics
                 return;
             }
 
-            bool wantsJump = Time.time - jumpPressedTime <= jumpBufferTime;
+            bool wantsJump = Time.time - jumpPressedTime <= jumpBufferTime
+                             || (rhythmMode && IsGrounded && JumpHeldNow); // hold to keep jumping
             bool withinCoyote = Time.time - lastGroundedTime <= coyoteTime;
 
             switch (jumpState)
@@ -163,7 +192,7 @@ namespace Platformer.Mechanics
                         Schedule<PlayerLanded>().player = this;
                         jumpState = JumpState.Landed;
                     }
-                    else if (wantsJump && airJumpsUsed < airJumps)
+                    else if (wantsJump && airJumpsUsed < (rhythmMode ? 0 : airJumps))
                     {
                         airJumpsUsed++;
                         jump = true;
@@ -196,17 +225,21 @@ namespace Platformer.Mechanics
 
             if (jump)
             {
-                velocity.y = jumpTakeOffSpeed * model.jumpModifier;
+                float takeOff = rhythmMode ? rhythmJumpVelocity : jumpTakeOffSpeed * model.jumpModifier;
+                velocity.y = takeOff * gravitySign;
                 jump = false;
             }
             else if (stopJump)
             {
                 stopJump = false;
-                if (velocity.y > 0)
+                if (velocity.y * gravitySign > 0)
                 {
                     velocity.y = velocity.y * model.jumpDeceleration;
                 }
             }
+
+            // Upside down on the ceiling, the sprite hangs upside down too.
+            spriteRenderer.flipY = gravitySign < 0f;
 
             if (move.x > 0.01f)
                 spriteRenderer.flipX = false;

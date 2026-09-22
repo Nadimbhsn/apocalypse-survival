@@ -248,6 +248,7 @@ namespace Platformer.Survival
         {
             if (!running) return;
             if (inCampaign) { HandleCampaignDeath(); return; }
+            AbortCadence();
             running = false;
             SaveSystem.BestDistance = Mathf.Max(SaveSystem.BestDistance, Distance);
             Sfx.Death();
@@ -303,6 +304,7 @@ namespace Platformer.Survival
 
             PlacePlayerAtStart();
             EnsureDrone();
+            WarmUpCadenceMusic();
             // Builds the fixed intro (see IntroLayout) up to genAheadDistance synchronously,
             // so the ground the player is standing on already exists before the first frame
             // renders; the rest fills in incrementally via Update() as they advance, exactly
@@ -363,6 +365,7 @@ namespace Platformer.Survival
             ruins.Clear();
             if (chaseWall != null) { Destroy(chaseWall.gameObject); chaseWall = null; }
             if (drone != null) { Destroy(drone.gameObject); drone = null; }
+            ClearCadence();
             ResetScenery();
         }
 
@@ -409,8 +412,9 @@ namespace Platformer.Survival
             else
                 ui.UpdateHud(player.health, Distance, SaveSystem.Coins, SaveSystem.Materials);
 
-            // Slower, more precise steering while climbing the tower.
-            player.maxSpeed = ascentActive ? ascentSteerSpeed : CurrentRunSpeed;
+            // Slower, more precise steering while climbing the tower; the rhythm section
+            // sets its own fixed speed.
+            player.maxSpeed = cadenceActive ? cadenceSpeed : ascentActive ? ascentSteerSpeed : CurrentRunSpeed;
 
             GenerateGroundAhead();
             GenerateBackgroundDecorOrScenery();
@@ -418,6 +422,7 @@ namespace Platformer.Survival
             EnsureGroundAhead();
 
             UpdateZoneMarkers();
+            UpdateCadence();
             UpdateAscent();
             UpdateShaft();
             UpdateJetpack();
@@ -549,7 +554,9 @@ namespace Platformer.Survival
 
         void UpdateJetpack()
         {
-            if (!player.jetpackActive) return;
+            // The rhythm section's ship is its own business: its floor is real ground, and
+            // landing on it must not hand control back.
+            if (!player.jetpackActive || cadenceActive) return;
             // Hand control back once the player stands on real ground (a registered solid
             // segment, not a floating debris block) past the flight - or anywhere once the
             // next zone has started, as a safety net.
@@ -575,7 +582,7 @@ namespace Platformer.Survival
             Sfx.Milestone();
             Fx.Text(player.transform.position + Vector3.up * 0.8f, $"+{bonus}", PlaceholderVisuals.CoinColor, 1.2f);
             string subtitle = SpeedRamp < 1f ? "Vitesse max augmentée" : "Continue comme ça !";
-            if (!ascentActive) ui.ShowBanner($"{nextMilestone} m", subtitle, 1.6f);
+            if (!ascentActive && !cadenceActive) ui.ShowBanner($"{nextMilestone} m", subtitle, 1.6f);
             nextMilestone += 100;
         }
 
@@ -638,7 +645,9 @@ namespace Platformer.Survival
         /// </summary>
         void UpdateDeathLine()
         {
-            if (ascentActive)
+            if (cadenceActive)
+                deathLineY = cadenceFloorY - 40f; // falls there cost a heart and a restart, not the run
+            else if (ascentActive)
                 deathLineY = Mathf.Max(deathLineY, highestBounceY - ascentFallDepth);
             else
                 deathLineY = LocalGroundLevel(player.transform.position.x) - fallDepthBelowGround;
@@ -652,7 +661,8 @@ namespace Platformer.Survival
         void UpdateCamera()
         {
             if (model?.virtualCamera == null) return;
-            float target = ascentActive || shaftActive ? ascentOrthoSize
+            float target = cadenceActive ? CadenceOrtho()
+                : ascentActive || shaftActive ? ascentOrthoSize
                 : player.jetpackActive ? Mathf.Max(fastOrthoSize, 5.2f)
                 : Mathf.Lerp(normalOrthoSize, fastOrthoSize, SpeedRamp);
             var lens = model.virtualCamera.Lens;

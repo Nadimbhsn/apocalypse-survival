@@ -26,6 +26,27 @@ namespace Platformer.Mechanics
         public float maxFallSpeed = 16f;
 
         /// <summary>
+        /// Which way gravity pulls: 1 is down, -1 flips the entity onto the ceiling (the
+        /// runner's rhythm section uses it). With 1 every line below behaves exactly as it
+        /// did before this existed. Change it through SetGravitySign.
+        /// </summary>
+        public float gravitySign { get; private set; } = 1f;
+
+        /// <summary>Multiplier on world gravity for this entity alone (snappier jumps in the rhythm section).</summary>
+        public float gravityScale = 1f;
+
+        /// <summary>
+        /// Flips gravity. The ground normal is turned with it, because horizontal motion is
+        /// projected along the last ground: left as the floor's normal, a body falling up to
+        /// the ceiling would be pushed backwards until it landed.
+        /// </summary>
+        public void SetGravitySign(float sign)
+        {
+            gravitySign = sign < 0f ? -1f : 1f;
+            groundNormal = new Vector2(0f, gravitySign);
+        }
+
+        /// <summary>
         /// The current velocity of the entity.
         /// </summary>
         public Vector2 velocity;
@@ -108,19 +129,23 @@ namespace Platformer.Mechanics
         protected virtual void FixedUpdate()
         {
             //if already falling, fall faster than the jump speed, otherwise use normal gravity.
-            if (velocity.y < 0)
-                velocity += gravityModifier * Physics2D.gravity * Time.deltaTime;
+            // "Falling" and "terminal speed" are measured along gravity, whichever way it points.
+            var gravity = Physics2D.gravity * (gravityScale * gravitySign);
+            if (velocity.y * gravitySign < 0)
+                velocity += gravityModifier * gravity * Time.deltaTime;
             else
-                velocity += Physics2D.gravity * Time.deltaTime;
+                velocity += gravity * Time.deltaTime;
 
-            if (velocity.y < -maxFallSpeed) velocity.y = -maxFallSpeed;
+            if (velocity.y * gravitySign < -maxFallSpeed) velocity.y = -maxFallSpeed * gravitySign;
             velocity.x = targetVelocity.x;
 
             IsGrounded = false;
 
             var deltaPosition = velocity * Time.deltaTime;
 
-            var moveAlongGround = new Vector2(groundNormal.y, -groundNormal.x);
+            // Along the ground, forward: on a ceiling the normal points down, so the tangent
+            // is flipped back to keep "forward" forward.
+            var moveAlongGround = new Vector2(groundNormal.y, -groundNormal.x) * gravitySign;
 
             var move = moveAlongGround * deltaPosition.x;
 
@@ -144,8 +169,8 @@ namespace Platformer.Mechanics
                 {
                     var currentNormal = hitBuffer[i].normal;
 
-                    //is this surface flat enough to land on?
-                    if (currentNormal.y > minGroundNormalY)
+                    //is this surface flat enough to land on? (a ceiling counts once gravity is flipped)
+                    if (currentNormal.y * gravitySign > minGroundNormalY)
                     {
                         IsGrounded = true;
                         // if moving up, change the groundNormal to new surface normal.
@@ -169,7 +194,7 @@ namespace Platformer.Mechanics
                     {
                         //We are airborne, but hit something, so cancel vertical up and horizontal velocity.
                         velocity.x *= 0;
-                        velocity.y = Mathf.Min(velocity.y, 0);
+                        velocity.y = gravitySign > 0 ? Mathf.Min(velocity.y, 0) : Mathf.Max(velocity.y, 0);
                     }
                     //remove shellDistance from actual move distance.
                     var modifiedDistance = hitBuffer[i].distance - shellRadius;

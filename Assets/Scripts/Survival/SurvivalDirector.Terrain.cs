@@ -82,6 +82,10 @@ namespace Platformer.Survival
                         BuildArchipelago(frontierX);
                         BeginZone(PickNextZone());
                         break;
+                    case ZoneKind.Cadence:
+                        BuildCadence(frontierX);
+                        BeginZone(PickNextZone());
+                        break;
                     case ZoneKind.Jetpack:
                         GenerateJetpackStretch();
                         break;
@@ -100,7 +104,7 @@ namespace Platformer.Survival
         void BeginZone(ZoneKind kind, float fixedLength = -1f)
         {
             genZone = ZoneCatalog.Get(kind);
-            if (kind == ZoneKind.Descent || kind == ZoneKind.Ascent || kind == ZoneKind.Shaft || kind == ZoneKind.Archipel)
+            if (kind == ZoneKind.Descent || kind == ZoneKind.Ascent || kind == ZoneKind.Shaft || kind == ZoneKind.Archipel || kind == ZoneKind.Cadence)
                 genZoneEndX = float.MaxValue; // these end on their own terms
             else
                 genZoneEndX = frontierX + (fixedLength > 0f ? fixedLength : Random.Range(genZone.LengthMin, genZone.LengthMax));
@@ -136,6 +140,7 @@ namespace Platformer.Survival
                 case ZoneKind.Jetpack:
                 case ZoneKind.Archipel:
                 case ZoneKind.Storm:
+                case ZoneKind.Cadence:
                     sinceSetPiece = 0;
                     return PickStreetZone();
             }
@@ -165,12 +170,20 @@ namespace Platformer.Survival
                 setPieceBag.Add(ZoneKind.Jetpack);
                 setPieceBag.Add(ZoneKind.Archipel);
                 setPieceBag.Add(ZoneKind.Storm);
+                setPieceBag.Add(ZoneKind.Cadence);
                 // shuffle
                 for (int i = setPieceBag.Count - 1; i > 0; i--)
                 {
                     int j = Random.Range(0, i + 1);
                     (setPieceBag[i], setPieceBag[j]) = (setPieceBag[j], setPieceBag[i]);
                 }
+            }
+            // La Cadence is eighty seconds of rhythm game: never the very first thing a run
+            // throws at the player. Too early, it goes to the back of the bag.
+            if (setPieceBag[0] == ZoneKind.Cadence && Distance < 150f && setPieceBag.Count > 1)
+            {
+                setPieceBag.RemoveAt(0);
+                setPieceBag.Add(ZoneKind.Cadence);
             }
             var pick = setPieceBag[0];
             setPieceBag.RemoveAt(0);

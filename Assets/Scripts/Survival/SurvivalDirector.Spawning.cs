@@ -16,6 +16,7 @@ namespace Platformer.Survival
     {
         void UpdateSpawnTimers()
         {
+            if (cadenceActive) return; // the rhythm section is pure platforming
             var zone = ZoneCatalog.Get(activeZone);
 
             zombieTimer -= Time.deltaTime;
@@ -61,6 +62,7 @@ namespace Platformer.Survival
             float x = player.transform.position.x + UnityEngine.Random.Range(minAheadSpawn, maxAheadSpawn) * ReachScale;
             if (x < IntroEndX) return false; // never overwrite the fixed, always-identical intro
             if (x > frontierX) return false; // ground not generated that far yet, try again next timer
+            if (InCadenceSpan(x)) return false; // never drop a zombie into the rhythm section
             if (!GetSegmentAt(x, out var seg) || seg.isGap) return false;
             spawn(x);
             return true;

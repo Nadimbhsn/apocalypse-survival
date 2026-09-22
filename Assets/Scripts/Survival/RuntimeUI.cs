@@ -1211,8 +1211,31 @@ namespace Platformer.Survival
             if (hudDistanceText != null) hudDistanceText.text = FormatDistance(distance);
             if (hudCoinsText != null) hudCoinsText.text = $"Pièces: {coins}";
             if (hudMaterialsText != null) hudMaterialsText.text = $"Matériaux: {materials}";
-            if (hudProgressRoot != null && hudProgressRoot.activeSelf) hudProgressRoot.SetActive(false);
-            if (hudSecretsText != null && hudSecretsText.text.Length > 0) hudSecretsText.text = "";
+            // Endless run: the progress bar and the line under it only exist during a set
+            // piece that has an end (the rhythm section).
+            bool section = sectionProgress >= 0f;
+            if (hudProgressRoot != null && hudProgressRoot.activeSelf != section) hudProgressRoot.SetActive(section);
+            if (section && hudProgressFill != null) hudProgressFill.fillAmount = sectionProgress;
+            if (hudSecretsText != null)
+            {
+                string want = section ? sectionDetail ?? "" : "";
+                if (hudSecretsText.text != want) hudSecretsText.text = want;
+            }
+        }
+
+        float sectionProgress = -1f;
+        string sectionDetail;
+
+        public void SetSectionHud(float progress, string detail)
+        {
+            sectionProgress = Mathf.Clamp01(progress);
+            sectionDetail = detail;
+        }
+
+        public void ClearSectionHud()
+        {
+            sectionProgress = -1f;
+            sectionDetail = null;
         }
     }
 }
