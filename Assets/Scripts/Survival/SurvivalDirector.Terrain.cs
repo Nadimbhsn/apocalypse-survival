@@ -321,7 +321,24 @@ namespace Platformer.Survival
             lastSegmentWasUnstable = unstable;
             lastSegmentWidth = width;
 
-            if (!unstable) MaybePlaceHazards(segStart, width, topY);
+            if (unstable) return;
+            if (zone.Kind == ZoneKind.Storm && width >= 4f && Random.value < 0.55f) PlaceBrambles(segStart, width, topY);
+            else MaybePlaceHazards(segStart, width, topY);
+        }
+
+        /// <summary>
+        /// A thorn thicket across part of a Déferlante segment: running through it is slow
+        /// (see Brambles), jumping over it costs a well-timed jump. Either way, time lost
+        /// with the storm on the player's heels.
+        /// </summary>
+        void PlaceBrambles(float segStart, float width, float topY)
+        {
+            // A full jump stays above the thorns for about 3 m at base speed: up to 2.5 m
+            // (scaled with the run's reach) is always clearable with a well-timed jump.
+            float length = Mathf.Min(width - 1.6f, Random.Range(1.6f, 2.5f) * ReachScale);
+            if (length < 1.5f) return;
+            float x = segStart + 0.8f + Random.Range(0f, width - 1.6f - length) + length / 2f;
+            props.Add(Brambles.Create(entityParent, x, topY, length).gameObject);
         }
 
         void GenerateGap(float width)

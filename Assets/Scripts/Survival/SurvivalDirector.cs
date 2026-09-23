@@ -462,6 +462,8 @@ namespace Platformer.Survival
             // Slower, more precise steering while climbing the tower; the rhythm section
             // sets its own fixed speed.
             player.maxSpeed = cadenceActive ? cadenceSpeed : ascentActive ? ascentSteerSpeed : CurrentRunSpeed;
+            // Thorn brambles of the Déferlante drag the run down to a wade.
+            if (Brambles.Slowing) player.maxSpeed *= Brambles.SpeedFactor;
 
             GenerateGroundAhead();
             GenerateBackgroundDecorOrScenery();

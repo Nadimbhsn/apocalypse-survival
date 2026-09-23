@@ -7,13 +7,21 @@ namespace Platformer.Survival
     /// The storm that chases the player during the Déferlante sector: a wall of glowing
     /// cloud and crimson leaves sweeping in from behind. It travels slightly slower than
     /// the player's top speed, so running keeps you ahead, but any stumble (a missed jump,
-    /// a fight) lets it catch up. Being inside it costs health every fraction of a second.
-    /// It never moves backwards and never falls more than a screen behind.
+    /// a fight, the brambles) lets it catch up. It is always on screen: however far ahead
+    /// the player gets, its front is held just inside the left edge of the view, so the
+    /// threat is never out of sight. Once it has swallowed the player it slows right down,
+    /// so running on gets them back out - being inside costs health every fraction of a
+    /// second. It never moves backwards.
     /// </summary>
     public class ChaseWall : MonoBehaviour
     {
         public float speedFactor = 0.92f;
-        public float maxLagBehindPlayer = 26f;
+        /// <summary>Its speed while the player is inside it: slow enough to run back out.</summary>
+        public float overtakenSpeedFactor = 0.5f;
+        /// <summary>How far inside the left edge of the view its front is held, as a share of the view's width.</summary>
+        public float screenMargin = 0.12f;
+        /// <summary>The leash never drags it closer than this behind the player.</summary>
+        public float minGapBehindPlayer = 1.2f;
         public float damageInterval = 0.7f;
         public int damage = 1;
 
@@ -34,11 +42,16 @@ namespace Platformer.Survival
             wall.director = director;
             wall.player = player;
 
-            // Body of the storm: a wide slab fading out toward its leading edge.
+            // Body of the storm: a wide slab fading out toward its leading edge. The fade
+            // sprite is tiny (0.04 x 1.28 units) and turned a quarter to the right, so its
+            // local x is the slab's height and its local y the slab's depth - scaled to
+            // 40 m tall and 32 m deep. (Scaled as if it were one unit square, it used to
+            // shrink to a 1.3 m band: a dark line drawn across the screen at the player's height.)
             var bodyGo = new GameObject("Body");
             bodyGo.transform.SetParent(go.transform, false);
             bodyGo.transform.localPosition = new Vector3(-16f, 0f, 0f);
-            bodyGo.transform.localScale = new Vector3(32f, 90f, 1f);
+            var fadeSize = ApogeeTheme.VerticalFade.bounds.size;
+            bodyGo.transform.localScale = new Vector3(40f / fadeSize.x, 32f / fadeSize.y, 1f);
             var body = bodyGo.AddComponent<SpriteRenderer>();
             body.sprite = ApogeeTheme.VerticalFade;
             body.color = new Color(0.30f, 0.05f, 0.10f, 0.72f);
@@ -108,10 +121,19 @@ namespace Platformer.Survival
 
             if (!dissipating)
             {
-                float speed = director.CurrentRunSpeed * speedFactor;
+                float playerX = player.transform.position.x;
+                bool overtaken = playerX <= pos.x;
+                float speed = director.CurrentRunSpeed * (overtaken ? overtakenSpeedFactor : speedFactor);
                 pos.x += speed * Time.deltaTime;
-                // Never fall too far behind: the threat has to stay visible.
-                pos.x = Mathf.Max(pos.x, player.transform.position.x - maxLagBehindPlayer);
+
+                // Never out of sight: the front is held just inside the left edge of the view.
+                var cam = Camera.main;
+                if (cam != null && cam.orthographic)
+                {
+                    float halfWidth = cam.orthographicSize * cam.aspect;
+                    float leftEdge = cam.transform.position.x - halfWidth;
+                    pos.x = Mathf.Max(pos.x, Mathf.Min(leftEdge + halfWidth * 2f * screenMargin, playerX - minGapBehindPlayer));
+                }
                 transform.position = pos;
                 Engulf();
             }

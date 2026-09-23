@@ -120,13 +120,16 @@ namespace Platformer.Survival
                 case ZoneKind.Storm:
                     return new ZoneDef
                     {
-                        Kind = kind, Title = "LA DÉFERLANTE", Subtitle = "Cours ! La tempête arrive derrière toi",
+                        Kind = kind, Title = "LA DÉFERLANTE", Subtitle = "Cours ! La tempête arrive, saute les ronces",
                         Tint = new Color(0.72f, 0.58f, 0.78f), Ground = new Color(0.33f, 0.20f, 0.20f),
-                        // Wide, flowing ground: the sector is about speed, not precision.
-                        GapChance = 0.12f, GapMin = 1.6f, GapMax = 2.2f, SteppingStoneChance = 0f,
-                        HeightChance = 0.18f, MaxStepUp = 1.0f, MaxDrop = 1.8f, SegMin = 7f, SegMax = 11f,
-                        HazardChance = 0.05f, Spikes = true, Toxic = false, BonusPlatformChance = 0.12f, UnstableChance = 0f,
-                        ZombieIntervalMult = 2.4f, PackChance = 0f, AllowBrute = false,
+                        // Ground built to cost time with the storm right behind: short broken
+                        // steps to climb, spikes to hop, the dead in the way, and thorn
+                        // brambles that slow the run (see PlaceBrambles). Few gaps - the storm
+                        // is the danger, not a fall.
+                        GapChance = 0.08f, GapMin = 1.6f, GapMax = 2.2f, SteppingStoneChance = 0f,
+                        HeightChance = 0.6f, MaxStepUp = 1.5f, MaxDrop = 2.0f, SegMin = 4.5f, SegMax = 7.5f,
+                        HazardChance = 0.3f, Spikes = true, Toxic = false, BonusPlatformChance = 0.05f, UnstableChance = 0f,
+                        ZombieIntervalMult = 1.1f, PackChance = 0.12f, AllowBrute = false,
                         RuinSpacingMin = 9f, RuinSpacingMax = 18f, LengthMin = 75f, LengthMax = 105f,
                     };
 
