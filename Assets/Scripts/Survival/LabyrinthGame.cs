@@ -41,14 +41,17 @@ namespace Platformer.Survival
         // ---- layout -------------------------------------------------------------------
 
         static readonly Vector2 Origin = new Vector2(9000f, 3000f);
-        /// <summary>Maze size in tiles. Odd on both axes: cells sit on odd coordinates.</summary>
-        const int W = 17, H = 29;
+        /// <summary>
+        /// Maze size in tiles, wide for landscape. Odd on both axes: cells sit on odd coordinates.
+        /// </summary>
+        const int W = 37, H = 17;
         /// <summary>Screen band (viewport height fraction) the maze is framed in, below the HUD.</summary>
         const float RegionBottom = 0.02f, RegionTop = 0.862f;
         const int TexelsPerTile = 24;
 
-        static readonly Vector2Int Camp = new Vector2Int(W / 2, 1);
-        static readonly Vector2Int Nest = new Vector2Int(W / 2, H - 2);
+        /// <summary>The camp on the left edge, the nest on the right: the whole maze between them.</summary>
+        static readonly Vector2Int Camp = new Vector2Int(1, H / 2);
+        static readonly Vector2Int Nest = new Vector2Int(W - 2, H / 2);
         static readonly Vector2Int[] Dirs = { Vector2Int.up, Vector2Int.right, Vector2Int.down, Vector2Int.left };
 
         // ---- tuning -------------------------------------------------------------------
@@ -209,6 +212,20 @@ namespace Platformer.Survival
             UiKit.CreateButton("Retry", overRt, "REJOUER", new Vector2(0.25f, 0.38f), new Vector2(0.75f, 0.45f), ResetGame);
             UiKit.CreateButton("Menu", overRt, "MENU", new Vector2(0.25f, 0.29f), new Vector2(0.75f, 0.36f), ReturnToHub);
             overPanel.SetActive(false);
+
+            var rotateRt = UiKit.CreatePanel("RotatePrompt", rt, new Color(0.12f, 0.03f, 0.03f, 0.94f));
+            rotatePanel = rotateRt.gameObject;
+            // A phone outline that keeps turning on its side, instead of words alone.
+            var phone = UiKit.CreateImage("RotatePhone", rotateRt, new Vector2(0.5f, 0.6f), new Vector2(0.5f, 0.6f), ApogeeTheme.Button, ApogeeTheme.Gold, false);
+            rotatePhone = phone.rectTransform;
+            rotatePhone.sizeDelta = new Vector2(110f, 190f);
+            phone.type = Image.Type.Sliced;
+            var screen = UiKit.CreateImage("Screen", rotatePhone, new Vector2(0.14f, 0.1f), new Vector2(0.86f, 0.88f), PlaceholderVisuals.Square(Color.white), ApogeeTheme.CrimsonDark, false);
+            screen.raycastTarget = false;
+            UiKit.Outlined(UiKit.CreateText("RotateText", rotateRt, "Tourne ton téléphone\nle Labyrinthe se joue en paysage", 40, TextAnchor.MiddleCenter,
+                new Vector2(0.08f, 0.36f), new Vector2(0.92f, 0.52f), ApogeeTheme.Cream), 2f);
+            UiKit.CreateButton("RotateQuit", rotateRt, "MENU", new Vector2(0.3f, 0.2f), new Vector2(0.7f, 0.27f), ReturnToHub, 28);
+            rotatePanel.SetActive(false);
         }
 
         // ---- lifecycle ----------------------------------------------------------------
@@ -218,6 +235,7 @@ namespace Platformer.Survival
             var runnerPlayer = ui.Director != null ? ui.Director.Player : null;
             if (runnerPlayer != null) runnerPlayer.controlEnabled = false;
             MobileInput.Reset();
+            LockLandscape();
 
             root = new GameObject("LabyrinthWorld").transform;
             BuildPlayer();
@@ -231,6 +249,8 @@ namespace Platformer.Survival
             playing = false;
             StopAllCoroutines();
             MobileInput.Reset();
+            RestoreOrientation();
+            if (rotatePanel != null) rotatePanel.SetActive(false);
             ClearFloor();
             if (root != null) Destroy(root.gameObject);
             root = null;
@@ -255,7 +275,7 @@ namespace Platformer.Survival
             ClearFloor();
             BuildFloor();
             player.Place(Camp);
-            player.lastDir = Vector2Int.up;
+            player.lastDir = Vector2Int.right;
             want = Vector2Int.zero;
             lastKnown = Camp;
             hidden = false;
@@ -267,6 +287,57 @@ namespace Platformer.Survival
             ui.ShowBanner($"ÉTAGE {floor}", floor == 1
                 ? "Ramasse les rations et reviens au camp"
                 : "Plus profond, plus de regards", 2f);
+        }
+
+        // ---- orientation --------------------------------------------------------------
+
+        ScreenOrientation savedOrientation;
+        bool orientationLocked;
+        GameObject rotatePanel;
+        RectTransform rotatePhone;
+
+        /// <summary>
+        /// The maze is wide, so a phone turns to landscape for this game and back to
+        /// portrait when it ends. Where the app cannot turn the screen itself (a browser),
+        /// a panel asks the player to turn their phone, and the game waits meanwhile.
+        /// </summary>
+        void LockLandscape()
+        {
+            if (!Application.isMobilePlatform || Application.platform == RuntimePlatform.WebGLPlayer) return;
+            savedOrientation = Screen.orientation;
+            orientationLocked = true;
+            Screen.orientation = ScreenOrientation.LandscapeLeft;
+        }
+
+        void RestoreOrientation()
+        {
+            if (!orientationLocked) return;
+            orientationLocked = false;
+            Screen.orientation = savedOrientation == ScreenOrientation.AutoRotation || savedOrientation == ScreenOrientation.Portrait
+                ? savedOrientation
+                : ScreenOrientation.Portrait;
+        }
+
+        /// <summary>True while the screen is still upright: nothing moves until it is turned.</summary>
+        bool WaitingForLandscape()
+        {
+            bool upright = Screen.height > Screen.width;
+            if (rotatePanel != null && rotatePanel.activeSelf != upright) rotatePanel.SetActive(upright);
+            if (!upright) return false;
+
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.PingPong(Time.unscaledTime * 0.8f, 1.3f) - 0.15f);
+            if (rotatePhone != null) rotatePhone.localRotation = Quaternion.Euler(0f, 0f, -90f * t);
+
+            // The clock is frozen for the game while it waits: nobody leaves the nest early.
+            float dt = Time.deltaTime;
+            invulnerableUntil += dt;
+            foreach (var h in hunters)
+            {
+                if (!h.released) h.releaseAt += dt;
+                h.stunUntil += dt;
+            }
+            foreach (var w in watchers) w.blindUntil += dt;
+            return true;
         }
 
         // ---- maze ---------------------------------------------------------------------
@@ -343,11 +414,11 @@ namespace Platformer.Survival
                 if (horizontal || vertical) wall[x, y] = false;
             }
 
-            // The camp and the nest: three tiles wide, open to the maze.
-            for (int dx = -1; dx <= 1; dx++)
+            // The camp and the nest: three tiles tall, open to the maze.
+            for (int dy = -1; dy <= 1; dy++)
             {
-                wall[Camp.x + dx, Camp.y] = false;
-                wall[Nest.x + dx, Nest.y] = false;
+                wall[Camp.x, Camp.y + dy] = false;
+                wall[Nest.x, Nest.y + dy] = false;
             }
         }
 
@@ -397,7 +468,7 @@ namespace Platformer.Survival
             var spots = new List<Vector2Int>();
             for (int x = 0; x < W; x++)
                 for (int y = 0; y < H; y++)
-                    if (!wall[x, y] && fromCamp[x, y] >= 4 && Mathf.Abs(y - Nest.y) + Mathf.Abs(x - Nest.x) > 1)
+                    if (!wall[x, y] && fromCamp[x, y] >= 4 && !NearNest(new Vector2Int(x, y)))
                         spots.Add(new Vector2Int(x, y));
             Shuffle(spots);
 
@@ -519,7 +590,7 @@ namespace Platformer.Survival
         void BuildCampAndNest()
         {
             // The camp: a campfire that flares up once every ration is gathered.
-            campGlow = Quad(floorRoot, "CampGlow", Camp, new Vector2(2.6f, 1.6f), new Color(1f, 0.6f, 0.25f, 0.25f), -4, PlaceholderVisuals.Circle(Color.white));
+            campGlow = Quad(floorRoot, "CampGlow", Camp, new Vector2(1.6f, 2.6f), new Color(1f, 0.6f, 0.25f, 0.25f), -4, PlaceholderVisuals.Circle(Color.white));
             var log1 = Quad(floorRoot, "Log", Camp + new Vector2(0f, -0.18f), new Vector2(0.62f, 0.12f), new Color(0.35f, 0.2f, 0.12f), 1);
             log1.transform.rotation = Quaternion.Euler(0f, 0f, 20f);
             var log2 = Quad(floorRoot, "Log", Camp + new Vector2(0f, -0.18f), new Vector2(0.62f, 0.12f), new Color(0.3f, 0.17f, 0.1f), 1);
@@ -528,7 +599,7 @@ namespace Platformer.Survival
             Quad(floorRoot, "FlameCore", Camp + new Vector2(0f, -0.04f), new Vector2(0.18f, 0.24f), new Color(1f, 0.92f, 0.55f), 2, PlaceholderVisuals.Circle(Color.white));
 
             // The nest the hunters crawl out of.
-            Quad(floorRoot, "Nest", Nest, new Vector2(3f, 0.9f), new Color(0.12f, 0.03f, 0.08f, 0.85f), -4, PlaceholderVisuals.Circle(Color.white));
+            Quad(floorRoot, "Nest", Nest, new Vector2(0.9f, 3f), new Color(0.12f, 0.03f, 0.08f, 0.85f), -4, PlaceholderVisuals.Circle(Color.white));
         }
 
         /// <summary>
@@ -552,7 +623,7 @@ namespace Platformer.Survival
                 bool ok = true;
                 for (var t = a; ; t += step)
                 {
-                    if (used.Contains(t) || fromCamp[t.x, t.y] < 6 || (t.y >= Nest.y && Mathf.Abs(t.x - Nest.x) <= 1)) { ok = false; break; }
+                    if (used.Contains(t) || fromCamp[t.x, t.y] < 6 || NearNest(t)) { ok = false; break; }
                     if (t == b) break;
                 }
                 if (!ok) continue;
@@ -700,7 +771,8 @@ namespace Platformer.Survival
                 AddHunter(false, NestSlot(i), 2.5f + i * 5f);
         }
 
-        static Vector2Int NestSlot(int i) => Nest + new Vector2Int(i % 3 - 1, 0);
+        static Vector2Int NestSlot(int i) => Nest + new Vector2Int(0, i % 3 - 1);
+        static bool NearNest(Vector2Int t) => Mathf.Abs(t.x - Nest.x) <= 1 && Mathf.Abs(t.y - Nest.y) <= 1;
 
         Hunter AddHunter(bool rodeur, Vector2Int at, float delay)
         {
@@ -715,7 +787,7 @@ namespace Platformer.Survival
             h.go = rodeur
                 ? SpawnMonster("Rodeur", "character-vampire", new Color(0.7f, 0.4f, 0.55f), out h.renderers)
                 : SpawnMonster("Traqueur", "character-zombie", PlaceholderVisuals.ZombieColor, out h.renderers);
-            h.m.lastDir = Vector2Int.down;
+            h.m.lastDir = Vector2Int.left;
             h.go.transform.position = World(h.m.Pos) + MonsterDepth;
             hunters.Add(h);
             return h;
@@ -833,6 +905,7 @@ namespace Platformer.Survival
         {
             if (!IsActive) return;
             FrameCamera();
+            if (WaitingForLandscape()) return;
             if (!playing) return;
             float dt = Time.deltaTime;
 
@@ -1192,7 +1265,7 @@ namespace Platformer.Survival
 
             // Back to the camp; the hunters go back to their nest and come out again one by one.
             player.Place(Camp);
-            player.lastDir = Vector2Int.up;
+            player.lastDir = Vector2Int.right;
             want = Vector2Int.zero;
             lastKnown = Camp;
             invulnerableUntil = Time.time + 1.6f;
@@ -1200,7 +1273,7 @@ namespace Platformer.Survival
             {
                 var h = hunters[i];
                 h.m.Place(NestSlot(i));
-                h.m.lastDir = Vector2Int.down;
+                h.m.lastDir = Vector2Int.left;
                 h.released = false;
                 h.searching = false;
                 h.releaseAt = Time.time + 2f + i * 3f;
