@@ -22,6 +22,8 @@ namespace Platformer.Survival
     /// </summary>
     public class FusionGame : MiniGame
     {
+        // Hidden from the home screen for now.
+        public override bool ShowOnHub => false;
         public override string Id => "fusion";
         public override string Title => "FUSION";
         public override string Description => "Fusionne les trésors célestes jusqu'à la planète";

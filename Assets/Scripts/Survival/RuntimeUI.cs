@@ -324,6 +324,7 @@ namespace Platformer.Survival
             };
             foreach (var game in miniGames)
             {
+                if (!game.ShowOnHub) continue;
                 var captured = game;
                 cards.Add((game.Title, game.Description, () => LaunchWithGuide(captured.Id, () => EnterMiniGame(captured)), () => captured.BestLine, game.Id));
             }
@@ -1140,7 +1141,7 @@ namespace Platformer.Survival
 
             CreateTitle(rt, "AMÉLIORATIONS", 0.885f, 0.955f);
             shopWalletText = CreateIconChip("Wallet", rt, new Vector2(0.22f, 0.825f), new Vector2(0.78f, 0.868f), 28);
-            UiKit.CreateText("ShopHint", rt, "Elles comptent dans tous les jeux, sauf la Fusion", 20, TextAnchor.MiddleCenter,
+            UiKit.CreateText("ShopHint", rt, "Elles comptent dans tous les jeux", 20, TextAnchor.MiddleCenter,
                 new Vector2(0.05f, 0.78f), new Vector2(0.95f, 0.815f), UiKit.TextDim);
             UiKit.CreateFrame("ShopFrame", rt, new Vector2(0.04f, 0.115f), new Vector2(0.96f, 0.77f));
 

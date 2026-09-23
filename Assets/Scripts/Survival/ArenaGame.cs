@@ -25,6 +25,8 @@ namespace Platformer.Survival
     /// </summary>
     public class ArenaGame : MiniGame
     {
+        // Hidden from the home screen for now; the Expedition bosses still use it.
+        public override bool ShowOnHub => false;
         public override string Id => "arena";
         public override string Title => "ARÈNE";
         public override string Description => "Affronte les boss en duel au tour par tour";

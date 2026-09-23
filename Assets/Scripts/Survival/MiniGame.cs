@@ -16,6 +16,8 @@ namespace Platformer.Survival
         public abstract string Description { get; }
         /// <summary>Short "best score" line shown on the hub card, or null.</summary>
         public virtual string BestLine => null;
+        /// <summary>False keeps the game out of the home screen (it can still be launched from code).</summary>
+        public virtual bool ShowOnHub => true;
 
         protected RuntimeUI ui;
         protected GameObject panel;
