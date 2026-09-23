@@ -3,7 +3,7 @@ using Platformer.Mechanics;
 
 namespace Platformer.Survival
 {
-    public enum PickupType { Coin, Material, Medkit }
+    public enum PickupType { Coin, Material, Medkit, Ammo }
 
     /// <summary>
     /// Ground pickup collected by the player; coins and materials credit SaveSystem's
@@ -52,6 +52,14 @@ namespace Platformer.Survival
                     Sfx.Material();
                     RewardPopup.Show(pos, 0, value);
                     Fx.Burst(pos, PlaceholderVisuals.MaterialColor, 5, 1.8f, 0.07f);
+                    break;
+                case PickupType.Ammo:
+                    // A box refills the gun in hand by that gun's own box size.
+                    var combat = controller.GetComponent<PlayerCombat>();
+                    int got = combat != null ? combat.AddAmmoBox() : 0;
+                    Sfx.Material();
+                    RewardPopup.ShowAmmo(pos, got);
+                    Fx.Burst(pos, new Color(0.95f, 0.8f, 0.4f), 6, 1.8f, 0.07f);
                     break;
                 case PickupType.Medkit:
                     if (controller.health != null) controller.health.Increment(value);

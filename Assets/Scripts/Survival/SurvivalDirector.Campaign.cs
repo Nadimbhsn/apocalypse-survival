@@ -74,6 +74,7 @@ namespace Platformer.Survival
 
             UpgradeManager.ApplyToPlayer(player, baseMaxSpeed, baseMaxHP);
             RestorePlayerAfterDeath();
+            player.GetComponent<PlayerCombat>()?.ResetForRun();
             ResetGenerationState();
 
             frontierX = CampaignOriginX;
@@ -173,6 +174,9 @@ namespace Platformer.Survival
 
             UpgradeManager.ApplyToPlayer(player, baseMaxSpeed, baseMaxHP);
             RestorePlayerAfterDeath();
+            // A restart at a flag never leaves the player unarmed.
+            var combat = player.GetComponent<PlayerCombat>();
+            if (combat != null) combat.EnsureAmmoAtLeast(combat.Weapon.StartAmmo);
             ResetGenerationState();
 
             cmdIndex = checkpoint.cmdIndex;
@@ -510,6 +514,9 @@ namespace Platformer.Survival
             bsr.sprite = PlaceholderVisuals.Square(ApogeeTheme.Crimson);
             bsr.sortingOrder = 2;
             props.Add(banner);
+
+            // Levels place no random pickups, so every flag leaves a box of rounds.
+            SpawnPickupAt(flagX + 1.3f, groundY + 0.6f, PickupType.Ammo);
 
             state.playerX = flagX;
             state.playerY = groundY;

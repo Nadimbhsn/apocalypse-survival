@@ -22,7 +22,7 @@ namespace Platformer.Survival
             {
                 Title = "RUNNER INFINI",
                 Goal = "Cours le plus loin possible. La vitesse monte et le terrain ne s'arrête jamais.",
-                Controls = "Joystick pour avancer ou reculer, SAUT pour sauter, TIR pour abattre les morts.",
+                Controls = "Joystick pour avancer ou reculer, SAUT pour sauter, TIR pour abattre les morts. Les munitions se ramassent en route.",
                 Tip = "En route, des séquences changent les règles : une tour à escalader, un jetpack, des îlots qui dérivent, et La Cadence, à jouer en rythme.",
                 Rewards = "[c]   [g]",
             },
@@ -30,7 +30,7 @@ namespace Platformer.Survival
             {
                 Title = "EXPÉDITION",
                 Goal = "Des niveaux avec un début et une fin. Au portail, un boss t'attend.",
-                Controls = "Les mêmes commandes que le Runner, à vitesse constante.",
+                Controls = "Les mêmes commandes que le Runner, à vitesse constante. Chaque drapeau laisse une boîte de munitions.",
                 Tip = "Tu affrontes le boss avec la vie qu'il te reste. Les drapeaux te font repartir après une chute, et chaque niveau cache des secrets.",
                 Rewards = "[c]   [g]",
             },

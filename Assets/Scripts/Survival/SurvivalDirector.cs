@@ -29,6 +29,7 @@ namespace Platformer.Survival
         RuntimeUI ui;
         PlatformerModel model;
         PlayerDamageFeedback damageFeedback;
+        PlayerCombat combat;
         CinemachinePositionComposer composer;
 
         [Header("Ground generation")]
@@ -176,6 +177,7 @@ namespace Platformer.Survival
             ui = runtimeUi;
             model = Simulation.GetModel<PlatformerModel>();
             damageFeedback = player.GetComponent<PlayerDamageFeedback>();
+            combat = player.GetComponent<PlayerCombat>();
             mainCamera = Camera.main;
             baseMaxSpeed = player.maxSpeed;
             baseMaxHP = player.health != null ? player.health.maxHP : 5;
@@ -276,6 +278,7 @@ namespace Platformer.Survival
 
             UpgradeManager.ApplyToPlayer(player, baseMaxSpeed, baseMaxHP);
             RestorePlayerAfterDeath();
+            player.GetComponent<PlayerCombat>()?.ResetForRun();
 
             ResetGenerationState();
             runStartX = 1f;
@@ -411,6 +414,7 @@ namespace Platformer.Survival
                 ui.UpdateCampaignHud(player.health, LevelProgress, secretsFound, level.SecretCount);
             else
                 ui.UpdateHud(player.health, Distance, SaveSystem.Coins, SaveSystem.Materials);
+            ui.UpdateWeaponHud(combat);
 
             // Slower, more precise steering while climbing the tower; the rhythm section
             // sets its own fixed speed.
@@ -807,6 +811,9 @@ namespace Platformer.Survival
 
         public void OnZombieKilled(Zombie zombie)
         {
+            // The dead often carry a few rounds: fighting pays for its own ammunition, a bit.
+            if (UnityEngine.Random.value < 0.3f)
+                SpawnPickupAt(zombie.transform.position.x + 0.4f, GetGroundHeightAt(zombie.transform.position.x) + 0.55f, PickupType.Ammo);
             if (UnityEngine.Random.value < 0.4f)
             {
                 var type = UnityEngine.Random.value < 0.25f ? PickupType.Material : PickupType.Coin;

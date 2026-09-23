@@ -27,12 +27,15 @@ namespace Platformer.Survival
         public static Sprite TrapToxic => Get("trap_toxic", ToxicShade);
         public static Sprite TrapWire => Get("trap_wire", WireShade);
         public static Sprite TrapTurret => Get("trap_turret", TurretShade);
+        /// <summary>Three brass cartridges: ammunition, on the ground and in the HUD.</summary>
+        public static Sprite Ammo => Get("ammo", AmmoShade);
 
         public static Sprite ForToken(char token) => token switch
         {
             'c' => Coin,
             'g' => Gear,
             'd' => Debris,
+            'a' => Ammo,
             _ => null,
         };
 
@@ -176,6 +179,23 @@ namespace Platformer.Survival
                 float barbX = Mathf.Repeat(u + 0.2f * k, 0.4f) - 0.2f;
                 if (Mathf.Abs(barbX) < 0.09f && Mathf.Abs(v - wave) < 0.14f && Mathf.Abs(Mathf.Abs(barbX) - Mathf.Abs(v - wave) * 0.6f) < 0.035f && Mathf.Abs(u) < 0.76f)
                     return steel;
+            }
+            return Color.clear;
+        }
+
+        static Color AmmoShade(float u, float v)
+        {
+            var brass = new Color(0.96f, 0.72f, 0.26f);
+            var dark = new Color(0.55f, 0.36f, 0.10f);
+            var lead = new Color(0.62f, 0.60f, 0.62f);
+            for (int i = 0; i < 3; i++)
+            {
+                float cx = -0.5f + i * 0.5f;
+                float x = u - cx;
+                if (Mathf.Abs(x) > 0.17f || v < -0.82f) continue;
+                if (v < 0.18f) return Mathf.Abs(x) > 0.12f || v < -0.72f ? dark : brass;      // case
+                float tip = 0.18f + 0.58f * Mathf.Sqrt(Mathf.Max(0f, 1f - (x / 0.17f) * (x / 0.17f)));
+                if (v < tip) return Mathf.Abs(x) > 0.13f ? dark : lead;                        // bullet
             }
             return Color.clear;
         }
@@ -387,6 +407,12 @@ namespace Platformer.Survival
             if (coins > 0) { Spawn(position + Vector3.up * y, $"+{coins}", GameIcons.Coin, PlaceholderVisuals.CoinColor); y += 0.42f; }
             if (materials > 0) { Spawn(position + Vector3.up * y, $"+{materials}", GameIcons.Gear, new Color(0.82f, 0.88f, 0.96f)); y += 0.42f; }
             if (debris > 0) Spawn(position + Vector3.up * y, $"+{debris}", GameIcons.Debris, new Color(0.94f, 0.78f, 0.56f));
+        }
+
+        public static void ShowAmmo(Vector3 position, int rounds)
+        {
+            if (rounds > 0) Spawn(position, $"+{rounds}", GameIcons.Ammo, new Color(1f, 0.86f, 0.55f));
+            else Spawn(position, "PLEIN", GameIcons.Ammo, new Color(0.8f, 0.8f, 0.8f));
         }
 
         static void Spawn(Vector3 position, string text, Sprite sprite, Color color)

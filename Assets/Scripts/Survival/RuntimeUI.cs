@@ -23,7 +23,14 @@ namespace Platformer.Survival
 
         Canvas canvas;
         GameObject hubPanel, charactersPanel, hudPanel, gameOverPanel, shopPanel;
-        GameObject expeditionPanel, levelClearedPanel, levelFailedPanel, levelStarsPanel, runnerModesPanel;
+        GameObject expeditionPanel, levelClearedPanel, levelFailedPanel, levelStarsPanel, runnerModesPanel, armoryPanel;
+
+        // weapons
+        Image hubWeaponIcon, fireWeaponIcon, fireButtonImage;
+        IconText ammoText, armoryWalletText;
+        readonly List<(Button action, IconText label, Outline outline)> armoryRows = new();
+        WeaponDef shownWeapon;
+        int shownAmmo = -1;
 
         const int PreviewLayer = 31;
         Camera previewCamera;
@@ -109,6 +116,7 @@ namespace Platformer.Survival
             BuildCharactersPanel();
             BuildRunnerModesPanel();
             BuildExpeditionPanel();
+            BuildArmoryPanel();
             BuildHudPanel();
             BuildGameOverPanel();
             BuildCampaignPanels();
@@ -350,7 +358,7 @@ namespace Platformer.Survival
             hubCardBestProviders = cards.ConvertAll(c => c.best);
 
             // Characters card with the equipped character animated (isolated preview camera).
-            var charBtn = UiKit.CreateButton("CharactersButton", rt, "", new Vector2(0.04f, 0.035f), new Vector2(0.49f, 0.168f), ShowCharacters, 28, UiKit.CardColor);
+            var charBtn = UiKit.CreateButton("CharactersButton", rt, "", new Vector2(0.04f, 0.035f), new Vector2(0.40f, 0.168f), ShowCharacters, 28, UiKit.CardColor);
             var previewArea = UiKit.CreateRect("CharacterPreviewArea", charBtn.transform, new Vector2(0.02f, 0.04f), new Vector2(0.44f, 0.96f));
             var previewRt = UiKit.CreateRect("CharacterPreview", previewArea, Vector2.zero, Vector2.one);
             var fitter = previewRt.gameObject.AddComponent<AspectRatioFitter>();
@@ -366,7 +374,15 @@ namespace Platformer.Survival
                 new Vector2(0.44f, 0.12f), new Vector2(0.97f, 0.5f), ApogeeTheme.Cream);
             UiKit.FitLabel(hubCharacterText, 22);
 
-            UiKit.CreateButton("ShopButtonHub", rt, "AMÉLIORATIONS", new Vector2(0.51f, 0.035f), new Vector2(0.96f, 0.168f), ShowShop, 28);
+            // The weapons card shows the gun currently equipped.
+            var armsBtn = UiKit.CreateButton("ArmoryButton", rt, "", new Vector2(0.42f, 0.035f), new Vector2(0.66f, 0.168f), ShowArmory, 28, UiKit.CardColor);
+            hubWeaponIcon = UiKit.CreateImage("Weapon", armsBtn.transform, new Vector2(0.1f, 0.40f), new Vector2(0.9f, 0.92f), null, Color.white);
+            hubWeaponIcon.raycastTarget = false;
+            var armsLabel = UiKit.Outlined(UiKit.CreateText("ArmoryLabel", armsBtn.transform, "ARMES", 24, TextAnchor.MiddleCenter,
+                new Vector2(0.05f, 0.06f), new Vector2(0.95f, 0.38f), ApogeeTheme.Gold), 1.5f);
+            UiKit.FitLabel(armsLabel, 24);
+
+            UiKit.CreateButton("ShopButtonHub", rt, "AMÉLIORATIONS", new Vector2(0.68f, 0.035f), new Vector2(0.96f, 0.168f), ShowShop, 24);
         }
 
         List<Func<string>> hubCardBestProviders = new();
@@ -374,6 +390,7 @@ namespace Platformer.Survival
         void RefreshHub()
         {
             hubWalletText.text = WalletLine();
+            if (hubWeaponIcon != null) hubWeaponIcon.sprite = WeaponCatalog.SpriteFor(WeaponCatalog.Equipped);
             var skin = SkinCatalog.Find(SaveSystem.SelectedSkinId);
             hubCharacterText.text = skin.Name;
             if (previewCharacter != null)
@@ -1024,7 +1041,17 @@ namespace Platformer.Survival
             var fireBtn = fire.gameObject.AddComponent<HoldButton>();
             fireBtn.onDown = () => MobileInput.FireHeld = true;
             fireBtn.onUp = () => MobileInput.FireHeld = false;
-            UiKit.Outlined(UiKit.CreateText("FireLabel", fire, "TIR", 30, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream));
+            fireButtonImage = fireImg;
+            fireWeaponIcon = UiKit.CreateImage("Weapon", fire, new Vector2(0.14f, 0.36f), new Vector2(0.86f, 0.84f), null, Color.white);
+            fireWeaponIcon.raycastTarget = false;
+            UiKit.Outlined(UiKit.CreateText("FireLabel", fire, "TIR", 24, TextAnchor.MiddleCenter, new Vector2(0f, 0.08f), new Vector2(1f, 0.38f), ApogeeTheme.Cream));
+
+            // Rounds left, just above the trigger where the thumb already is.
+            ammoText = IconText.Create("Ammo", hud, "", 30, TextAnchor.MiddleCenter, new Vector2(1f, 0f), new Vector2(1f, 0f), ApogeeTheme.Cream, 2f);
+            var art = (RectTransform)ammoText.transform;
+            art.pivot = new Vector2(1f, 0f);
+            art.sizeDelta = new Vector2(180, 46);
+            art.anchoredPosition = new Vector2(-300, 286);
         }
 
         static RectTransform CreateFixedRect(string name, Transform parent, Vector2 anchor, Vector2 pivot, Vector2 size, Vector2 anchoredPos)
@@ -1177,6 +1204,152 @@ namespace Platformer.Survival
             }
         }
 
+        // ---- weapons ----------------------------------------------------------------------
+
+        /// <summary>
+        /// Keeps the gun in the fire button and the ammo counter in step with the player.
+        /// Only rebuilds what changed, since it runs every frame.
+        /// </summary>
+        public void UpdateWeaponHud(PlayerCombat combat)
+        {
+            if (combat == null || ammoText == null) return;
+            var weapon = combat.Weapon;
+            if (weapon != shownWeapon)
+            {
+                shownWeapon = weapon;
+                if (fireWeaponIcon != null) fireWeaponIcon.sprite = WeaponCatalog.SpriteFor(weapon);
+            }
+            if (combat.Ammo != shownAmmo)
+            {
+                shownAmmo = combat.Ammo;
+                ammoText.text = shownAmmo > 0 ? $"{shownAmmo} [a]" : "<color=#ff7a66>0</color> [a]";
+                // An empty gun looks empty.
+                if (fireButtonImage != null)
+                {
+                    var c = fireButtonImage.color;
+                    fireButtonImage.color = new Color(c.r, c.g, c.b, shownAmmo > 0 ? 0.9f : 0.4f);
+                }
+            }
+        }
+
+        static string FireRateWord(WeaponDef w) => w.Burst > 1 ? $"rafale x{w.Burst}"
+            : w.FireInterval >= 0.8f ? "tir lent"
+            : w.FireInterval >= 0.45f ? "tir moyen"
+            : "tir rapide";
+
+        /// <summary>
+        /// The armoury: every gun as a row with its picture, what it does, and one button to
+        /// buy it or carry it. The gun chosen here is the one the runner and the levels use.
+        /// </summary>
+        void BuildArmoryPanel()
+        {
+            var rt = UiKit.CreatePanel("ArmoryPanel", canvas.transform, Color.white);
+            armoryPanel = rt.gameObject;
+            ApplyOpaqueBackdrop(rt);
+
+            CreateTitle(rt, "ARMES", 0.905f, 0.965f);
+            armoryWalletText = CreateIconChip("Wallet", rt, new Vector2(0.22f, 0.852f), new Vector2(0.78f, 0.893f), 28);
+            UiKit.CreateText("ArmoryHint", rt, "Ton arme sert dans le Runner et l'Expédition. Les munitions se ramassent en route.", 20,
+                TextAnchor.MiddleCenter, new Vector2(0.05f, 0.805f), new Vector2(0.95f, 0.845f), UiKit.TextDim);
+
+            var weapons = WeaponCatalog.All;
+            const float top = 0.795f, bottom = 0.125f;
+            float slot = (top - bottom) / weapons.Length;
+            armoryRows.Clear();
+            for (int i = 0; i < weapons.Length; i++)
+            {
+                var w = weapons[i];
+                float yMax = top - i * slot;
+                float yMin = yMax - slot + 0.012f;
+
+                var row = UiKit.CreateRect($"Weapon_{w.Id}", rt, new Vector2(0.04f, yMin), new Vector2(0.96f, yMax));
+                var rowImg = row.gameObject.AddComponent<Image>();
+                rowImg.sprite = ApogeeTheme.FrameFill;
+                rowImg.type = Image.Type.Sliced;
+                rowImg.color = UiKit.CardColor;
+                var outline = row.gameObject.AddComponent<Outline>();
+                outline.effectColor = ApogeeTheme.Gold;
+                outline.effectDistance = new Vector2(5f, -5f);
+                outline.enabled = false;
+
+                var pic = UiKit.CreateImage("Picture", row, new Vector2(0.03f, 0.12f), new Vector2(0.30f, 0.88f), WeaponCatalog.SpriteFor(w), Color.white);
+                pic.raycastTarget = false;
+
+                UiKit.Outlined(UiKit.CreateText("Name", row, w.Name.ToUpperInvariant(), 30, TextAnchor.MiddleLeft,
+                    new Vector2(0.33f, 0.64f), new Vector2(0.70f, 0.94f), ApogeeTheme.Gold), 1.5f);
+                var blurb = UiKit.CreateText("Blurb", row, w.Blurb, 19, TextAnchor.UpperLeft,
+                    new Vector2(0.33f, 0.34f), new Vector2(0.70f, 0.64f), UiKit.TextDim);
+                UiKit.FitLabel(blurb, 19);
+                string damage = w.Burst > 1 ? $"{w.Damage} x{w.Burst}" : w.Damage.ToString();
+                string blast = w.ExplosionRadius > 0f ? "  ·  explose" : "";
+                IconText.Create("Stats", row, $"Dégâts {damage}  ·  {FireRateWord(w)}{blast}  ·  {w.StartAmmo} [a]", 19, TextAnchor.MiddleLeft,
+                    new Vector2(0.33f, 0.06f), new Vector2(0.70f, 0.34f), ApogeeTheme.Cream);
+
+                int captured = i;
+                var action = UiKit.CreateButton("Action", row, "", new Vector2(0.72f, 0.18f), new Vector2(0.97f, 0.82f), () => OnArmoryAction(captured), 22);
+                var label = IconText.OnButton(action, 22);
+                armoryRows.Add((action, label, outline));
+            }
+
+            UiKit.CreateButton("ArmoryBack", rt, "RETOUR", new Vector2(0.32f, 0.03f), new Vector2(0.68f, 0.105f), ShowHub);
+        }
+
+        public void ShowArmory()
+        {
+            HideAllShellPanels();
+            UiKit.SetPanel(armoryPanel, true);
+            RefreshArmory();
+        }
+
+        void RefreshArmory()
+        {
+            armoryWalletText.text = WalletLine();
+            var equipped = WeaponCatalog.Equipped;
+            for (int i = 0; i < armoryRows.Count; i++)
+            {
+                var w = WeaponCatalog.All[i];
+                var (action, label, outline) = armoryRows[i];
+                bool owned = WeaponCatalog.IsOwned(w);
+                bool isEquipped = owned && w == equipped;
+                outline.enabled = isEquipped;
+                if (isEquipped)
+                {
+                    label.text = "ÉQUIPÉE";
+                    action.interactable = false;
+                }
+                else if (owned)
+                {
+                    label.text = "ÉQUIPER";
+                    action.interactable = true;
+                }
+                else
+                {
+                    string price = w.CostMaterials > 0 && w.CostCoins > 0 ? $"{w.CostCoins} [c]  {w.CostMaterials} [g]"
+                        : w.CostMaterials > 0 ? $"{w.CostMaterials} [g]" : $"{w.CostCoins} [c]";
+                    label.text = $"ACHETER\n{price}";
+                    action.interactable = SaveSystem.Coins >= w.CostCoins && SaveSystem.Materials >= w.CostMaterials;
+                }
+            }
+        }
+
+        void OnArmoryAction(int index)
+        {
+            var w = WeaponCatalog.All[index];
+            if (!WeaponCatalog.IsOwned(w))
+            {
+                if (!SaveSystem.TrySpendBoth(w.CostCoins, w.CostMaterials)) return;
+                SaveSystem.SetWeaponOwned(w.Id);
+                Sfx.Milestone();
+            }
+            else
+            {
+                Sfx.Coin();
+            }
+            SaveSystem.EquippedWeapon = w.Id;
+            director.Player?.GetComponent<PlayerCombat>()?.ResetForRun();
+            RefreshArmory();
+        }
+
         // ---- how to play -----------------------------------------------------------------
 
         /// <summary>
@@ -1292,6 +1465,7 @@ namespace Platformer.Survival
             UiKit.SetPanel(shopPanel, false);
             UiKit.SetPanel(expeditionPanel, false);
             UiKit.SetPanel(runnerModesPanel, false);
+            UiKit.SetPanel(armoryPanel, false);
             UiKit.SetPanel(levelClearedPanel, false);
             UiKit.SetPanel(levelFailedPanel, false);
             UiKit.SetPanel(levelStarsPanel, false);

@@ -206,6 +206,32 @@ namespace Platformer.Survival
 
         public static void Flush() => PlayerPrefs.Save();
 
+        // ---- weapons ----------------------------------------------------------------------
+
+        public static bool IsWeaponOwned(string weaponId) => PlayerPrefs.GetInt($"weapon_owned_{weaponId}", 0) == 1;
+
+        public static void SetWeaponOwned(string weaponId)
+        {
+            PlayerPrefs.SetInt($"weapon_owned_{weaponId}", 1);
+            PlayerPrefs.Save();
+        }
+
+        public static string EquippedWeapon
+        {
+            get => PlayerPrefs.GetString("weapon_equipped", "pistol");
+            set { PlayerPrefs.SetString("weapon_equipped", value); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>Spends coins and materials together, or neither.</summary>
+        public static bool TrySpendBoth(int coins, int materials)
+        {
+            if (Coins < coins || Materials < materials) return false;
+            Coins -= coins;
+            Materials -= materials;
+            PlayerPrefs.Save();
+            return true;
+        }
+
         // ---- first-time guides -----------------------------------------------------------
 
         /// <summary>Whether the how-to-play screen of a game has already been shown once.</summary>

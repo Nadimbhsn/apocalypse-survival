@@ -257,8 +257,13 @@ namespace Platformer.Survival
 
         void SpawnPickup(float x)
         {
+            // Ammo is a quarter of what lies on the road: enough to keep a careful shooter
+            // going, not enough to hold the trigger down.
             float roll = UnityEngine.Random.value;
-            var type = roll < 0.07f ? PickupType.Medkit : roll < 0.35f ? PickupType.Material : PickupType.Coin;
+            var type = roll < 0.07f ? PickupType.Medkit
+                : roll < 0.32f ? PickupType.Ammo
+                : roll < 0.52f ? PickupType.Material
+                : PickupType.Coin;
             SpawnPickupAt(x, GetGroundHeightAt(x) + 0.6f, type);
         }
 
@@ -266,7 +271,7 @@ namespace Platformer.Survival
         {
             var go = new GameObject(type.ToString());
             go.transform.SetParent(entityParent, false);
-            go.transform.localScale = Vector3.one * (type == PickupType.Medkit ? 0.6f : 0.5f);
+            go.transform.localScale = Vector3.one * (type == PickupType.Medkit ? 0.6f : type == PickupType.Ammo ? 0.62f : 0.5f);
 
             Color color = type switch
             {
@@ -276,7 +281,10 @@ namespace Platformer.Survival
             };
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = type == PickupType.Medkit ? PlaceholderVisuals.Square(color) : PlaceholderVisuals.RimCircle(color);
+            sr.sprite = type == PickupType.Medkit ? PlaceholderVisuals.Square(color)
+                : type == PickupType.Ammo ? GameIcons.Ammo
+                : PlaceholderVisuals.RimCircle(color);
+            if (type == PickupType.Ammo) sr.color = Color.white;
             sr.sortingOrder = 4;
 
             if (type == PickupType.Medkit)
