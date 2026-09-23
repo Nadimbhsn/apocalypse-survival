@@ -148,6 +148,7 @@ namespace Platformer.Survival
         readonly List<Hunter> hunters = new();
         SpriteRenderer campGlow;
 
+        int livesCap;
         int floor, score, lives, rationsTotal, rationsTaken, floorsCleared, silentFloors;
         float reserve, invulnerableUntil;
         bool playing, spottedThisFloor, hidden;
@@ -185,7 +186,7 @@ namespace Platformer.Survival
                 new Vector2(0.36f, 0.46f), new Vector2(0.72f, 0.98f), ApogeeTheme.Gold));
             rationText = UiKit.CreateText("Rations", topBar, "", 22, TextAnchor.UpperCenter,
                 new Vector2(0.36f, 0.04f), new Vector2(0.72f, 0.46f), ApogeeTheme.Cream);
-            UiKit.CreateButton("Quit", topBar, "QUITTER", new Vector2(0.74f, 0.22f), new Vector2(0.97f, 0.78f), ReturnToHub, 20);
+            ui.CreatePauseButton(topBar, new Vector2(0.74f, 0.22f), new Vector2(0.97f, 0.78f), () => { if (playing) OpenPause(); });
 
             // Second row: hearts on the left, the reserves gauge on the right.
             for (int i = 0; i < 7; i++)
@@ -257,13 +258,22 @@ namespace Platformer.Survival
             drone = null;
         }
 
+        /// <summary>A heart bought from the pause menu is there at once.</summary>
+        public override void OnUpgradeBought(UpgradeStat stat)
+        {
+            if (stat != UpgradeStat.MaxHealth || MaxLives <= livesCap) return;
+            lives += MaxLives - livesCap;
+            livesCap = MaxLives;
+            RefreshHud();
+        }
+
         void ResetGame()
         {
             floor = 0;
             score = 0;
             floorsCleared = 0;
             silentFloors = 0;
-            lives = MaxLives;
+            lives = livesCap = MaxLives;
             overPanel.SetActive(false);
             playing = true;
             NextFloor();

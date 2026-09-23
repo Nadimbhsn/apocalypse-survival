@@ -129,7 +129,7 @@ namespace Platformer.Survival
                 heart.gameObject.SetActive(false);
             }
 
-            UiKit.CreateButton("Quit", rt, "QUITTER", new Vector2(0.74f, 0.845f), new Vector2(0.96f, 0.892f), ReturnToHub, 22);
+            ui.CreatePauseButton(rt, new Vector2(0.74f, 0.845f), new Vector2(0.96f, 0.892f), () => { if (playing) OpenPause(); });
 
             // Boss health bar, shown only during a Colosse assault.
             var bossRt = UiKit.CreateRect("BossBar", rt, new Vector2(0.12f, 0.855f), new Vector2(0.70f, 0.888f));
@@ -271,12 +271,24 @@ namespace Platformer.Survival
             return go;
         }
 
+        int livesCap;
+        static int LivesFromUpgrades => MaxLives + SaveSystem.GetLevel(UpgradeStat.MaxHealth) / 3;
+
+        /// <summary>A heart bought from the pause menu is there at once.</summary>
+        public override void OnUpgradeBought(UpgradeStat stat)
+        {
+            if (stat != UpgradeStat.MaxHealth || LivesFromUpgrades <= livesCap) return;
+            lives += LivesFromUpgrades - livesCap;
+            livesCap = LivesFromUpgrades;
+            RefreshHud();
+        }
+
         void ResetGame()
         {
             ClearWorldObjects();
             wave = 0;
             score = 0;
-            lives = MaxLives + SaveSystem.GetLevel(UpgradeStat.MaxHealth) / 3;
+            lives = livesCap = LivesFromUpgrades;
             bossesBeaten = 0;
             playerX = 0f;
             fireCooldown = 0f;

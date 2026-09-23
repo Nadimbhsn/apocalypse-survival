@@ -265,6 +265,49 @@ namespace Platformer.Survival
             AdService.OnPlayerDeath();
         }
 
+        /// <summary>
+        /// Leaves the run from the pause menu: the best distance still counts (coins were
+        /// banked as they were picked up), then everything stops as on a death.
+        /// </summary>
+        public void QuitRun()
+        {
+            if (inCampaign) { LeaveCampaign(); return; }
+            if (!running) return;
+            AbortCadence();
+            running = false;
+            SaveSystem.BestDistance = Mathf.Max(SaveSystem.BestDistance, Distance);
+            Time.timeScale = 1f;
+            ClearAll();
+            MobileInput.Reset();
+            player.controlEnabled = false;
+        }
+
+        /// <summary>
+        /// An upgrade bought from the pause menu takes effect straight away. Speed, fire
+        /// power, armour and the magnet are read live; the rest is applied here.
+        /// </summary>
+        public void ApplyUpgradeMidRun(UpgradeStat stat)
+        {
+            if (!running || player == null) return;
+            switch (stat)
+            {
+                case UpgradeStat.DoubleJump:
+                    player.airJumps = UpgradeManager.AirJumps;
+                    break;
+                case UpgradeStat.MaxHealth:
+                    // One more heart, and it comes full - but no free heal of the others.
+                    if (player.health != null)
+                    {
+                        player.health.maxHP += 1;
+                        player.health.Increment();
+                    }
+                    break;
+                case UpgradeStat.Drone:
+                    EnsureDrone();
+                    break;
+            }
+        }
+
         public void StartRun()
         {
             Time.timeScale = 1f;

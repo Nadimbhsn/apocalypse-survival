@@ -22,6 +22,12 @@ namespace Platformer.Survival
             _ => MaxLevel,
         };
 
+        /// <summary>
+        /// Coin price of levels 1 to 10 of Speed, Fire Power and Max Health: cheap to get
+        /// going, steep at the top, so the last levels are a long-term goal.
+        /// </summary>
+        static readonly int[] StatCosts = { 10, 50, 100, 250, 500, 1000, 1500, 2000, 2500, 3000 };
+
         public static int CostForNextLevel(UpgradeStat stat)
         {
             int level = SaveSystem.GetLevel(stat);
@@ -32,7 +38,9 @@ namespace Platformer.Survival
                 // Paid in materials, the scarcer currency: the drone is a machine, and its
                 // price is what keeps it a treat rather than something every run starts with.
                 UpgradeStat.Drone => 30 + level * 35,
-                _ => 10 + level * 8,
+                // Armour is paid in materials, which are far scarcer than coins: it keeps its gentler curve.
+                UpgradeStat.Armor => 10 + level * 8,
+                _ => StatCosts[Mathf.Clamp(level, 0, StatCosts.Length - 1)],
             };
         }
 

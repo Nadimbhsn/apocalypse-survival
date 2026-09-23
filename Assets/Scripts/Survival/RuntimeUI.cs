@@ -15,7 +15,7 @@ namespace Platformer.Survival
     /// rewarded-ad overlay. Mini-games (Fusion, Arena) build their own panels into the same
     /// canvas via MiniGame.Setup and return here through ShowHub().
     /// </summary>
-    public class RuntimeUI : MonoBehaviour
+    public partial class RuntimeUI : MonoBehaviour
     {
         SurvivalDirector director;
         MiniGame[] miniGames = Array.Empty<MiniGame>();
@@ -67,9 +67,7 @@ namespace Platformer.Survival
         Coroutine bannerRoutine;
 
         IconText shopWalletText;
-        readonly Dictionary<UpgradeStat, Text> shopLevelTexts = new();
-        readonly Dictionary<UpgradeStat, Button> shopButtons = new();
-        readonly Dictionary<UpgradeStat, IconText> shopButtonLabels = new();
+        readonly UpgradeRowSet shopRows = new();
 
         // campaign
         struct LevelCard
@@ -125,6 +123,7 @@ namespace Platformer.Survival
             BuildAdOverlay();
 
             foreach (var game in miniGames) game.Setup(this);
+            BuildPausePanel();
 
             ShowHub();
         }
@@ -972,6 +971,13 @@ namespace Platformer.Survival
 
             BuildVirtualControls(rt);
 
+            // PAUSE, under the health bar and the level's counters.
+            var pauseRt = (RectTransform)CreatePauseButton(rt, Vector2.zero, Vector2.zero, PauseRunner).transform;
+            pauseRt.anchorMin = pauseRt.anchorMax = new Vector2(0f, 1f);
+            pauseRt.pivot = new Vector2(0f, 1f);
+            pauseRt.sizeDelta = new Vector2(150f, 58f);
+            pauseRt.anchoredPosition = new Vector2(30f, -146f);
+
             // --- sector banner: fades in for a couple of seconds when a new zone starts ---
             var bannerRt = UiKit.CreateRect("Banner", rt, new Vector2(0f, 0.66f), new Vector2(1f, 0.78f));
             bannerGo = bannerRt.gameObject;
@@ -1145,64 +1151,17 @@ namespace Platformer.Survival
                 new Vector2(0.05f, 0.78f), new Vector2(0.95f, 0.815f), UiKit.TextDim);
             UiKit.CreateFrame("ShopFrame", rt, new Vector2(0.04f, 0.115f), new Vector2(0.96f, 0.77f));
 
-            var stats = new[] { UpgradeStat.Speed, UpgradeStat.FirePower, UpgradeStat.MaxHealth, UpgradeStat.Armor, UpgradeStat.DoubleJump, UpgradeStat.Magnet, UpgradeStat.Drone };
             // Rows tightened when the drone was added, so the seventh still clears the
             // frame's bottom edge and the RETOUR button under it.
-            const float startY = 0.725f;
-            const float rowH = 0.088f;
-
-            for (int i = 0; i < stats.Length; i++)
-            {
-                var stat = stats[i];
-                float yMax = startY - i * rowH;
-                float yMin = yMax - rowH + 0.02f;
-
-                var label = UiKit.Outlined(UiKit.CreateText($"Label_{stat}", rt, StatLabel(stat), 28, TextAnchor.MiddleLeft,
-                    new Vector2(0.08f, yMin), new Vector2(0.50f, yMax), ApogeeTheme.Cream), 1.5f);
-                UiKit.FitLabel(label, 28);
-                shopLevelTexts[stat] = UiKit.CreateText($"Level_{stat}", rt, "Niveau 0/10", 22, TextAnchor.MiddleLeft,
-                    new Vector2(0.51f, yMin), new Vector2(0.74f, yMax), ApogeeTheme.Gold);
-                UiKit.FitLabel(shopLevelTexts[stat], 22);
-
-                var capturedStat = stat;
-                shopButtons[stat] = UiKit.CreateButton($"Buy_{stat}", rt, "+1", new Vector2(0.76f, yMin), new Vector2(0.94f, yMax),
-                    () => OnBuyClicked(capturedStat), 22);
-                shopButtonLabels[stat] = IconText.OnButton(shopButtons[stat], 24);
-            }
+            BuildUpgradeRows(rt, shopRows, 0.725f, 0.088f, 28, 0.08f, 0.94f, _ => RefreshShop());
 
             UiKit.CreateButton("ShopBackButton", rt, "RETOUR", new Vector2(0.32f, 0.02f), new Vector2(0.68f, 0.095f), ShowHub);
-        }
-
-        void OnBuyClicked(UpgradeStat stat)
-        {
-            UpgradeManager.TryPurchase(stat);
-            RefreshShop();
         }
 
         void RefreshShop()
         {
             shopWalletText.text = WalletLine();
-            foreach (var stat in shopLevelTexts.Keys)
-            {
-                int level = SaveSystem.GetLevel(stat);
-                int max = UpgradeManager.MaxLevelFor(stat);
-                shopLevelTexts[stat].text = $"Niveau {level}/{max}";
-
-                var btn = shopButtons[stat];
-                var label = shopButtonLabels[stat];
-                if (level >= max)
-                {
-                    label.text = "MAX";
-                    btn.interactable = false;
-                }
-                else
-                {
-                    int cost = UpgradeManager.CostForNextLevel(stat);
-                    string icon = stat == UpgradeStat.Armor || stat == UpgradeStat.Drone ? "[g]" : "[c]";
-                    label.text = $"{cost} {icon}";
-                    btn.interactable = true;
-                }
-            }
+            RefreshUpgradeRows(shopRows);
         }
 
         // ---- weapons ----------------------------------------------------------------------
@@ -1476,6 +1435,7 @@ namespace Platformer.Survival
 
         public void ShowHub()
         {
+            ClosePause();
             Time.timeScale = 1f;
             if (director != null && director.InCampaign) director.LeaveCampaign();
             foreach (var game in miniGames) game.Exit();

@@ -50,11 +50,21 @@ namespace Platformer.Survival
         public void Exit()
         {
             if (!IsActive) return;
+            ui.ClosePause();
             IsActive = false;
             OnExit();
             ReleaseCamera();
             if (panel != null) panel.SetActive(false);
         }
+
+        /// <summary>
+        /// Called when an upgrade is bought from the pause menu mid-game, so the game can
+        /// apply it at once where that makes sense (most stats are read live anyway).
+        /// </summary>
+        public virtual void OnUpgradeBought(UpgradeStat stat) { }
+
+        /// <summary>Freezes the game under the shared pause menu; quitting from it returns to the hub.</summary>
+        protected void OpenPause() => ui.Pause(ReturnToHub, OnUpgradeBought);
 
         protected abstract void OnEnter();
         protected abstract void OnExit();

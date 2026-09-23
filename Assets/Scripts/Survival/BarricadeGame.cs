@@ -238,7 +238,7 @@ namespace Platformer.Survival
             debrisText = IconText.Create("Debris", topBar, "", 26, TextAnchor.MiddleLeft, new Vector2(0.04f, 0.05f), new Vector2(0.6f, 0.45f), ApogeeTheme.Cream);
             UiKit.CreateText("BarricadeLabel", topBar, "Barricade", 20, TextAnchor.MiddleLeft, new Vector2(0.62f, 0.62f), new Vector2(0.95f, 0.98f), UiKit.Parchment);
             barricadeFill = UiKit.CreateBar("BarricadeHp", topBar, new Vector2(0.62f, 0.30f), new Vector2(0.95f, 0.6f), new Color(0.75f, 0.45f, 0.15f));
-            UiKit.CreateButton("Quit", rt, "QUITTER", new Vector2(0.74f, 0.855f), new Vector2(0.96f, 0.895f), ReturnToHub, 20);
+            ui.CreatePauseButton(rt, new Vector2(0.74f, 0.855f), new Vector2(0.96f, 0.895f), () => { if (phase != Phase.Over) OpenPause(); });
 
             messageText = UiKit.CreateText("Message", rt, "", 26, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.80f), new Vector2(0.95f, 0.85f), UiKit.Gold);
             burstText = UiKit.Outlined(UiKit.CreateText("Burst", rt, "", 24, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.765f), new Vector2(0.95f, 0.80f), ApogeeTheme.Gold));
