@@ -52,6 +52,20 @@ namespace Platformer.Survival
             set { PlayerPrefs.SetInt("invasion_best", value); PlayerPrefs.Save(); }
         }
 
+        /// <summary>Best score in the Labyrinth mini-game.</summary>
+        public static int LabyrinthBest
+        {
+            get => PlayerPrefs.GetInt("labyrinth_best", 0);
+            set { PlayerPrefs.SetInt("labyrinth_best", value); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>Deepest floor reached in the Labyrinth mini-game.</summary>
+        public static int LabyrinthBestFloor
+        {
+            get => PlayerPrefs.GetInt("labyrinth_best_floor", 0);
+            set { PlayerPrefs.SetInt("labyrinth_best_floor", value); PlayerPrefs.Save(); }
+        }
+
         /// <summary>Highest wave fully survived in the Barricade mini-game.</summary>
         public static int BarricadeBestWave
         {

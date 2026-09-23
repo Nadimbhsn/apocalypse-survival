@@ -3,7 +3,7 @@ namespace Platformer.Survival
     /// <summary>
     /// What a player reads the first time they open each game: the goal in one line, the
     /// controls, the one thing worth knowing, and what the game pays. Kept together in one
-    /// place so the wording of all six can be read and edited side by side.
+    /// place so the wording of every game can be read and edited side by side.
     ///
     /// Rewards use the icon tokens of IconText: [c] for coins, [g] for materials.
     /// </summary>
@@ -64,6 +64,14 @@ namespace Platformer.Survival
                 Goal = "Repousse la formation des morts avant qu'elle n'atteigne ton île.",
                 Controls = "Joystick pour te déplacer, TIR pour tirer vers le ciel.",
                 Tip = "Cache-toi derrière les abris pour esquiver leurs tirs. Un boss descend tous les 5 assauts.",
+                Rewards = "[c]   [g]",
+            },
+            "labyrinth" => new GameGuide
+            {
+                Title = "LABYRINTHE",
+                Goal = "Ramasse toutes les rations de survie (eau, nourriture, soins) puis rapporte-les au camp pour descendre d'un étage.",
+                Controls = "Glisse le doigt vers où tu veux tourner : ton perso prend le prochain passage ouvert dans cette direction.",
+                Tip = "Les squelettes à lanterne ne doivent pas te voir : reste hors de leur lumière ou cache-toi dans les buissons. Les zombies, eux, te pourchassent sans relâche.",
                 Rewards = "[c]   [g]",
             },
             _ => new GameGuide { Title = id.ToUpperInvariant(), Goal = "", Controls = "", Tip = "", Rewards = "" },
