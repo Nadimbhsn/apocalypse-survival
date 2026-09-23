@@ -91,7 +91,8 @@ namespace Platformer.Survival
         GameObject bossBarRoot;
         readonly List<Image> hearts = new();
         GameObject overPanel;
-        Text overScoreText, overRewardText;
+        Text overScoreText;
+        IconText overRewardText;
 
         const float PlayerRadius = 0.42f;
         const float BulletSpeed = 13f;
@@ -148,7 +149,7 @@ namespace Platformer.Survival
                 new Vector2(0.05f, 0.66f), new Vector2(0.95f, 0.78f), ApogeeTheme.Gold), 2.5f);
             overScoreText = UiKit.CreateText("OverScore", overRt, "", 34, TextAnchor.MiddleCenter,
                 new Vector2(0.1f, 0.58f), new Vector2(0.9f, 0.65f), ApogeeTheme.Cream);
-            overRewardText = UiKit.CreateText("OverReward", overRt, "", 28, TextAnchor.MiddleCenter,
+            overRewardText = IconText.Create("OverReward", overRt, "", 32, TextAnchor.MiddleCenter,
                 new Vector2(0.1f, 0.51f), new Vector2(0.9f, 0.58f), PlaceholderVisuals.CoinColor);
             UiKit.CreateButton("Retry", overRt, "REJOUER", new Vector2(0.25f, 0.38f), new Vector2(0.75f, 0.45f), ResetGame);
             UiKit.CreateButton("Menu", overRt, "MENU", new Vector2(0.25f, 0.29f), new Vector2(0.75f, 0.36f), ReturnToHub);
@@ -755,8 +756,8 @@ namespace Platformer.Survival
                 ? $"Nouveau record : {score} pts (assaut {wave})"
                 : $"Score : {score} pts — assaut {wave}";
             overRewardText.text = coins > 0
-                ? $"+{coins} pièces" + (bossesBeaten > 0 ? $"   +{bossesBeaten * 3} matériaux" : "")
-                : "Aucune pièce gagnée";
+                ? $"+{coins} [c]" + (bossesBeaten > 0 ? $"      +{bossesBeaten * 3} [g]" : "")
+                : "Aucun gain cette fois";
             hintText.text = overrun ? "Ils ont atteint l'île !" : "";
             overPanel.SetActive(true);
             Sfx.Death();

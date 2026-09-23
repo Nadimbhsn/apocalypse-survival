@@ -803,8 +803,8 @@ namespace Platformer.Survival
             Sfx.Milestone();
             Fx.Burst(player.transform.position, CadenceGold, 40, 6f, 0.14f, 0.4f);
             string tries = cadenceAttempts == 1 ? "sans une seule chute !" : $"en {cadenceAttempts} tentatives";
-            ui.ShowBanner("CADENCE TERMINÉE", $"{tries}  ·  {coinsFound}/3 pièces secrètes  ·  +{coinReward} pièces" +
-                                              (materialReward > 0 ? $"  +{materialReward} mat." : ""), 3.2f);
+            ui.ShowBanner("CADENCE TERMINÉE", $"{tries}  ·  {coinsFound}/3 secrètes  ·  +{coinReward} [c]" +
+                                              (materialReward > 0 ? $"   +{materialReward} [g]" : ""), 3.2f);
         }
 
         /// <summary>Stops the section without rewards (death, leaving the run).</summary>
@@ -1022,7 +1022,7 @@ namespace Platformer.Survival
             int coins = 0;
             foreach (bool c in cadenceCoins) if (c) coins++;
             ui.SetZoneLabel($"LA CADENCE   {Mathf.FloorToInt(progress * 100f)} %");
-            ui.SetSectionHud(progress, $"Tentative {cadenceAttempts}   ·   pièces {coins}/3");
+            ui.SetSectionHud(progress, $"Tentative {cadenceAttempts}   ·   secrètes {coins}/3");
         }
     }
 }

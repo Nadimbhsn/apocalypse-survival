@@ -70,7 +70,8 @@ namespace Platformer.Survival
         Text scoreText, bestText, nextText;
         Image nextPreview;
         GameObject overPanel;
-        Text overScoreText, overRewardText;
+        Text overScoreText;
+        IconText overRewardText;
 
         // ---- UI ------------------------------------------------------------------------
 
@@ -97,7 +98,7 @@ namespace Platformer.Survival
             overPanel = overRt.gameObject;
             UiKit.Outlined(UiKit.CreateText("OverTitle", overRt, "ÇA DÉBORDE !", 54, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.66f), new Vector2(0.95f, 0.78f), ApogeeTheme.Gold), 2.5f);
             overScoreText = UiKit.CreateText("OverScore", overRt, "", 36, TextAnchor.MiddleCenter, new Vector2(0.1f, 0.58f), new Vector2(0.9f, 0.65f), UiKit.Parchment);
-            overRewardText = UiKit.CreateText("OverReward", overRt, "", 30, TextAnchor.MiddleCenter, new Vector2(0.1f, 0.51f), new Vector2(0.9f, 0.58f), PlaceholderVisuals.CoinColor);
+            overRewardText = IconText.Create("OverReward", overRt, "", 34, TextAnchor.MiddleCenter, new Vector2(0.1f, 0.51f), new Vector2(0.9f, 0.58f), PlaceholderVisuals.CoinColor);
             UiKit.CreateButton("Retry", overRt, "REJOUER", new Vector2(0.25f, 0.38f), new Vector2(0.75f, 0.45f), ResetGame);
             UiKit.CreateButton("Menu", overRt, "MENU", new Vector2(0.25f, 0.29f), new Vector2(0.75f, 0.36f), ReturnToHub);
             overPanel.SetActive(false);
@@ -401,7 +402,7 @@ namespace Platformer.Survival
             if (record) SaveSystem.FusionBest = score;
 
             overScoreText.text = record ? $"Nouveau record : {score} pts !" : $"Score : {score} pts";
-            overRewardText.text = reward > 0 ? $"+{reward} pièces" : "Aucune pièce gagnée";
+            overRewardText.text = reward > 0 ? $"+{reward} [c]" : "Aucun gain cette fois";
             overPanel.SetActive(true);
             Sfx.Death();
             AdService.OnPlayerDeath();

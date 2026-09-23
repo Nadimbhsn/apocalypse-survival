@@ -72,7 +72,8 @@ namespace Platformer.Survival
         readonly Button[] moveButtons = new Button[4];
         readonly Text[] moveLabels = new Text[4];
         GameObject resultPanel;
-        Text resultTitle, resultBody;
+        Text resultTitle;
+        IconText resultBody;
         Button resultContinue;
 
         // ---- UI ------------------------------------------------------------------------
@@ -157,7 +158,7 @@ namespace Platformer.Survival
             resultPanel = resultRt.gameObject;
             UiKit.CreateFrame("ResultFrame", resultRt, new Vector2(0.08f, 0.24f), new Vector2(0.92f, 0.8f));
             resultTitle = UiKit.Outlined(UiKit.CreateText("ResultTitle", resultRt, "", 56, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.64f), new Vector2(0.95f, 0.76f), ApogeeTheme.Gold), 2.5f);
-            resultBody = UiKit.CreateText("ResultBody", resultRt, "", 28, TextAnchor.MiddleCenter, new Vector2(0.1f, 0.50f), new Vector2(0.9f, 0.63f), ApogeeTheme.Cream);
+            resultBody = IconText.Create("ResultBody", resultRt, "", 28, TextAnchor.MiddleCenter, new Vector2(0.1f, 0.50f), new Vector2(0.9f, 0.63f), ApogeeTheme.Cream);
             resultContinue = UiKit.CreateButton("ResultContinue", resultRt, "CONTINUER", new Vector2(0.25f, 0.38f), new Vector2(0.75f, 0.45f), OnResultContinue);
             UiKit.CreateButton("ResultMenu", resultRt, "MENU", new Vector2(0.25f, 0.29f), new Vector2(0.75f, 0.36f), OnResultMenu);
             resultPanel.SetActive(false);
@@ -467,8 +468,8 @@ namespace Platformer.Survival
             resultTitle.text = "VICTOIRE !";
             resultTitle.color = UiKit.Gold;
             resultBody.text = campaignDuel
-                ? $"+{coins} pièces   +{materials} matériaux\nNiveau terminé !"
-                : $"+{coins} pièces   +{materials} matériaux\nProchain boss débloqué";
+                ? $"+{coins} [c]      +{materials} [g]\nNiveau terminé !"
+                : $"+{coins} [c]      +{materials} [g]\nProchain boss débloqué";
             UiKit.ButtonLabel(resultContinue).text = campaignDuel ? "VOIR LES ÉTOILES" : "BOSS SUIVANT";
             resultPanel.SetActive(true);
             busy = false;

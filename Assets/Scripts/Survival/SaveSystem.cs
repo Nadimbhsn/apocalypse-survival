@@ -205,5 +205,16 @@ namespace Platformer.Survival
         }
 
         public static void Flush() => PlayerPrefs.Save();
+
+        // ---- first-time guides -----------------------------------------------------------
+
+        /// <summary>Whether the how-to-play screen of a game has already been shown once.</summary>
+        public static bool GuideSeen(string gameId) => PlayerPrefs.GetInt($"guide_seen_{gameId}", 0) == 1;
+
+        public static void MarkGuideSeen(string gameId)
+        {
+            PlayerPrefs.SetInt($"guide_seen_{gameId}", 1);
+            PlayerPrefs.Save();
+        }
     }
 }

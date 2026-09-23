@@ -43,7 +43,7 @@ namespace Platformer.Survival
             {
                 string best = SaveSystem.BarricadeBestWave > 0 ? $"Meilleure vague : {SaveSystem.BarricadeBestWave}" : "Aucune vague tenue";
                 int stock = Mathf.FloorToInt(farmStock);
-                return stock > 0 ? $"{best}   ·   {stock} mat. à récupérer" : best;
+                return stock > 0 ? $"{best}   ·   {stock} [g] à récupérer" : best;
             }
         }
 
@@ -162,14 +162,28 @@ namespace Platformer.Survival
         float farmSaveTimer;
         int completedLanes;
 
-        Text waveText, debrisText, buildText, molotovText, reinforceText, messageText, burstText;
+        Text waveText, buildText, molotovText, reinforceText, messageText, burstText;
+        IconText debrisText;
         Image barricadeFill;
         GameObject buildPanel, overPanel;
-        Text overTitle, overBody;
+        Text overTitle;
+        IconText overBody;
         Button molotovButton, reinforceButton, repairButton, expandButton, burstButton, collectButton;
-        Text repairLabel, expandLabel, burstLabel, farmText, laneInfoText;
+        IconText repairLabel, expandLabel, burstLabel, debrisChip, farmChip, laneCaption;
         readonly Button[] laneChips = new Button[MaxLanes];
-        readonly Button[] trapButtons = new Button[4];
+        readonly TrapCard[] trapCards = new TrapCard[4];
+
+        /// <summary>One trap in the workshop: its picture, its level as pips, its price.</summary>
+        class TrapCard
+        {
+            public Button button;
+            public Image icon;
+            public readonly Image[] pips = new Image[MaxTrapLevel];
+            public IconText cost;
+        }
+
+        static readonly Color PipOn = new Color(1f, 0.78f, 0.30f);
+        static readonly Color PipOff = new Color(0.30f, 0.16f, 0.12f);
         float farmTextTimer;
 
         // ---- tuning --------------------------------------------------------------------
@@ -221,7 +235,7 @@ namespace Platformer.Survival
             topImg.sprite = ApogeeTheme.Panel;
             topImg.type = Image.Type.Sliced;
             waveText = UiKit.CreateText("Wave", topBar, "", 38, TextAnchor.MiddleLeft, new Vector2(0.04f, 0.45f), new Vector2(0.6f, 1f), Color.white);
-            debrisText = UiKit.CreateText("Debris", topBar, "", 26, TextAnchor.MiddleLeft, new Vector2(0.04f, 0.05f), new Vector2(0.6f, 0.45f), PlaceholderVisuals.MaterialColor);
+            debrisText = IconText.Create("Debris", topBar, "", 26, TextAnchor.MiddleLeft, new Vector2(0.04f, 0.05f), new Vector2(0.6f, 0.45f), ApogeeTheme.Cream);
             UiKit.CreateText("BarricadeLabel", topBar, "Barricade", 20, TextAnchor.MiddleLeft, new Vector2(0.62f, 0.62f), new Vector2(0.95f, 0.98f), UiKit.Parchment);
             barricadeFill = UiKit.CreateBar("BarricadeHp", topBar, new Vector2(0.62f, 0.30f), new Vector2(0.95f, 0.6f), new Color(0.75f, 0.45f, 0.15f));
             UiKit.CreateButton("Quit", rt, "QUITTER", new Vector2(0.74f, 0.855f), new Vector2(0.96f, 0.895f), ReturnToHub, 20);
@@ -242,8 +256,7 @@ namespace Platformer.Survival
             overPanel = overRt.gameObject;
             overTitle = UiKit.Outlined(UiKit.CreateText("OverTitle", overRt, "LA BARRICADE EST TOMBÉE", 44, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.66f), new Vector2(0.95f, 0.78f), ApogeeTheme.Gold), 2.5f);
             UiKit.FitLabel(overTitle, 44);
-            overBody = UiKit.CreateText("OverBody", overRt, "", 28, TextAnchor.MiddleCenter, new Vector2(0.08f, 0.47f), new Vector2(0.92f, 0.65f), UiKit.Parchment);
-            UiKit.FitLabel(overBody, 28);
+            overBody = IconText.Create("OverBody", overRt, "", 28, TextAnchor.MiddleCenter, new Vector2(0.08f, 0.47f), new Vector2(0.92f, 0.65f), UiKit.Parchment);
             UiKit.CreateButton("Retry", overRt, "REJOUER", new Vector2(0.25f, 0.36f), new Vector2(0.75f, 0.43f), ResetGame);
             UiKit.CreateButton("Menu", overRt, "MENU", new Vector2(0.25f, 0.27f), new Vector2(0.75f, 0.34f), ReturnToHub);
             overPanel.SetActive(false);
@@ -255,9 +268,10 @@ namespace Platformer.Survival
         }
 
         /// <summary>
-        /// Between-wave workshop. Nine lanes cannot each get a column of four buttons on a
-        /// phone, so the traps are edited one lane at a time: pick the lane in the chip row,
-        /// its four traps appear below and the lane lights up on the field.
+        /// The workshop between waves, kept to what a thumb needs: what you have (débris,
+        /// materials waiting), which lane you are building, its four traps as picture cards
+        /// with their level shown as pips, three secondary actions, and one big button to
+        /// start the wave. Prices and stocks are icons, not words.
         /// </summary>
         void BuildBuildPanel(RectTransform rt)
         {
@@ -267,45 +281,77 @@ namespace Platformer.Survival
             bpImg.type = Image.Type.Sliced;
             buildPanel = bp.gameObject;
 
-            buildText = UiKit.CreateText("BuildTitle", bp, "", 26, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.91f), new Vector2(0.96f, 0.99f), UiKit.Parchment);
-            UiKit.FitLabel(buildText, 26);
+            // Header: the room's name, and how long before the next wave.
+            UiKit.Outlined(UiKit.CreateText("WorkshopTitle", bp, "ATELIER", 34, TextAnchor.MiddleLeft,
+                new Vector2(0.05f, 0.905f), new Vector2(0.45f, 0.985f), ApogeeTheme.Gold), 2f);
+            buildText = UiKit.CreateText("BuildTitle", bp, "", 24, TextAnchor.MiddleRight, new Vector2(0.42f, 0.905f), new Vector2(0.95f, 0.985f), ApogeeTheme.Cream);
+            UiKit.FitLabel(buildText, 24);
+
+            // Resources: débris to spend, materials the farm has made, and the button to take them.
+            debrisChip = CreateChip(bp, "DebrisChip", new Vector2(0.04f, 0.80f), new Vector2(0.34f, 0.885f), 28);
+            farmChip = CreateChip(bp, "FarmChip", new Vector2(0.36f, 0.80f), new Vector2(0.71f, 0.885f), 26);
+            collectButton = UiKit.CreateButton("Collect", bp, "RÉCUPÉRER", new Vector2(0.73f, 0.80f), new Vector2(0.96f, 0.885f), OnCollect, 20, new Color(0.22f, 0.34f, 0.44f));
 
             for (int i = 0; i < MaxLanes; i++)
             {
                 int captured = i;
-                laneChips[i] = UiKit.CreateButton($"LaneChip_{i}", bp, (i + 1).ToString(), new Vector2(0f, 0.80f), new Vector2(0.1f, 0.90f),
+                laneChips[i] = UiKit.CreateButton($"LaneChip_{i}", bp, (i + 1).ToString(), new Vector2(0f, 0.695f), new Vector2(0.1f, 0.785f),
                     () => SelectLane(captured), 26, UiKit.CardColor);
             }
+            laneCaption = IconText.Create("LaneCaption", bp, "", 20, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.648f), new Vector2(0.96f, 0.692f), ApogeeTheme.Cream);
 
-            laneInfoText = UiKit.CreateText("LaneInfo", bp, "", 20, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.735f), new Vector2(0.96f, 0.795f), ApogeeTheme.Cream);
-            UiKit.FitLabel(laneInfoText, 20);
-
+            // The four traps of the selected lane, side by side.
+            Sprite[] icons = { GameIcons.TrapSpikes, GameIcons.TrapToxic, GameIcons.TrapWire, GameIcons.TrapTurret };
+            const float cardsLeft = 0.04f, cardsRight = 0.96f, gap = 0.012f;
+            float cardW = (cardsRight - cardsLeft - gap * 3f) / 4f;
             for (int t = 0; t < 4; t++)
             {
-                int col = t % 2, row = t / 2;
-                float x0 = col == 0 ? 0.04f : 0.51f;
-                float yMax = 0.725f - row * 0.14f;
+                float x0 = cardsLeft + t * (cardW + gap);
                 int capturedTrap = t;
-                trapButtons[t] = UiKit.CreateButton($"Trap_{t}", bp, "", new Vector2(x0, yMax - 0.13f), new Vector2(x0 + 0.45f, yMax),
-                    () => Buy(selectedLane, (TrapType)capturedTrap), 22, UiKit.CardColor);
-                UiKit.ButtonLabel(trapButtons[t]).supportRichText = true;
+                var card = new TrapCard();
+                card.button = UiKit.CreateButton($"Trap_{t}", bp, "", new Vector2(x0, 0.325f), new Vector2(x0 + cardW, 0.64f),
+                    () => Buy(selectedLane, (TrapType)capturedTrap), 20, UiKit.CardColor);
+                card.icon = UiKit.CreateImage("Icon", card.button.transform, new Vector2(0.14f, 0.47f), new Vector2(0.86f, 0.95f), icons[t], Color.white);
+                card.icon.raycastTarget = false;
+                var name = UiKit.Outlined(UiKit.CreateText("Name", card.button.transform, TrapNames[t], 21, TextAnchor.MiddleCenter,
+                    new Vector2(0.03f, 0.32f), new Vector2(0.97f, 0.47f), ApogeeTheme.Cream), 1.5f);
+                UiKit.FitLabel(name, 21);
+                for (int k = 0; k < MaxTrapLevel; k++)
+                {
+                    float px = 0.5f + (k - 1) * 0.2f;
+                    card.pips[k] = UiKit.CreateImage($"Pip_{k}", card.button.transform, new Vector2(px - 0.07f, 0.215f), new Vector2(px + 0.07f, 0.295f),
+                        PlaceholderVisuals.Circle(Color.white), PipOff);
+                    card.pips[k].raycastTarget = false;
+                }
+                card.cost = IconText.Create("Cost", card.button.transform, "", 24, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.03f), new Vector2(0.97f, 0.19f), ApogeeTheme.Gold, 1.5f);
+                trapCards[t] = card;
             }
 
-            farmText = UiKit.CreateText("Farm", bp, "", 19, TextAnchor.MiddleLeft, new Vector2(0.05f, 0.335f), new Vector2(0.64f, 0.435f), ApogeeTheme.Cream);
-            UiKit.FitLabel(farmText, 19);
-            collectButton = UiKit.CreateButton("Collect", bp, "RÉCUPÉRER", new Vector2(0.66f, 0.34f), new Vector2(0.96f, 0.43f), OnCollect, 20, new Color(0.22f, 0.34f, 0.44f));
+            // Secondary actions, smaller and together.
+            float actW = (0.92f - 0.024f) / 3f;
+            repairButton = UiKit.CreateButton("Repair", bp, "", new Vector2(0.04f, 0.18f), new Vector2(0.04f + actW, 0.305f), Repair, 20, new Color(0.25f, 0.35f, 0.18f));
+            repairLabel = IconText.OnButton(repairButton, 21);
+            expandButton = UiKit.CreateButton("Expand", bp, "", new Vector2(0.04f + actW + 0.012f, 0.18f), new Vector2(0.04f + 2f * actW + 0.012f, 0.305f), OnExpand, 20, new Color(0.40f, 0.28f, 0.12f));
+            expandLabel = IconText.OnButton(expandButton, 21);
+            burstButton = UiKit.CreateButton("BurstAd", bp, "", new Vector2(0.96f - actW, 0.18f), new Vector2(0.96f, 0.305f), OnBurstAd, 20, new Color(0.55f, 0.36f, 0.08f));
+            burstLabel = IconText.OnButton(burstButton, 21);
 
-            expandButton = UiKit.CreateButton("Expand", bp, "", new Vector2(0.04f, 0.195f), new Vector2(0.49f, 0.315f), OnExpand, 20, new Color(0.40f, 0.28f, 0.12f));
-            expandLabel = UiKit.ButtonLabel(expandButton);
-            expandLabel.supportRichText = true;
-            burstButton = UiKit.CreateButton("BurstAd", bp, "", new Vector2(0.51f, 0.195f), new Vector2(0.96f, 0.315f), OnBurstAd, 20, new Color(0.55f, 0.36f, 0.08f));
-            burstLabel = UiKit.ButtonLabel(burstButton);
-            burstLabel.supportRichText = true;
+            // The one thing to do when you are ready.
+            UiKit.CreateButton("Launch", bp, "LANCER LA VAGUE", new Vector2(0.04f, 0.025f), new Vector2(0.96f, 0.155f), StartWave, 32);
+        }
 
-            repairButton = UiKit.CreateButton("Repair", bp, "", new Vector2(0.04f, 0.03f), new Vector2(0.49f, 0.165f), Repair, 22, new Color(0.25f, 0.35f, 0.18f));
-            repairLabel = UiKit.ButtonLabel(repairButton);
-            repairLabel.supportRichText = true;
-            UiKit.CreateButton("Launch", bp, "LANCER LA VAGUE", new Vector2(0.51f, 0.03f), new Vector2(0.96f, 0.165f), StartWave, 22);
+        static IconText CreateChip(RectTransform parent, string name, Vector2 anchorMin, Vector2 anchorMax, int size)
+        {
+            var chip = UiKit.CreateRect(name, parent, anchorMin, anchorMax);
+            var img = chip.gameObject.AddComponent<Image>();
+            img.sprite = ApogeeTheme.Chip;
+            img.type = Image.Type.Sliced;
+            img.raycastTarget = false;
+            var label = IconText.Create(name + "_Text", chip, "", size, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Gold);
+            var lrt = (RectTransform)label.transform;
+            lrt.offsetMin = new Vector2(12, 4);
+            lrt.offsetMax = new Vector2(-12, -4);
+            return label;
         }
 
         // ---- lifecycle -----------------------------------------------------------------
@@ -587,7 +633,7 @@ namespace Platformer.Survival
             if (burstWaves > 0) burstWaves--;
             SaveSystem.Flush();
             Sfx.Milestone();
-            Fx.Text(Origin + new Vector2(0f, 1f), $"+{bonus} débris", PlaceholderVisuals.MaterialColor, 1.2f);
+            RewardPopup.Show(Origin + new Vector2(0f, 1f), 0, 0, bonus);
             foreach (var a in allies) if (a.go != null) Destroy(a.go);
             allies.Clear();
             EnterBuildPhase(first: false);
@@ -608,8 +654,7 @@ namespace Platformer.Survival
             if (materials > 0) SaveSystem.AddMaterials(materials);
             SaveSystem.BarricadeDebris = debris;
             SaveSystem.Flush();
-            overBody.text = $"Vagues tenues : {wavesHeld}    Zombies abattus : {kills}\n+{materials} matériaux\n" +
-                            $"Ta base et tes {debris} débris sont conservés.";
+            overBody.text = $"Vagues tenues : {wavesHeld}      Abattus : {kills}\n+{materials} [g]\nTa base est conservée   ·   {debris} [d]";
             overPanel.SetActive(true);
             Sfx.Death();
             Fx.Shake(0.5f, 0.4f);
@@ -631,8 +676,8 @@ namespace Platformer.Survival
             {
                 if (!adPending) buildTimer -= dt;
                 buildText.text = adPending
-                    ? "Préparation en pause pendant la publicité"
-                    : $"Préparation — vague {wave} dans {Mathf.CeilToInt(Mathf.Max(0f, buildTimer))} s";
+                    ? "En pause pendant la pub"
+                    : $"Vague {wave} dans {Mathf.CeilToInt(Mathf.Max(0f, buildTimer))} s";
                 farmTextTimer -= dt;
                 if (farmTextTimer <= 0f) { farmTextTimer = 0.5f; RefreshFarmLine(); }
                 if (buildTimer <= 0f && !adPending) StartWave();
@@ -1118,7 +1163,7 @@ namespace Platformer.Survival
             if (e.kind == Kind.Brute) brutesKilled++;
             if (e.kind == Kind.Bomber) bombersKilled++;
             Fx.Burst(pos, e.blood, e.kind == Kind.Brute ? 24 : 12, 3.5f, 0.11f);
-            Fx.Text(pos, $"+{e.debris}", PlaceholderVisuals.MaterialColor, 0.9f);
+            RewardPopup.Show(pos, 0, 0, e.debris);
             Sfx.Kill();
             enemies.Remove(e);
             Destroy(e.go);
@@ -1285,8 +1330,8 @@ namespace Platformer.Survival
             SaveSystem.BarricadeFarmStock = farmStock;
             SaveSystem.AddMaterials(whole);
             Sfx.Material();
-            Fx.Text(Origin + new Vector2(0f, BarricadeY + 1.2f), $"+{whole} matériaux", PlaceholderVisuals.MaterialColor, 1.3f);
-            messageText.text = $"+{whole} matériaux récupérés";
+            RewardPopup.Show(Origin + new Vector2(0f, BarricadeY + 1.2f), 0, whole);
+            messageText.text = "Matériaux récupérés !";
             RefreshBuildPanel();
         }
 
@@ -1324,7 +1369,7 @@ namespace Platformer.Survival
             int before = completedLanes;
             completedLanes = CountCompletedLanes();
             if (completedLanes > before)
-                ui.ShowBanner("COULOIR COMPLET", "Il produit maintenant des matériaux", 2f);
+                ui.ShowBanner("COULOIR COMPLET", "Il produit maintenant des [g]", 2f);
 
             RefreshHud();
             RefreshBuildPanel();
@@ -1393,6 +1438,8 @@ namespace Platformer.Survival
         {
             if (buildPanel == null) return;
 
+            debrisChip.text = $"[d]  {debris}";
+
             // Lane chips: one per lane, gold when complete, crimson when selected.
             float w = 0.92f / Mathf.Max(1, laneCount);
             for (int i = 0; i < MaxLanes; i++)
@@ -1402,8 +1449,8 @@ namespace Platformer.Survival
                 chip.gameObject.SetActive(shown);
                 if (!shown) continue;
                 var rt = (RectTransform)chip.transform;
-                rt.anchorMin = new Vector2(0.04f + i * w + 0.005f, 0.80f);
-                rt.anchorMax = new Vector2(0.04f + (i + 1) * w - 0.005f, 0.90f);
+                rt.anchorMin = new Vector2(0.04f + i * w + 0.005f, 0.695f);
+                rt.anchorMax = new Vector2(0.04f + (i + 1) * w - 0.005f, 0.785f);
                 var img = chip.GetComponent<Image>();
                 img.color = i == selectedLane ? new Color(0.78f, 0.20f, 0.12f)
                     : lanes[i].Complete ? new Color(0.62f, 0.46f, 0.15f)
@@ -1411,25 +1458,29 @@ namespace Platformer.Survival
             }
 
             var lane = lanes[selectedLane];
-            laneInfoText.text = lane.Complete
-                ? $"Couloir {selectedLane + 1} · complet, il produit des matériaux"
-                : $"Couloir {selectedLane + 1} · {lane.MaxedTraps}/4 pièges au maximum";
+            laneCaption.text = lane.Complete
+                ? $"Couloir {selectedLane + 1}  ·  complet, il produit des [g]"
+                : $"Couloir {selectedLane + 1}  ·  {lane.MaxedTraps}/4 pièges au maximum";
 
             for (int t = 0; t < 4; t++)
             {
                 int level = lane.level[t];
-                var btn = trapButtons[t];
-                var label = UiKit.ButtonLabel(btn);
+                var card = trapCards[t];
+                for (int k = 0; k < MaxTrapLevel; k++) card.pips[k].color = k < level ? PipOn : PipOff;
                 if (level >= MaxTrapLevel)
                 {
-                    label.text = $"{TrapNames[t]}\n<size=16>niv. MAX</size>";
-                    btn.interactable = false;
+                    card.cost.text = "MAX";
+                    card.button.interactable = false;
+                    card.icon.color = Color.white;
                 }
                 else
                 {
                     int cost = CostFor((TrapType)t, level);
-                    label.text = $"{TrapNames[t]} {(level > 0 ? $"niv. {level}" : "")}\n<size=16>{cost} débris</size>";
-                    btn.interactable = debris >= cost && !adPending;
+                    bool affordable = debris >= cost && !adPending;
+                    card.cost.text = $"{cost} [d]";
+                    card.button.interactable = affordable;
+                    // A trap you cannot pay for yet looks it, instead of only refusing the tap.
+                    card.icon.color = affordable ? Color.white : new Color(1f, 1f, 1f, 0.45f);
                 }
             }
 
@@ -1438,52 +1489,43 @@ namespace Platformer.Survival
             int next = NextLaneCount;
             if (next == 0)
             {
-                expandLabel.text = "TERRAIN\n<size=16>9 couloirs, maximum</size>";
+                expandLabel.text = "TERRAIN\n9 couloirs";
                 expandButton.interactable = false;
             }
             else
             {
-                expandLabel.text = $"AGRANDIR · {next} COULOIRS\n<size=16>{ExpandCost} débris</size>";
+                expandLabel.text = $"{next} COULOIRS\n{ExpandCost} [d]";
                 expandButton.interactable = debris >= ExpandCost && !adPending;
             }
 
             if (burstWaves > 0)
             {
-                burstLabel.text = $"RAFALE ACTIVE\n<size=16>encore {burstWaves} vague{(burstWaves > 1 ? "s" : "")}</size>";
+                burstLabel.text = $"RAFALE x3\nencore {burstWaves} vague{(burstWaves > 1 ? "s" : "")}";
                 burstButton.interactable = false;
             }
             else
             {
-                burstLabel.text = "ARME RAFALE\n<size=16>une pub · x3 pendant 3 vagues</size>";
+                burstLabel.text = "RAFALE x3\nune pub";
                 burstButton.interactable = !adPending;
             }
 
-            repairLabel.text = $"RÉPARER +{RepairAmount}\n<size=16>{RepairCost} débris</size>";
+            repairLabel.text = $"RÉPARER\n{RepairCost} [d]";
             repairButton.interactable = debris >= RepairCost && barricadeHp < barricadeMax && !adPending;
         }
 
         void RefreshFarmLine()
         {
-            if (farmText == null) return;
+            if (farmChip == null) return;
             int stock = Mathf.FloorToInt(farmStock);
-            if (completedLanes <= 0)
-            {
-                farmText.text = "Mets les 4 pièges d'un couloir au max : il produira des matériaux.";
-            }
-            else
-            {
-                float perHour = completedLanes * FarmPerLanePerMinute * 60f;
-                float cap = completedLanes * FarmPerLanePerMinute * FarmCapMinutes;
-                string full = farmStock >= cap ? " · plein" : "";
-                farmText.text = $"{completedLanes} couloir{(completedLanes > 1 ? "s" : "")} complet{(completedLanes > 1 ? "s" : "")} · {perHour:0} mat./h\nEn stock : {stock}{full}";
-            }
+            float perHour = completedLanes * FarmPerLanePerMinute * 60f;
+            farmChip.text = completedLanes > 0 ? $"[g]  {stock}   +{perHour:0}/h" : $"[g]  {stock}";
             collectButton.interactable = stock >= 1;
         }
 
         void RefreshHud()
         {
             waveText.text = $"Vague {wave}";
-            debrisText.text = $"Débris : {debris}    Abattus : {kills}";
+            debrisText.text = $"[d]  {debris}      Abattus : {kills}";
             burstText.text = burstWaves > 0 ? $"RAFALE x3 · encore {burstWaves} vague{(burstWaves > 1 ? "s" : "")}" : "";
             if (barricadeFill != null)
             {

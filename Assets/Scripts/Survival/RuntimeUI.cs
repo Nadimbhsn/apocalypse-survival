@@ -30,13 +30,15 @@ namespace Platformer.Survival
         RenderTexture previewTexture;
         GameObject previewCharacter;
 
-        Text hubWalletText, hubCharacterText;
-        readonly List<Text> hubCardBestTexts = new();
+        IconText hubWalletText;
+        Text hubCharacterText;
+        readonly List<IconText> hubCardBestTexts = new();
         Text runnerBestText;
 
         // characters page
         readonly List<CharacterCard> characterCards = new();
-        Text characterDetailText, charactersWalletText;
+        Text characterDetailText;
+        IconText charactersWalletText, characterActionLabel;
         Button characterActionButton;
         int selectedCharacterIndex;
 
@@ -49,15 +51,18 @@ namespace Platformer.Survival
 
         // runner HUD / game over
         Slider healthSlider;
-        Text hudDistanceText, hudCoinsText, hudMaterialsText, hudZoneText;
+        Text hudDistanceText, hudZoneText;
+        IconText hudCoinsText, hudMaterialsText;
         Text gameOverDistanceText, gameOverBestText;
         GameObject bannerGo;
-        Text bannerTitleText, bannerSubtitleText;
+        Text bannerTitleText;
+        IconText bannerSubtitleText;
         Coroutine bannerRoutine;
 
-        Text shopWalletText;
+        IconText shopWalletText;
         readonly Dictionary<UpgradeStat, Text> shopLevelTexts = new();
         readonly Dictionary<UpgradeStat, Button> shopButtons = new();
+        readonly Dictionary<UpgradeStat, IconText> shopButtonLabels = new();
 
         // campaign
         struct LevelCard
@@ -80,6 +85,13 @@ namespace Platformer.Survival
         GameObject adOverlay;
         Text adOverlayText;
 
+        // how-to-play screen
+        GameObject guidePanel;
+        Text guideTitle, guideGoal, guideControls, guideTip;
+        IconText guideRewards;
+        Button guideButton, guideLaterButton;
+        Action guideAction;
+
         public Canvas Canvas => canvas;
         public SurvivalDirector Director => director;
 
@@ -101,6 +113,7 @@ namespace Platformer.Survival
             BuildGameOverPanel();
             BuildCampaignPanels();
             BuildShopPanel();
+            BuildGuidePanel();
             BuildAdOverlay();
 
             foreach (var game in miniGames) game.Setup(this);
@@ -226,6 +239,37 @@ namespace Platformer.Survival
             return text;
         }
 
+        /// <summary>The wallet pill, with coin and gear icons instead of the words.</summary>
+        static IconText CreateIconChip(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, int size = 24)
+        {
+            var chip = UiKit.CreateRect(name, parent, anchorMin, anchorMax);
+            var img = chip.gameObject.AddComponent<Image>();
+            img.sprite = ApogeeTheme.Chip;
+            img.type = Image.Type.Sliced;
+            img.raycastTarget = false;
+            var label = IconText.Create(name + "_Text", chip, "", size, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Gold);
+            var rt = (RectTransform)label.transform;
+            rt.offsetMin = new Vector2(16, 4);
+            rt.offsetMax = new Vector2(-16, -4);
+            return label;
+        }
+
+        /// <summary>Both balances side by side, as they appear on every wallet.</summary>
+        static string WalletLine() => $"{SaveSystem.Coins} [c]      {SaveSystem.Materials} [g]";
+
+        /// <summary>A small round "?" that opens a game's how-to-play screen.</summary>
+        Button CreateHelpButton(Transform parent, Vector2 anchorMin, Vector2 anchorMax, string gameId)
+        {
+            var help = UiKit.CreateButton("Help", parent, "?", anchorMin, anchorMax, () => ShowGuide(gameId, null), 30, new Color(0.22f, 0.10f, 0.08f));
+            return help;
+        }
+
+        /// <summary>The "+coin +gear" badge telling what a game pays, top right of its card.</summary>
+        static IconText CreateRewardBadge(Transform card, string gameId, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            return IconText.Create("Rewards", card, GameGuide.For(gameId).Rewards, 24, TextAnchor.MiddleRight, anchorMin, anchorMax, ApogeeTheme.Cream, 1.5f);
+        }
+
         static string StatLabel(UpgradeStat stat) => stat switch
         {
             UpgradeStat.Speed => "Vitesse",
@@ -260,20 +304,20 @@ namespace Platformer.Survival
             var logo = UiKit.CreateImage("Logo", rt, new Vector2(0.06f, 0.80f), new Vector2(0.94f, 0.965f), ApogeeTheme.ArtSprite("logo_dark"), Color.white);
             logo.preserveAspect = true;
 
-            hubWalletText = CreateChip("Wallet", rt, new Vector2(0.50f, 0.748f), new Vector2(0.96f, 0.792f), 24);
+            hubWalletText = CreateIconChip("Wallet", rt, new Vector2(0.50f, 0.748f), new Vector2(0.96f, 0.792f), 26);
 
             // Mini-game cards: the runner first, then every registered mini-game.
-            var cards = new List<(string title, string desc, Action onClick, Func<string> best)>
+            var cards = new List<(string title, string desc, Action onClick, Func<string> best, string id)>
             {
                 ("RUNNER", "Course sans fin ou niveaux à terminer", ShowRunnerModes,
                     () => SaveSystem.BestDistance > 0f
                         ? $"Record : {FormatDistance(SaveSystem.BestDistance)}   ·   {SaveSystem.TotalStars} étoiles"
-                        : "Aucun record"),
+                        : "Aucun record", "runner"),
             };
             foreach (var game in miniGames)
             {
                 var captured = game;
-                cards.Add((game.Title, game.Description, () => EnterMiniGame(captured), () => captured.BestLine));
+                cards.Add((game.Title, game.Description, () => LaunchWithGuide(captured.Id, () => EnterMiniGame(captured)), () => captured.BestLine, game.Id));
             }
 
             const float cardsTop = 0.735f;
@@ -282,22 +326,26 @@ namespace Platformer.Survival
             hubCardBestTexts.Clear();
             for (int i = 0; i < cards.Count; i++)
             {
-                var (title, desc, onClick, best) = cards[i];
+                var (title, desc, onClick, best, id) = cards[i];
                 float yMax = cardsTop - i * slot;
                 float yMin = yMax - slot + 0.012f;
                 var card = UiKit.CreateButton($"Card_{title}", rt, "", new Vector2(0.50f, yMin), new Vector2(0.96f, yMax),
                     () => onClick(), 30, UiKit.CardColor);
-                UiKit.Outlined(UiKit.CreateText("CardTitle", card.transform, title, 34, TextAnchor.MiddleLeft,
-                    new Vector2(0.07f, 0.56f), new Vector2(0.95f, 0.94f), ApogeeTheme.Gold), 1.5f);
+                var titleText = UiKit.Outlined(UiKit.CreateText("CardTitle", card.transform, title, 34, TextAnchor.MiddleLeft,
+                    new Vector2(0.07f, 0.56f), new Vector2(0.64f, 0.94f), ApogeeTheme.Gold), 1.5f);
+                UiKit.FitLabel(titleText, 34);
+                // What the game pays, where the eye lands after the title.
+                CreateRewardBadge(card.transform, id, new Vector2(0.64f, 0.58f), new Vector2(0.93f, 0.93f));
                 var descText = UiKit.CreateText("CardDesc", card.transform, desc, 20, TextAnchor.UpperLeft,
-                    new Vector2(0.07f, 0.24f), new Vector2(0.93f, 0.56f), UiKit.TextDim);
+                    new Vector2(0.07f, 0.24f), new Vector2(0.63f, 0.56f), UiKit.TextDim);
                 UiKit.FitLabel(descText, 20);
-                var bestText = UiKit.CreateText("CardBest", card.transform, "", 18, TextAnchor.LowerLeft,
-                    new Vector2(0.07f, 0.06f), new Vector2(0.75f, 0.26f), ApogeeTheme.Cream);
-                UiKit.FitLabel(bestText, 18);
+                var bestText = IconText.Create("CardBest", card.transform, "", 18, TextAnchor.LowerLeft,
+                    new Vector2(0.07f, 0.06f), new Vector2(0.62f, 0.26f), ApogeeTheme.Cream);
                 hubCardBestTexts.Add(bestText);
+                // The runner card opens its own page, where each mode has its own help.
+                if (id != "runner") CreateHelpButton(card.transform, new Vector2(0.66f, 0.10f), new Vector2(0.79f, 0.52f), id);
                 UiKit.Outlined(UiKit.CreateText("CardArrow", card.transform, "›", 54, TextAnchor.MiddleRight,
-                    new Vector2(0.75f, 0f), new Vector2(0.95f, 0.5f), ApogeeTheme.Gold), 1.5f);
+                    new Vector2(0.80f, 0f), new Vector2(0.95f, 0.5f), ApogeeTheme.Gold), 1.5f);
             }
             hubCardBestProviders = cards.ConvertAll(c => c.best);
 
@@ -325,7 +373,7 @@ namespace Platformer.Survival
 
         void RefreshHub()
         {
-            hubWalletText.text = $"{SaveSystem.Coins} pièces   ·   {SaveSystem.Materials} matériaux";
+            hubWalletText.text = WalletLine();
             var skin = SkinCatalog.Find(SaveSystem.SelectedSkinId);
             hubCharacterText.text = skin.Name;
             if (previewCharacter != null)
@@ -352,7 +400,7 @@ namespace Platformer.Survival
             ApplyOpaqueBackdrop(rt);
 
             CreateTitle(rt, "PERSONNAGES", 0.905f, 0.965f);
-            charactersWalletText = CreateChip("Wallet", rt, new Vector2(0.30f, 0.855f), new Vector2(0.70f, 0.893f), 24);
+            charactersWalletText = CreateIconChip("Wallet", rt, new Vector2(0.30f, 0.855f), new Vector2(0.70f, 0.893f), 26);
 
             var skins = SkinCatalog.All;
             const int columns = 3;
@@ -407,6 +455,7 @@ namespace Platformer.Survival
                 new Vector2(0.075f, 0.135f), new Vector2(0.57f, 0.25f), ApogeeTheme.Cream);
             UiKit.FitLabel(characterDetailText, 21);
             characterActionButton = UiKit.CreateButton("CharacterAction", rt, "", new Vector2(0.58f, 0.15f), new Vector2(0.93f, 0.23f), OnCharacterActionClicked, 24);
+            characterActionLabel = IconText.OnButton(characterActionButton, 24);
 
             UiKit.CreateButton("CharactersBack", rt, "RETOUR", new Vector2(0.32f, 0.03f), new Vector2(0.68f, 0.105f), ShowHub);
         }
@@ -460,7 +509,7 @@ namespace Platformer.Survival
 
         void RefreshCharacters()
         {
-            charactersWalletText.text = $"Pièces : {SaveSystem.Coins}";
+            charactersWalletText.text = $"{SaveSystem.Coins} [c]";
             var skins = SkinCatalog.All;
             for (int i = 0; i < skins.Length && i < characterCards.Count; i++)
             {
@@ -471,7 +520,7 @@ namespace Platformer.Survival
 
             var skin = skins[selectedCharacterIndex];
             bool selectedUnlocked = SaveSystem.IsSkinUnlocked(skin.Id);
-            var label = UiKit.ButtonLabel(characterActionButton);
+            var label = characterActionLabel;
             if (selectedUnlocked)
             {
                 bool equipped = SaveSystem.SelectedSkinId == skin.Id;
@@ -481,8 +530,8 @@ namespace Platformer.Survival
             }
             else if (skin.UnlockType == SkinUnlockType.Coins)
             {
-                characterDetailText.text = $"{skin.Name} — Verrouillé ({skin.CoinCost} pièces)\n{skin.Description}";
-                label.text = $"ACHETER ({skin.CoinCost})";
+                characterDetailText.text = $"{skin.Name} — Verrouillé\n{skin.Description}";
+                label.text = $"ACHETER   {skin.CoinCost} [c]";
                 characterActionButton.interactable = SaveSystem.Coins >= skin.CoinCost;
             }
             else
@@ -511,33 +560,36 @@ namespace Platformer.Survival
             CreateTitle(rt, "RUNNER", 0.875f, 0.945f);
 
             runnerModeBest.Clear();
-            var modes = new (string title, string desc, Action onClick, Func<string> best)[]
+            var modes = new (string title, string desc, Action onClick, Func<string> best, string id)[]
             {
-                ("RUNNER INFINI", "Cours le plus loin possible. La vitesse monte,\nle terrain se génère sans jamais s'arrêter.", StartRunner,
-                    () => SaveSystem.BestDistance > 0f ? $"Record : {FormatDistance(SaveSystem.BestDistance)}" : "Aucun record"),
-                ("EXPÉDITION", "Des niveaux écrits à la main, avec un début,\nune fin et un boss. Vitesse constante.", ShowExpedition,
-                    () => $"Étoiles : {SaveSystem.TotalStars} / {LevelCatalog.Count * 3}"),
+                ("RUNNER INFINI", "Cours le plus loin possible. La vitesse monte,\nle terrain se génère sans jamais s'arrêter.",
+                    () => LaunchWithGuide("runner", StartRunner),
+                    () => SaveSystem.BestDistance > 0f ? $"Record : {FormatDistance(SaveSystem.BestDistance)}" : "Aucun record", "runner"),
+                ("EXPÉDITION", "Des niveaux écrits à la main, avec un début,\nune fin et un boss. Vitesse constante.",
+                    () => LaunchWithGuide("expedition", ShowExpedition),
+                    () => $"Étoiles : {SaveSystem.TotalStars} / {LevelCatalog.Count * 3}", "expedition"),
             };
 
             const float top = 0.82f, bottom = 0.17f;
             float slot = (top - bottom) / modes.Length;
             for (int i = 0; i < modes.Length; i++)
             {
-                var (title, desc, onClick, best) = modes[i];
+                var (title, desc, onClick, best, id) = modes[i];
                 float yMax = top - i * slot;
                 float yMin = yMax - slot + 0.035f;
 
                 var card = UiKit.CreateButton($"Mode_{title}", rt, "", new Vector2(0.06f, yMin), new Vector2(0.94f, yMax),
                     () => onClick(), 30, UiKit.CardColor);
                 UiKit.Outlined(UiKit.CreateText("ModeTitle", card.transform, title, 40, TextAnchor.MiddleLeft,
-                    new Vector2(0.07f, 0.66f), new Vector2(0.95f, 0.92f), ApogeeTheme.Gold), 2f);
+                    new Vector2(0.07f, 0.66f), new Vector2(0.66f, 0.92f), ApogeeTheme.Gold), 2f);
+                CreateRewardBadge(card.transform, id, new Vector2(0.66f, 0.70f), new Vector2(0.93f, 0.90f));
                 var descText = UiKit.CreateText("ModeDesc", card.transform, desc, 22, TextAnchor.UpperLeft,
                     new Vector2(0.07f, 0.28f), new Vector2(0.93f, 0.64f), UiKit.TextDim);
                 UiKit.FitLabel(descText, 22);
-                var bestText = UiKit.CreateText("ModeBest", card.transform, "", 20, TextAnchor.LowerLeft,
-                    new Vector2(0.07f, 0.07f), new Vector2(0.8f, 0.28f), ApogeeTheme.Cream);
-                UiKit.FitLabel(bestText, 20);
+                var bestText = IconText.Create("ModeBest", card.transform, "", 20, TextAnchor.LowerLeft,
+                    new Vector2(0.07f, 0.07f), new Vector2(0.62f, 0.26f), ApogeeTheme.Cream);
                 runnerModeBest.Add(bestText);
+                CreateHelpButton(card.transform, new Vector2(0.64f, 0.07f), new Vector2(0.77f, 0.25f), id);
                 runnerModeBestProviders.Add(best);
                 UiKit.Outlined(UiKit.CreateText("ModeArrow", card.transform, "›", 60, TextAnchor.MiddleRight,
                     new Vector2(0.78f, 0f), new Vector2(0.95f, 0.55f), ApogeeTheme.Gold), 1.5f);
@@ -546,7 +598,7 @@ namespace Platformer.Survival
             UiKit.CreateButton("RunnerModesBack", rt, "RETOUR", new Vector2(0.32f, 0.04f), new Vector2(0.68f, 0.115f), ShowHub);
         }
 
-        readonly List<Text> runnerModeBest = new();
+        readonly List<IconText> runnerModeBest = new();
         readonly List<Func<string>> runnerModeBestProviders = new();
 
         public void ShowRunnerModes()
@@ -825,8 +877,8 @@ namespace Platformer.Survival
             if (hudDistanceText != null) hudDistanceText.text = $"{Mathf.RoundToInt(progress * 100f)} %";
             if (hudProgressRoot != null && !hudProgressRoot.activeSelf) hudProgressRoot.SetActive(true);
             if (hudProgressFill != null) hudProgressFill.fillAmount = progress;
-            if (hudCoinsText != null) hudCoinsText.text = $"Pièces: {SaveSystem.Coins}";
-            if (hudMaterialsText != null) hudMaterialsText.text = $"Matériaux: {SaveSystem.Materials}";
+            if (hudCoinsText != null) hudCoinsText.text = $"{SaveSystem.Coins} [c]";
+            if (hudMaterialsText != null) hudMaterialsText.text = $"{SaveSystem.Materials} [g]";
             if (hudSecretsText != null)
                 hudSecretsText.text = secretsTotal > 0 ? $"Secrets {secretsFound}/{secretsTotal}" : "";
         }
@@ -873,10 +925,8 @@ namespace Platformer.Survival
 
             hudDistanceText = UiKit.Outlined(UiKit.CreateTextFixed("DistanceText", rt, "0 m", 48, TextAnchor.UpperCenter,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(320, 64), new Vector2(0, -24), ApogeeTheme.Cream), 2.5f);
-            hudCoinsText = UiKit.Outlined(UiKit.CreateTextFixed("CoinsText", rt, "Pièces: 0", 28, TextAnchor.UpperRight,
-                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(320, 45), new Vector2(-30, -28), ApogeeTheme.Gold));
-            hudMaterialsText = UiKit.Outlined(UiKit.CreateTextFixed("MaterialsText", rt, "Matériaux: 0", 28, TextAnchor.UpperRight,
-                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(320, 45), new Vector2(-30, -74), ApogeeTheme.Cream));
+            hudCoinsText = CreateHudCounter(rt, "CoinsText", -28f, ApogeeTheme.Gold);
+            hudMaterialsText = CreateHudCounter(rt, "MaterialsText", -76f, ApogeeTheme.Cream);
             hudZoneText = UiKit.Outlined(UiKit.CreateTextFixed("ZoneText", rt, "", 24, TextAnchor.UpperCenter,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(640, 40), new Vector2(0, -86), ApogeeTheme.Gold));
 
@@ -917,10 +967,20 @@ namespace Platformer.Survival
             bannerTitleText = UiKit.Outlined(UiKit.CreateText("BannerTitle", bannerRt, "", 46, TextAnchor.MiddleCenter,
                 new Vector2(0.05f, 0.45f), new Vector2(0.95f, 1f), BannerTitleColor), 2f);
             UiKit.FitLabel(bannerTitleText, 46);
-            bannerSubtitleText = UiKit.CreateText("BannerSubtitle", bannerRt, "", 24, TextAnchor.MiddleCenter,
+            bannerSubtitleText = IconText.Create("BannerSubtitle", bannerRt, "", 24, TextAnchor.MiddleCenter,
                 new Vector2(0.05f, 0.05f), new Vector2(0.95f, 0.45f), BannerSubtitleColor);
-            UiKit.FitLabel(bannerSubtitleText, 24);
             bannerGo.SetActive(false);
+        }
+
+        /// <summary>A balance in the HUD's top-right corner: the number, then its icon.</summary>
+        static IconText CreateHudCounter(RectTransform hud, string name, float y, Color color)
+        {
+            var counter = IconText.Create(name, hud, "", 30, TextAnchor.MiddleRight, new Vector2(1f, 1f), new Vector2(1f, 1f), color, 2f);
+            var crt = (RectTransform)counter.transform;
+            crt.pivot = new Vector2(1f, 1f);
+            crt.sizeDelta = new Vector2(320, 46);
+            crt.anchoredPosition = new Vector2(-30, y);
+            return counter;
         }
 
         /// <summary>
@@ -1005,7 +1065,7 @@ namespace Platformer.Survival
                 t += Time.deltaTime;
                 float alpha = Mathf.Clamp01(Mathf.Min(t / 0.25f, (duration - t) / 0.5f));
                 bannerTitleText.color = new Color(BannerTitleColor.r, BannerTitleColor.g, BannerTitleColor.b, alpha);
-                bannerSubtitleText.color = new Color(BannerSubtitleColor.r, BannerSubtitleColor.g, BannerSubtitleColor.b, alpha);
+                bannerSubtitleText.SetAlpha(alpha);
                 bannerImg.color = new Color(BannerBgColor.r, BannerBgColor.g, BannerBgColor.b, BannerBgColor.a * alpha);
                 yield return null;
             }
@@ -1052,7 +1112,7 @@ namespace Platformer.Survival
             ApplyOpaqueBackdrop(rt);
 
             CreateTitle(rt, "AMÉLIORATIONS", 0.885f, 0.955f);
-            shopWalletText = CreateChip("Wallet", rt, new Vector2(0.22f, 0.825f), new Vector2(0.78f, 0.868f), 26);
+            shopWalletText = CreateIconChip("Wallet", rt, new Vector2(0.22f, 0.825f), new Vector2(0.78f, 0.868f), 28);
             UiKit.CreateText("ShopHint", rt, "Elles comptent dans le Runner, l'Expédition, l'Arène, la Barricade et l'Invasion", 20, TextAnchor.MiddleCenter,
                 new Vector2(0.05f, 0.78f), new Vector2(0.95f, 0.815f), UiKit.TextDim);
             UiKit.CreateFrame("ShopFrame", rt, new Vector2(0.04f, 0.115f), new Vector2(0.96f, 0.77f));
@@ -1079,6 +1139,7 @@ namespace Platformer.Survival
                 var capturedStat = stat;
                 shopButtons[stat] = UiKit.CreateButton($"Buy_{stat}", rt, "+1", new Vector2(0.76f, yMin), new Vector2(0.94f, yMax),
                     () => OnBuyClicked(capturedStat), 22);
+                shopButtonLabels[stat] = IconText.OnButton(shopButtons[stat], 24);
             }
 
             UiKit.CreateButton("ShopBackButton", rt, "RETOUR", new Vector2(0.32f, 0.02f), new Vector2(0.68f, 0.095f), ShowHub);
@@ -1092,7 +1153,7 @@ namespace Platformer.Survival
 
         void RefreshShop()
         {
-            shopWalletText.text = $"Pièces: {SaveSystem.Coins}    Matériaux: {SaveSystem.Materials}";
+            shopWalletText.text = WalletLine();
             foreach (var stat in shopLevelTexts.Keys)
             {
                 int level = SaveSystem.GetLevel(stat);
@@ -1100,7 +1161,7 @@ namespace Platformer.Survival
                 shopLevelTexts[stat].text = $"Niveau {level}/{max}";
 
                 var btn = shopButtons[stat];
-                var label = UiKit.ButtonLabel(btn);
+                var label = shopButtonLabels[stat];
                 if (level >= max)
                 {
                     label.text = "MAX";
@@ -1109,11 +1170,94 @@ namespace Platformer.Survival
                 else
                 {
                     int cost = UpgradeManager.CostForNextLevel(stat);
-                    string currency = stat == UpgradeStat.Armor || stat == UpgradeStat.Drone ? "mat." : "pièces";
-                    label.text = $"+1\n({cost} {currency})";
+                    string icon = stat == UpgradeStat.Armor || stat == UpgradeStat.Drone ? "[g]" : "[c]";
+                    label.text = $"{cost} {icon}";
                     btn.interactable = true;
                 }
             }
+        }
+
+        // ---- how to play -----------------------------------------------------------------
+
+        /// <summary>
+        /// The how-to-play screen: the goal, the controls, the one thing worth knowing and
+        /// what the game pays. Shown by itself the first time a game is opened, and on demand
+        /// from the "?" on each game's card.
+        /// </summary>
+        void BuildGuidePanel()
+        {
+            var rt = UiKit.CreatePanel("GuidePanel", canvas.transform, UiKit.Overlay);
+            guidePanel = rt.gameObject;
+            UiKit.CreateFrame("GuideFrame", rt, new Vector2(0.06f, 0.065f), new Vector2(0.94f, 0.87f));
+            guideTitle = CreateTitle(rt, "", 0.765f, 0.835f);
+
+            Text Section(string label, float yTop, float height, out Text body)
+            {
+                var header = UiKit.CreateText("Label_" + label, rt, label, 19, TextAnchor.LowerLeft,
+                    new Vector2(0.12f, yTop - 0.032f), new Vector2(0.88f, yTop), ApogeeTheme.Gold);
+                body = UiKit.CreateText("Body_" + label, rt, "", 27, TextAnchor.UpperLeft,
+                    new Vector2(0.12f, yTop - 0.032f - height), new Vector2(0.88f, yTop - 0.036f), ApogeeTheme.Cream);
+                UiKit.FitLabel(body, 27);
+                return header;
+            }
+            Section("LE BUT", 0.735f, 0.085f, out guideGoal);
+            Section("LES COMMANDES", 0.605f, 0.085f, out guideControls);
+            Section("À SAVOIR", 0.475f, 0.115f, out guideTip);
+
+            UiKit.CreateText("Label_Rewards", rt, "CE QUE TU GAGNES", 19, TextAnchor.LowerLeft,
+                new Vector2(0.12f, 0.283f), new Vector2(0.88f, 0.315f), ApogeeTheme.Gold);
+            guideRewards = IconText.Create("Rewards", rt, "", 40, TextAnchor.MiddleLeft,
+                new Vector2(0.12f, 0.228f), new Vector2(0.88f, 0.283f), ApogeeTheme.Cream, 2f);
+
+            guideButton = UiKit.CreateButton("GuideGo", rt, "C'EST PARTI", new Vector2(0.22f, 0.16f), new Vector2(0.78f, 0.222f), OnGuideButton, 30);
+            guideLaterButton = UiKit.CreateButton("GuideLater", rt, "PLUS TARD", new Vector2(0.34f, 0.09f), new Vector2(0.66f, 0.145f), CloseGuide, 22, UiKit.CardColor);
+            guidePanel.SetActive(false);
+        }
+
+        /// <summary>
+        /// Opens the how-to-play screen of a game. With an action, its button launches the
+        /// game ("C'EST PARTI"); without one it is only a reminder ("COMPRIS").
+        /// </summary>
+        void ShowGuide(string gameId, Action onContinue)
+        {
+            var guide = GameGuide.For(gameId);
+            guideTitle.text = guide.Title;
+            guideGoal.text = guide.Goal;
+            guideControls.text = guide.Controls;
+            guideTip.text = guide.Tip;
+            guideRewards.text = guide.Rewards;
+            guideAction = onContinue;
+            UiKit.ButtonLabel(guideButton).text = onContinue != null ? "C'EST PARTI" : "COMPRIS";
+            guideLaterButton.gameObject.SetActive(onContinue != null);
+            guidePanel.transform.SetAsLastSibling();
+            guidePanel.SetActive(true);
+        }
+
+        void OnGuideButton()
+        {
+            var action = guideAction;
+            CloseGuide();
+            action?.Invoke();
+        }
+
+        void CloseGuide()
+        {
+            guideAction = null;
+            if (guidePanel != null) guidePanel.SetActive(false);
+        }
+
+        /// <summary>
+        /// Launches a game, preceded the very first time by its how-to-play screen. "Plus
+        /// tard" leaves it unseen, so it comes back next time instead of being lost.
+        /// </summary>
+        void LaunchWithGuide(string gameId, Action launch)
+        {
+            if (SaveSystem.GuideSeen(gameId)) { launch(); return; }
+            ShowGuide(gameId, () =>
+            {
+                SaveSystem.MarkGuideSeen(gameId);
+                launch();
+            });
         }
 
         // ---- ad overlay ----------------------------------------------------------------
@@ -1151,6 +1295,7 @@ namespace Platformer.Survival
             UiKit.SetPanel(levelClearedPanel, false);
             UiKit.SetPanel(levelFailedPanel, false);
             UiKit.SetPanel(levelStarsPanel, false);
+            CloseGuide();
             if (previewCamera != null) previewCamera.enabled = false;
         }
 
@@ -1209,8 +1354,8 @@ namespace Platformer.Survival
         {
             if (healthSlider != null && health != null) healthSlider.value = health.NormalizedHP;
             if (hudDistanceText != null) hudDistanceText.text = FormatDistance(distance);
-            if (hudCoinsText != null) hudCoinsText.text = $"Pièces: {coins}";
-            if (hudMaterialsText != null) hudMaterialsText.text = $"Matériaux: {materials}";
+            if (hudCoinsText != null) hudCoinsText.text = $"{coins} [c]";
+            if (hudMaterialsText != null) hudMaterialsText.text = $"{materials} [g]";
             // Endless run: the progress bar and the line under it only exist during a set
             // piece that has an end (the rhythm section).
             bool section = sectionProgress >= 0f;

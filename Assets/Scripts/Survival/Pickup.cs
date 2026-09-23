@@ -44,13 +44,13 @@ namespace Platformer.Survival
                 case PickupType.Coin:
                     SaveSystem.AddCoins(value);
                     Sfx.Coin();
-                    Fx.Text(pos, $"+{value}", PlaceholderVisuals.CoinColor);
+                    RewardPopup.Show(pos, value, 0);
                     Fx.Burst(pos, PlaceholderVisuals.CoinColor, 5, 1.8f, 0.07f);
                     break;
                 case PickupType.Material:
                     SaveSystem.AddMaterials(value);
                     Sfx.Material();
-                    Fx.Text(pos, $"+{value} mat.", PlaceholderVisuals.MaterialColor);
+                    RewardPopup.Show(pos, 0, value);
                     Fx.Burst(pos, PlaceholderVisuals.MaterialColor, 5, 1.8f, 0.07f);
                     break;
                 case PickupType.Medkit:

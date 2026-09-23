@@ -94,7 +94,8 @@ namespace Platformer.Survival
             SaveSystem.AddMaterials(materials);
             Sfx.Milestone();
             Fx.Burst(transform.position, ApogeeTheme.Gold, 30, 5f, 0.13f, 0.6f);
-            Fx.Text(transform.position + Vector3.up * 0.9f, $"SECRET !  +{coins}  +{materials} mat.", ApogeeTheme.Gold, 1.3f);
+            Fx.Text(transform.position + Vector3.up * 1.5f, "SECRET !", ApogeeTheme.Gold, 1.3f);
+            RewardPopup.Show(transform.position + Vector3.up * 0.6f, coins, materials);
             OnFound?.Invoke();
             Destroy(gameObject);
         }
