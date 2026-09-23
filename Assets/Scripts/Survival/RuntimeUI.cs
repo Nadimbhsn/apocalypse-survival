@@ -257,10 +257,10 @@ namespace Platformer.Survival
         /// <summary>Both balances side by side, as they appear on every wallet.</summary>
         static string WalletLine() => $"{SaveSystem.Coins} [c]      {SaveSystem.Materials} [g]";
 
-        /// <summary>A small round "?" that opens a game's how-to-play screen.</summary>
+        /// <summary>The "TUTO" button that reopens a game's how-to-play screen (a word, not a "?", which players did not read as help).</summary>
         Button CreateHelpButton(Transform parent, Vector2 anchorMin, Vector2 anchorMax, string gameId)
         {
-            var help = UiKit.CreateButton("Help", parent, "?", anchorMin, anchorMax, () => ShowGuide(gameId, null), 30, new Color(0.22f, 0.10f, 0.08f));
+            var help = UiKit.CreateButton("Help", parent, "TUTO", anchorMin, anchorMax, () => ShowGuide(gameId, null), 22, new Color(0.22f, 0.10f, 0.08f));
             return help;
         }
 
@@ -343,9 +343,9 @@ namespace Platformer.Survival
                     new Vector2(0.07f, 0.06f), new Vector2(0.62f, 0.26f), ApogeeTheme.Cream);
                 hubCardBestTexts.Add(bestText);
                 // The runner card opens its own page, where each mode has its own help.
-                if (id != "runner") CreateHelpButton(card.transform, new Vector2(0.66f, 0.10f), new Vector2(0.79f, 0.52f), id);
+                if (id != "runner") CreateHelpButton(card.transform, new Vector2(0.64f, 0.12f), new Vector2(0.82f, 0.48f), id);
                 UiKit.Outlined(UiKit.CreateText("CardArrow", card.transform, "›", 54, TextAnchor.MiddleRight,
-                    new Vector2(0.80f, 0f), new Vector2(0.95f, 0.5f), ApogeeTheme.Gold), 1.5f);
+                    new Vector2(0.84f, 0f), new Vector2(0.96f, 0.5f), ApogeeTheme.Gold), 1.5f);
             }
             hubCardBestProviders = cards.ConvertAll(c => c.best);
 
