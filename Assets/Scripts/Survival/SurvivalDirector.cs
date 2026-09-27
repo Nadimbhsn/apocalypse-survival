@@ -612,13 +612,12 @@ namespace Platformer.Survival
             // The rhythm section's ship is its own business: its floor is real ground, and
             // landing on it must not hand control back.
             if (!player.jetpackActive || cadenceActive) return;
-            // Hand control back once the player stands on real ground (a registered solid
-            // segment, not a floating debris block) past the flight - or anywhere once the
-            // next zone has started, as a safety net.
+            // The jetpack cuts out the moment the flight is over, even in mid-air: past the
+            // last stretch there is ground below, and the player drops onto it - or as soon as
+            // the next zone has started, as a safety net.
             float x = player.transform.position.x;
-            bool onRealGround = player.IsGrounded && IsWalkable(x);
-            bool pastFlight = x >= jetpackLandingX - 1f || activeZone != ZoneKind.Jetpack;
-            if (onRealGround && pastFlight)
+            bool pastFlight = x >= jetpackLandingX || activeZone != ZoneKind.Jetpack;
+            if (pastFlight)
             {
                 player.jetpackActive = false;
                 player.jetpackCeilingY = float.MaxValue;

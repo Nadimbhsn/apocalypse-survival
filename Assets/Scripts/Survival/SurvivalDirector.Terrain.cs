@@ -656,6 +656,13 @@ namespace Platformer.Survival
             float lakeSurface = baselineY - 1.5f;
             var lake = Hazard.CreateToxicLake(entityParent, xStart + step / 2f, lakeSurface, step + 0.05f, 14f);
             props.Add(lake.gameObject);
+
+            // A toxic cloud for a ceiling, just above the jetpack's altitude cap (see
+            // StartJetpack): holding the thrust all the way up now grazes it and hurts.
+            // Cables stay at least a metre under it, twice the player's height, so there is
+            // always room to pass.
+            var ceiling = Hazard.CreateToxicLake(entityParent, xStart + step / 2f, JetpackToxicCeiling + 4f, step + 0.05f, 4f);
+            props.Add(ceiling.gameObject);
             DecorateLakeStretch(xStart, step, lakeSurface);
 
             // Debris block.
@@ -679,6 +686,12 @@ namespace Platformer.Survival
             float coinY = baselineY + Random.Range(1.5f, 6f);
             for (int i = 0; i < 3; i++) SpawnPickupAt(coinX, coinY + i * 0.8f, PickupType.Coin);
         }
+
+        /// <summary>
+        /// Underside of the Survol's toxic ceiling: level with the altitude cap (baselineY + 9),
+        /// so the player's head, a little above their origin, reaches it at full height.
+        /// </summary>
+        float JetpackToxicCeiling => baselineY + 9f;
 
         // ---- segment building ----------------------------------------------------------
 
