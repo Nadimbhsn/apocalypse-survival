@@ -24,6 +24,34 @@ namespace Platformer.Survival
             private set => PlayerPrefs.SetInt(MaterialsKey, Mathf.Max(0, value));
         }
 
+        /// <summary>Most healing kits the player can hold at once.</summary>
+        public const int MaxReviveKits = 3;
+
+        /// <summary>
+        /// Healing kits in stock (made in Fusion). One brings the player back into a Runner
+        /// run at the spot they fell.
+        /// </summary>
+        public static int ReviveKits
+        {
+            get => Mathf.Clamp(PlayerPrefs.GetInt("revive_kits", 0), 0, MaxReviveKits);
+            private set { PlayerPrefs.SetInt("revive_kits", Mathf.Clamp(value, 0, MaxReviveKits)); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>Adds a kit; false (and nothing added) when the stock is already full.</summary>
+        public static bool TryAddReviveKit()
+        {
+            if (ReviveKits >= MaxReviveKits) return false;
+            ReviveKits++;
+            return true;
+        }
+
+        public static bool TryUseReviveKit()
+        {
+            if (ReviveKits <= 0) return false;
+            ReviveKits--;
+            return true;
+        }
+
         /// <summary>Best distance ever reached in a single run, in meters - the game's high score.</summary>
         public static float BestDistance
         {

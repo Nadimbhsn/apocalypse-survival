@@ -22,6 +22,9 @@ namespace Platformer.Mechanics
 
         int currentHP;
 
+        /// <summary>No damage is taken before this time (the grace after a revive).</summary>
+        public float invulnerableUntil;
+
         /// <summary>
         /// Indicates the current HP as a fraction of maxHP, in the range [0, 1].
         /// </summary>
@@ -58,6 +61,7 @@ namespace Platformer.Mechanics
         /// </summary>
         public void Decrement(int amount)
         {
+            if (Time.time < invulnerableUntil) return;
             currentHP = Mathf.Clamp(currentHP - amount, 0, maxHP);
             if (currentHP == 0)
             {
@@ -71,6 +75,8 @@ namespace Platformer.Mechanics
         /// </summary>
         public void Die()
         {
+            // Death itself (a fall out of the world) is not stopped by a grace period.
+            invulnerableUntil = 0f;
             while (currentHP > 0) Decrement();
         }
 

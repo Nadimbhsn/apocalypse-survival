@@ -117,6 +117,7 @@ namespace Platformer.Survival
             BuildArmoryPanel();
             BuildHudPanel();
             BuildGameOverPanel();
+            BuildRevivePanel();
             BuildCampaignPanels();
             BuildShopPanel();
             BuildGuidePanel();
@@ -262,7 +263,7 @@ namespace Platformer.Survival
         }
 
         /// <summary>Both balances side by side, as they appear on every wallet.</summary>
-        static string WalletLine() => $"{SaveSystem.Coins} [c]      {SaveSystem.Materials} [g]";
+        static string WalletLine() => $"{SaveSystem.Coins} [c]     {SaveSystem.Materials} [g]     {SaveSystem.ReviveKits} [k]";
 
         /// <summary>The "TUTO" button that reopens a game's how-to-play screen (a word, not a "?", which players did not read as help).</summary>
         Button CreateHelpButton(Transform parent, Vector2 anchorMin, Vector2 anchorMax, string gameId)
@@ -1422,6 +1423,7 @@ namespace Platformer.Survival
             UiKit.SetPanel(charactersPanel, false);
             UiKit.SetPanel(hudPanel, false);
             UiKit.SetPanel(gameOverPanel, false);
+            UiKit.SetPanel(revivePanel, false);
             UiKit.SetPanel(shopPanel, false);
             UiKit.SetPanel(expeditionPanel, false);
             UiKit.SetPanel(runnerModesPanel, false);

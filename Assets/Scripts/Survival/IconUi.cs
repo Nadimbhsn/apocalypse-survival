@@ -29,6 +29,25 @@ namespace Platformer.Survival
         public static Sprite TrapTurret => Get("trap_turret", TurretShade);
         /// <summary>Three brass cartridges: ammunition, on the ground and in the HUD.</summary>
         public static Sprite Ammo => Get("ammo", AmmoShade);
+        /// <summary>A white first-aid case with a red cross: the healing kit that revives in the Runner.</summary>
+        public static Sprite Kit => Get("kit", KitShade);
+
+        /// <summary>
+        /// Fusion's remedies, drawn on a round badge of their colour (the pieces are circles):
+        /// pill, capsule, tablet, plaster, syrup, syringe, vial. Placeholders until the
+        /// painted ones arrive (see FusionGame.PieceSprite).
+        /// </summary>
+        public static Sprite Remedy(int tier, Color badge) => tier switch
+        {
+            0 => Get("remedy0", (u, v) => Badge(u, v, badge, PillShade)),
+            1 => Get("remedy1", (u, v) => Badge(u, v, badge, CapsuleShade)),
+            2 => Get("remedy2", (u, v) => Badge(u, v, badge, TabletShade)),
+            3 => Get("remedy3", (u, v) => Badge(u, v, badge, PlasterShade)),
+            4 => Get("remedy4", (u, v) => Badge(u, v, badge, SyrupShade)),
+            5 => Get("remedy5", (u, v) => Badge(u, v, badge, SyringeShade)),
+            6 => Get("remedy6", (u, v) => Badge(u, v, badge, VialShade)),
+            _ => Kit,
+        };
 
         public static Sprite ForToken(char token) => token switch
         {
@@ -36,6 +55,7 @@ namespace Platformer.Survival
             'g' => Gear,
             'd' => Debris,
             'a' => Ammo,
+            'k' => Kit,
             _ => null,
         };
 
@@ -181,6 +201,140 @@ namespace Platformer.Survival
                     return steel;
             }
             return Color.clear;
+        }
+
+        // ---- remedies -------------------------------------------------------------------
+
+        /// <summary>A round badge (dark rim, lit face) with a pictogram drawn over it.</summary>
+        static Color Badge(float u, float v, Color face, Func<float, float, Color> picto)
+        {
+            float r = Mathf.Sqrt(u * u + v * v);
+            if (r > 0.96f) return Color.clear;
+            var rim = new Color(face.r * 0.45f, face.g * 0.45f, face.b * 0.45f);
+            if (r > 0.86f) return rim;
+            var lit = Mix(face * 0.8f, Color.Lerp(face, Color.white, 0.35f), 0.5f + (-u + v) * 0.35f);
+            lit.a = 1f;
+            var p = picto(u * 1.25f, v * 1.25f);
+            return p.a > 0f ? Mix(lit, p, p.a) : lit;
+        }
+
+        static Vector2 Rot(float u, float v, float deg)
+        {
+            float a = deg * Mathf.Deg2Rad, c = Mathf.Cos(a), s = Mathf.Sin(a);
+            return new Vector2(u * c + v * s, -u * s + v * c);
+        }
+
+        static float Capsule(Vector2 p, float halfLen, float radius)
+        {
+            float x = Mathf.Max(Mathf.Abs(p.x) - halfLen, 0f);
+            return Mathf.Sqrt(x * x + p.y * p.y) - radius;
+        }
+
+        static readonly Color Ink = new Color(0.18f, 0.08f, 0.08f);
+
+        static Color PillShade(float u, float v)
+        {
+            float r = Mathf.Sqrt(u * u + v * v);
+            if (r > 0.6f) return Color.clear;
+            if (r > 0.52f) return Ink;
+            if (Mathf.Abs(u + v * 0.2f) < 0.04f) return new Color(0.75f, 0.2f, 0.2f);
+            return Mix(new Color(0.95f, 0.3f, 0.3f), new Color(1f, 0.75f, 0.72f), 0.4f + (-u + v));
+        }
+
+        static Color CapsuleShade(float u, float v)
+        {
+            var p = Rot(u, v, 35f);
+            float d = Capsule(p, 0.32f, 0.26f);
+            if (d > 0f) return Color.clear;
+            if (d > -0.07f) return Ink;
+            return p.x < 0f ? new Color(0.3f, 0.5f, 0.95f) : new Color(0.98f, 0.97f, 0.94f);
+        }
+
+        static Color TabletShade(float u, float v)
+        {
+            float r = Mathf.Sqrt(u * u + v * v);
+            if (r > 0.62f) return Color.clear;
+            if (r > 0.54f) return Ink;
+            if (Mathf.Abs(u) < 0.035f || Mathf.Abs(v) < 0.035f) return new Color(0.72f, 0.72f, 0.7f);
+            return Mix(new Color(0.86f, 0.86f, 0.84f), Color.white, 0.5f + (-u + v) * 0.5f);
+        }
+
+        static Color PlasterShade(float u, float v)
+        {
+            var p = Rot(u, v, -35f);
+            float bx = Mathf.Max(Mathf.Abs(p.x) - 0.55f, 0f), by = Mathf.Max(Mathf.Abs(p.y) - 0.1f, 0f);
+            float d = Mathf.Sqrt(bx * bx + by * by) - 0.14f;
+            if (d > 0f) return Color.clear;
+            if (d > -0.06f) return Ink;
+            if (Mathf.Abs(p.x) < 0.2f) return new Color(0.96f, 0.93f, 0.88f);          // the pad
+            if ((Mathf.Repeat(p.x * 6f, 1f) < 0.25f) && Mathf.Abs(p.y) < 0.06f) return new Color(0.7f, 0.52f, 0.36f);
+            return new Color(0.9f, 0.7f, 0.5f);
+        }
+
+        static Color SyrupShade(float u, float v)
+        {
+            // cap
+            if (v > 0.38f && v < 0.6f && Mathf.Abs(u) < 0.16f) return v > 0.56f || Mathf.Abs(u) > 0.12f ? Ink : new Color(0.95f, 0.95f, 0.95f);
+            // neck
+            if (v > 0.26f && v <= 0.38f && Mathf.Abs(u) < 0.12f) return Mathf.Abs(u) > 0.08f ? Ink : new Color(0.55f, 0.18f, 0.4f);
+            // body
+            float bx = Mathf.Max(Mathf.Abs(u) - 0.24f, 0f), by = Mathf.Max(Mathf.Abs(v + 0.18f) - 0.34f, 0f);
+            float d = Mathf.Sqrt(bx * bx + by * by) - 0.12f;
+            if (d > 0f) return Color.clear;
+            if (d > -0.05f) return Ink;
+            if (v > -0.25f && v < 0.02f && Mathf.Abs(u) < 0.26f) return new Color(0.97f, 0.94f, 0.86f);   // label
+            return new Color(0.6f, 0.2f, 0.48f);
+        }
+
+        static Color SyringeShade(float u, float v)
+        {
+            var p = Rot(u, v, 40f);
+            if (p.x > 0.42f && p.x < 0.7f && Mathf.Abs(p.y) < 0.025f) return new Color(0.75f, 0.78f, 0.8f); // needle
+            if (p.x < -0.44f && p.x > -0.52f && Mathf.Abs(p.y) < 0.2f) return Ink;                           // thumb rest
+            if (p.x <= -0.3f && p.x > -0.44f && Mathf.Abs(p.y) < 0.04f) return Ink;                          // plunger rod
+            float bx = Mathf.Max(Mathf.Abs(p.x - 0.06f) - 0.36f, 0f), by = Mathf.Max(Mathf.Abs(p.y) - 0.12f, 0f);
+            if (bx > 0f || by > 0f)
+            {
+                if (bx < 0.05f && by < 0.05f) return Ink;
+                return Color.clear;
+            }
+            if (Mathf.Abs(p.y) > 0.09f) return Ink;
+            if (p.x > -0.05f && Mathf.Repeat(p.x * 10f, 1f) < 0.15f && p.y > 0.02f) return Ink;
+            return p.x > -0.1f ? new Color(0.45f, 0.85f, 0.95f) : new Color(0.93f, 0.97f, 1f);
+        }
+
+        static Color VialShade(float u, float v)
+        {
+            // neck
+            if (v > 0.1f && v < 0.56f && Mathf.Abs(u) < 0.14f) return Mathf.Abs(u) > 0.09f || v > 0.5f ? Ink : new Color(0.9f, 0.97f, 0.95f);
+            // round bottom flask
+            float r = Mathf.Sqrt(u * u + (v + 0.18f) * (v + 0.18f));
+            if (r > 0.44f) return Color.clear;
+            if (r > 0.38f) return Ink;
+            if (v + 0.18f > 0.08f) return new Color(0.9f, 0.97f, 0.95f);      // glass above the liquid
+            bool bubble = Mathf.Sqrt((u + 0.12f) * (u + 0.12f) + (v + 0.3f) * (v + 0.3f)) < 0.05f;
+            return bubble ? new Color(0.8f, 1f, 0.8f) : new Color(0.3f, 0.82f, 0.36f);
+        }
+
+        // A white case with rounded corners, a handle on top and a red cross, like 🩹/⛑.
+        static Color KitShade(float u, float v)
+        {
+            var white = new Color(0.97f, 0.95f, 0.92f);
+            var shade = new Color(0.78f, 0.74f, 0.70f);
+            var red = new Color(0.88f, 0.16f, 0.14f);
+            var edge = new Color(0.45f, 0.10f, 0.10f);
+            // handle
+            if (v > 0.5f && v < 0.78f && Mathf.Abs(u) < 0.34f && !(v < 0.68f && Mathf.Abs(u) < 0.2f))
+                return edge;
+            // case body, rounded box from -0.86..0.86 x -0.72..0.52
+            float bx = Mathf.Max(Mathf.Abs(u) - 0.66f, 0f), by = Mathf.Max(Mathf.Abs(v + 0.1f) - 0.42f, 0f);
+            float d = Mathf.Sqrt(bx * bx + by * by);
+            if (d > 0.2f) return Color.clear;
+            if (d > 0.13f) return edge;
+            // cross
+            float cu = Mathf.Abs(u), cv = Mathf.Abs(v + 0.1f);
+            if ((cu < 0.13f && cv < 0.38f) || (cv < 0.13f && cu < 0.38f)) return red;
+            return Mix(shade, white, 0.5f + (-u + v) * 0.35f);
         }
 
         static Color AmmoShade(float u, float v)

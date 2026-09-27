@@ -8,41 +8,43 @@ using UnityEngine.UI;
 namespace Platformer.Survival
 {
     /// <summary>
-    /// "FUSION": a Suika-Game-style mini-game in the Apogée world. Celestial treasures of 11
-    /// tiers drop into a bin; two identical pieces touching fuse into the next tier and
-    /// score. Letting the pile rest above the red line for more than a second ends the
-    /// game, and the score converts into coins for the shared wallet.
+    /// "FUSION": a Suika-Game-style mini-game in the Apogée world. Remedies drop into a bin;
+    /// two identical ones touching fuse into the next: pill, capsule, tablet, plaster,
+    /// syrup, syringe, vial - and two vials make a healing kit, which leaves the bin and
+    /// goes into the player's stock (three at most). A kit brings the player back into a
+    /// Runner run where they fell. Letting the pile rest above the red line for more than a
+    /// second ends the game, and the score converts into coins for the shared wallet.
     ///
     /// Pieces render as colored circles by default. To use your own art, drop Sprites
-    /// named tier0 .. tier10 into Assets/Resources/Fusion/ (Texture Type = Sprite) and
-    /// they are picked up automatically, scaled to each tier's radius.
+    /// named tier0 .. tier6 (pill .. vial) into Assets/Resources/Fusion/ (Texture Type =
+    /// Sprite) and they are picked up automatically, scaled to each tier's radius.
     ///
     /// The bin lives in world space far from the runner (around x = 3000) and borrows
     /// the main camera while active (see MiniGame.TakeOverCamera).
     /// </summary>
     public class FusionGame : MiniGame
     {
-        // Hidden from the home screen for now.
-        public override bool ShowOnHub => false;
         public override string Id => "fusion";
         public override string Title => "FUSION";
-        public override string Description => "Fusionne les trésors célestes jusqu'à la planète";
+        public override string Description => "Fusionne les remèdes jusqu'au kit de soin";
         public override string BestLine => SaveSystem.FusionBest > 0 ? $"Record : {SaveSystem.FusionBest} pts" : "Aucun record";
 
         public const int TierCount = 11;
         public static readonly float[] Radii = { 0.24f, 0.30f, 0.37f, 0.45f, 0.54f, 0.64f, 0.75f, 0.88f, 1.02f, 1.18f, 1.36f };
-        public static readonly string[] Names = { "Feuille", "Pétale", "Braise", "Gland", "Lanterne", "Plume", "Gemme", "Bouclier", "Couronne", "Île", "Planète" };
+        public static readonly string[] Names = { "Pilule", "Gélule", "Comprimé", "Pansement", "Sirop", "Seringue", "Fiole", "Kit de soin", "Couronne", "Île", "Planète" };
+        /// <summary>Fusing two of the tier below makes a healing kit: it leaves the bin for the player's stock.</summary>
+        public const int KitTier = 7;
         public static readonly int[] MergeScores = { 0, 2, 4, 8, 12, 18, 26, 36, 48, 62, 80 };
         static readonly Color[] Colors =
         {
-            new Color(0.84f, 0.20f, 0.12f), // feuille (crimson maple)
-            new Color(0.98f, 0.62f, 0.58f), // pétale
-            new Color(1.00f, 0.52f, 0.14f), // braise
-            new Color(0.62f, 0.40f, 0.20f), // gland
-            new Color(1.00f, 0.82f, 0.36f), // lanterne
-            new Color(0.96f, 0.92f, 0.84f), // plume
-            new Color(0.32f, 0.74f, 0.80f), // gemme
-            new Color(0.56f, 0.58f, 0.66f), // bouclier
+            new Color(0.95f, 0.38f, 0.34f), // pilule (red)
+            new Color(0.45f, 0.62f, 0.96f), // gélule (blue)
+            new Color(0.96f, 0.94f, 0.88f), // comprimé (white)
+            new Color(0.93f, 0.74f, 0.55f), // pansement (beige)
+            new Color(0.72f, 0.30f, 0.58f), // sirop (purple)
+            new Color(0.55f, 0.86f, 0.92f), // seringue (cyan)
+            new Color(0.42f, 0.86f, 0.42f), // fiole (green)
+            new Color(0.90f, 0.20f, 0.18f), // kit de soin (red cross)
             new Color(0.95f, 0.70f, 0.18f), // couronne
             new Color(0.52f, 0.36f, 0.30f), // île flottante
             new Color(0.98f, 0.55f, 0.26f), // planète (the orange giant of the key art)
@@ -63,6 +65,7 @@ namespace Platformer.Survival
         int pieceSerial;
         int nextTier;
         int score;
+        int kitsMade;
         bool playing;
         float overflowTimer;
         float dropCooldown;
@@ -70,6 +73,7 @@ namespace Platformer.Survival
         SpriteRenderer loseLine;
 
         Text scoreText, bestText, nextText;
+        IconText kitHint;
         Image nextPreview;
         GameObject overPanel;
         Text overScoreText;
@@ -92,8 +96,8 @@ namespace Platformer.Survival
             nextPreview = UiKit.CreateImage("NextPreview", topBar, new Vector2(0.78f, 0.15f), new Vector2(0.95f, 0.85f), PlaceholderVisuals.Circle(Color.white), Color.white);
 
             UiKit.CreateButton("Quit", rt, "QUITTER", new Vector2(0.72f, 0.845f), new Vector2(0.96f, 0.89f), ReturnToHub, 22);
-            UiKit.CreateText("Hint", rt, "Glisse pour viser, relâche pour lâcher", 22, TextAnchor.MiddleCenter,
-                new Vector2(0.05f, 0.02f), new Vector2(0.95f, 0.06f), UiKit.TextDim);
+            kitHint = IconText.Create("KitHint", rt, "", 22, TextAnchor.MiddleCenter,
+                new Vector2(0.05f, 0.02f), new Vector2(0.95f, 0.065f), UiKit.TextDim);
 
             var overRt = UiKit.CreatePanel("FusionOver", rt, UiKit.Overlay);
             UiKit.CreateFrame("FusionOverFrame", overRt, new Vector2(0.08f, 0.24f), new Vector2(0.92f, 0.8f));
@@ -156,6 +160,8 @@ namespace Platformer.Survival
 
         void ResetGame()
         {
+            kitsMade = 0;
+            RefreshKitHint();
             StopAllCoroutines();
             foreach (var p in pieces) if (p != null) Destroy(p.gameObject);
             pieces.Clear();
@@ -231,14 +237,18 @@ namespace Platformer.Survival
 
         static readonly Dictionary<int, Sprite> customSprites = new();
 
+        /// <summary>
+        /// The remedy's picture: painted art dropped into Resources/Fusion/Remedes/tierN
+        /// (pill = tier0 .. vial = tier6) when it exists, else a drawn placeholder.
+        /// </summary>
         static Sprite PieceSprite(int tier)
         {
             if (!customSprites.TryGetValue(tier, out var sprite))
             {
-                sprite = Resources.Load<Sprite>($"Fusion/tier{tier}");
+                sprite = Resources.Load<Sprite>($"Fusion/Remedes/tier{tier}");
                 customSprites[tier] = sprite;
             }
-            return sprite != null ? sprite : PlaceholderVisuals.RimCircle(Colors[tier]);
+            return sprite != null ? sprite : GameIcons.Remedy(tier, Colors[tier]);
         }
 
         void Drop()
@@ -278,7 +288,11 @@ namespace Platformer.Survival
             Destroy(a.gameObject);
             Destroy(b.gameObject);
 
-            if (tier + 1 < TierCount)
+            if (tier + 1 == KitTier)
+            {
+                BankKit(mid);
+            }
+            else if (tier + 1 < TierCount)
             {
                 var merged = CreatePiece(tier + 1, mid, heldPiece: false);
                 merged.dropped = true;
@@ -388,6 +402,34 @@ namespace Platformer.Survival
             if (overflowTimer > 1.2f) GameOver();
         }
 
+        /// <summary>Two vials made a healing kit: it flies out of the bin into the stock.</summary>
+        void BankKit(Vector2 at)
+        {
+            score += MergeScores[KitTier];
+            kitsMade++;
+            Sfx.Heal();
+            Fx.Burst(at, Colors[KitTier], 36, 5f, 0.14f, 0.2f);
+            Fx.Burst(at, Color.white, 16, 3f, 0.1f, 0f);
+            if (SaveSystem.TryAddReviveKit())
+            {
+                Fx.Text(at, $"KIT DE SOIN !  {SaveSystem.ReviveKits}/{SaveSystem.MaxReviveKits}", new Color(1f, 0.6f, 0.55f), 1.3f);
+            }
+            else
+            {
+                // Stock full: the kit is worth coins instead.
+                const int coinsInstead = 25;
+                SaveSystem.AddCoins(coinsInstead);
+                Fx.Text(at, $"STOCK PLEIN  +{coinsInstead}", UiKit.Gold, 1.2f);
+            }
+            RefreshKitHint();
+        }
+
+        void RefreshKitHint()
+        {
+            if (kitHint != null)
+                kitHint.text = $"Kits de soin {SaveSystem.ReviveKits}/{SaveSystem.MaxReviveKits} [k]    deux fioles en font un";
+        }
+
         void GameOver()
         {
             playing = false;
@@ -404,7 +446,9 @@ namespace Platformer.Survival
             if (record) SaveSystem.FusionBest = score;
 
             overScoreText.text = record ? $"Nouveau record : {score} pts !" : $"Score : {score} pts";
-            overRewardText.text = reward > 0 ? $"+{reward} [c]" : "Aucun gain cette fois";
+            overRewardText.text = kitsMade > 0
+                ? $"{reward} [c]      {kitsMade} [k]"
+                : reward > 0 ? $"{reward} [c]" : "Aucun gain cette fois";
             overPanel.SetActive(true);
             Sfx.Death();
             AdService.OnPlayerDeath();

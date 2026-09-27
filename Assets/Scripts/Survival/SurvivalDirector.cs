@@ -255,6 +255,7 @@ namespace Platformer.Survival
             if (inCampaign) { HandleCampaignDeath(); return; }
             AbortCadence();
             running = false;
+            deathSpot = player.transform.position;
             SaveSystem.BestDistance = Mathf.Max(SaveSystem.BestDistance, Distance);
             Sfx.Death();
             Fx.Burst(player.transform.position, new Color(0.7f, 0.15f, 0.1f), 24, 4f, 0.14f);
@@ -264,8 +265,9 @@ namespace Platformer.Survival
             // (Simulation events compare against Time.time) so it can't silently teleport
             // the player back to the old hand-painted spawn point while Game Over is up.
             Time.timeScale = 0f;
-            ui.ShowGameOver(Distance);
-            AdService.OnPlayerDeath();
+            // A kit or an ad can bring the player back where they fell (see Revive).
+            if (OfferRevive()) ui.ShowReviveOffer(Distance, CanReviveWithAd);
+            else GiveUpRun();
         }
 
         /// <summary>
@@ -328,6 +330,7 @@ namespace Platformer.Survival
 
             ResetGenerationState();
             runStartX = 1f;
+            ResetRevive();
             zombieTimer = zombieBaseInterval;
             pickupTimer = pickupBaseInterval;
             nextHordeDistance = UnityEngine.Random.Range(80f, 110f);
@@ -475,6 +478,7 @@ namespace Platformer.Survival
 
             UpdateZoneMarkers();
             UpdateCadence();
+            TrackSafeSpot();
             UpdateAscent();
             UpdateShaft();
             UpdateJetpack();

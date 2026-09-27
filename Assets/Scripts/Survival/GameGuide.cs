@@ -21,7 +21,7 @@ namespace Platformer.Survival
             "runner" => new GameGuide
             {
                 Title = "RUNNER INFINI",
-                Goal = "Cours le plus loin possible. La vitesse monte et le terrain ne s'arrête jamais.",
+                Goal = "Cours le plus loin possible. La vitesse monte et le terrain ne s'arrête jamais. Tombé ? Un kit de soin (fabriqué dans Fusion) ou une pub te fait reprendre là où tu étais.",
                 Controls = "Joystick pour avancer ou reculer, SAUT pour sauter, TIR pour abattre les morts. Les munitions se ramassent en route.",
                 Tip = "En route, des activités changent les règles : une tour à escalader, une chute libre, un jetpack, des îlots qui dérivent et La Cadence à jouer en rythme. Plus tu vas loin, plus elles sont difficiles.",
                 Rewards = "[c]   [g]",
@@ -37,10 +37,10 @@ namespace Platformer.Survival
             "fusion" => new GameGuide
             {
                 Title = "FUSION",
-                Goal = "Lâche les objets dans le bol. Deux objets identiques qui se touchent fusionnent en un plus gros.",
+                Goal = "Lâche les remèdes dans le bol : deux identiques qui se touchent fusionnent. Pilule, gélule, comprimé, pansement, sirop, seringue, fiole...",
                 Controls = "Glisse pour viser, relâche pour lâcher.",
-                Tip = "Range les gros objets d'un côté, et ne laisse rien dépasser du bord : la partie s'arrête.",
-                Rewards = "[c]",
+                Tip = "Deux fioles font un kit de soin (3 en stock maximum). Un kit te fait reprendre une course du Runner là où tu es tombé. Ne laisse rien dépasser du bord !",
+                Rewards = "[c]   [k]",
             },
             "arena" => new GameGuide
             {

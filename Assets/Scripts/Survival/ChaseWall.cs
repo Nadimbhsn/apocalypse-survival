@@ -102,6 +102,14 @@ namespace Platformer.Survival
             return ps;
         }
 
+        /// <summary>Moves the storm back to x at the furthest (a revived player gets a head start).</summary>
+        public void PushBackTo(float x)
+        {
+            var pos = transform.position;
+            pos.x = Mathf.Min(pos.x, x);
+            transform.position = pos;
+        }
+
         /// <summary>Stops chasing and fades away (the sector is over).</summary>
         public void Dissipate()
         {
