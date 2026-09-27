@@ -101,6 +101,9 @@ namespace Platformer.Survival
 
         // ---- zone planning (frontier-space) --------------------------------------------
 
+        /// <summary>Difficulty of the zone being generated, fixed when it began (see ActivityLevel).</summary>
+        float genLevel;
+
         void BeginZone(ZoneKind kind, float fixedLength = -1f)
         {
             genZone = ZoneCatalog.Get(kind);
@@ -110,7 +113,8 @@ namespace Platformer.Survival
                 genZoneEndX = frontierX + (fixedLength > 0f ? fixedLength : Random.Range(genZone.LengthMin, genZone.LengthMax));
             if (kind == ZoneKind.Jetpack) jetpackLandingX = genZoneEndX;
 
-            zoneMarkers.Add(new ZoneMarker { x = frontierX, kind = kind });
+            genLevel = ActivityLevel;
+            zoneMarkers.Add(new ZoneMarker { x = frontierX, kind = kind, level = genLevel });
             zoneSpans.Add(new ZoneMarker { x = frontierX, kind = kind });
         }
 
@@ -198,11 +202,15 @@ namespace Platformer.Survival
         void BuildArchipelago(float xStart, int fixedCount = 0)
         {
             float reach = RunReach;
-            // Islets are ~2.2 m wide, so the empty span between two of them is
-            // spacing - width; with the drift this keeps the worst case around 0.7 reach.
-            float spacing = 0.95f * reach;
-            float amp = 0.12f * reach;
-            int count = fixedCount > 0 ? fixedCount : Random.Range(6, 10);
+            float lvl = inCampaign ? Ramp : genLevel;
+            // The further the run, the more islets, the smaller they are and the more they
+            // drift. The empty span between two of them is spacing - width, plus up to twice
+            // the drift: from about 0.65 reach at first to 0.8 reach at the cap, where a
+            // full jump (1.0 reach) still clears the worst phase.
+            float spacing = Mathf.Lerp(0.95f, 0.88f, lvl) * reach;
+            float amp = Mathf.Lerp(0.10f, 0.15f, lvl) * reach;
+            float widthMin = Mathf.Lerp(1.9f, 1.5f, lvl), widthMax = Mathf.Lerp(2.6f, 2.0f, lvl);
+            int count = fixedCount > 0 ? fixedCount : Random.Range(Mathf.RoundToInt(Mathf.Lerp(6f, 9f, lvl)), Mathf.RoundToInt(Mathf.Lerp(10f, 13f, lvl)));
             float total = spacing * count + 1.5f;
             float baseY = lastTopY;
 
@@ -213,7 +221,7 @@ namespace Platformer.Survival
             {
                 float x = xStart + 1.2f + i * spacing;
                 y = Mathf.Clamp(y + Random.Range(-0.9f, 0.9f), baseY - 1.6f, baseY + 2.2f);
-                float width = Random.Range(1.9f, 2.6f);
+                float width = Random.Range(widthMin, widthMax);
                 var island = CreateDriftingIsland(x, y, width, amp * Random.Range(0.55f, 1f), Random.Range(0.7f, 1.4f));
                 props.Add(island);
                 SpawnPickupAt(x, y + 1.0f, i == count - 1 ? PickupType.Material : PickupType.Coin);
@@ -322,7 +330,7 @@ namespace Platformer.Survival
             lastSegmentWidth = width;
 
             if (unstable) return;
-            if (zone.Kind == ZoneKind.Storm && width >= 4f && Random.value < 0.55f) PlaceBrambles(segStart, width, topY);
+            if (zone.Kind == ZoneKind.Storm && width >= 4f && Random.value < Mathf.Lerp(0.45f, 0.7f, genLevel)) PlaceBrambles(segStart, width, topY);
             else MaybePlaceHazards(segStart, width, topY);
         }
 
@@ -417,14 +425,14 @@ namespace Platformer.Survival
         /// </summary>
         void BuildTower(float xStart)
         {
-            float ramp = Ramp;
+            float ramp = inCampaign ? Ramp : genLevel;
             float baseY = lastTopY;
             lastTowerBaseY = baseY;
 
             // The pit: no ground for the whole column.
             segments.Add(new GroundSegment { xStart = xStart, xEnd = xStart + TowerWidth, topY = baseY, isGap = true, go = null });
 
-            int count = Mathf.RoundToInt(Mathf.Lerp(8f, 14f, ramp));
+            int count = Mathf.RoundToInt(Mathf.Lerp(8f, 16f, ramp));
             float spacingMin = 2.0f;
             float spacingMax = Mathf.Lerp(2.6f, 3.0f, ramp);
             float widthMin = Mathf.Lerp(2.6f, 1.7f, ramp);
@@ -579,24 +587,27 @@ namespace Platformer.Survival
                 bsr.sortingOrder = -3;
                 props.Add(back);
             }
-            foreach (float wx in new[] { xStart - 0.3f, xStart + width + 0.3f })
-            {
-                var wall = new GameObject("ShaftWall");
-                wall.transform.SetParent(entityParent, false);
-                wall.transform.position = new Vector3(wx, top / 2f, 0f);
-                wall.transform.localScale = new Vector3(0.6f, top + 2f, 1f);
-                var wsr = wall.AddComponent<SpriteRenderer>();
-                wsr.sprite = PlaceholderVisuals.Square(PlaceholderVisuals.StoneColor);
-                wsr.sortingOrder = -2;
-                props.Add(wall);
-            }
+            // Solid walls on both sides, so the fall cannot be dodged by steering out of the
+            // column. The left one stops level with the roof (it must not trip the player off
+            // the edge); the right one rises above the roof (no jumping past it) and leaves a
+            // doorway at street level to walk out once landed.
+            ShaftWall(xStart - 0.3f, 0f, top);
+            ShaftWall(xStart + width + 0.3f, ShaftDoorHeight, top + 6f);
 
             // Spike ledges mostly alternating sides, leaving a free channel to steer through.
-            // Spacing is tuned for the shaft's capped fall speed (see UpdateShaft): about a
-            // second between ledges, enough to cross to the other side.
+            // The further the run, the faster the fall, the narrower the channel and the
+            // closer the ledges - but never less than about half a second between two of
+            // them at the fall speed (see UpdateShaft), while switching channels takes at
+            // most 1.6 m of steering (0.4 s): always doable, never comfortable.
+            float lvl = inCampaign ? Ramp : genLevel;
+            shaftFallSpeed = Mathf.Lerp(9f, 11.5f, lvl);
             bool left = Random.value < 0.5f;
-            float freeWidth = Mathf.Lerp(4.8f, 3.8f, Ramp);
-            for (float y = top - 6f; y > 4f; y -= Random.Range(7f, 9.5f))
+            // Switching channels means crossing width - 2 x freeWidth: kept to 1.6 m at most,
+            // however wide the shaft had to be for a fast run.
+            float freeWidth = Mathf.Max(Mathf.Lerp(4.8f, 3.2f, lvl), (width - 1.6f) / 2f);
+            float gapMin = Mathf.Lerp(7f, 6.5f, lvl), gapMax = Mathf.Lerp(9.5f, 8f, lvl);
+            float switchChance = Mathf.Lerp(0.7f, 0.9f, lvl);
+            for (float y = top - 6f; y > 4f; y -= Random.Range(gapMin, gapMax))
             {
                 float spikeWidth = width - freeWidth;
                 float spikeX = left ? xStart + spikeWidth / 2f : xStart + width - spikeWidth / 2f;
@@ -605,10 +616,26 @@ namespace Platformer.Survival
 
                 float coinX = left ? xStart + width - freeWidth / 2f : xStart + freeWidth / 2f;
                 SpawnPickupAt(coinX, y + 0.5f, PickupType.Coin);
-                if (Random.value < 0.7f) left = !left;
+                if (Random.value < switchChance) left = !left;
             }
             // Something to land next to.
             SpawnPickupAt(xStart + width + 2f, 0.7f, PickupType.Medkit);
+        }
+
+        /// <summary>Height of the way out at the foot of the shaft's right wall.</summary>
+        const float ShaftDoorHeight = 2.4f;
+
+        void ShaftWall(float x, float bottom, float topY)
+        {
+            var wall = new GameObject("ShaftWall");
+            wall.transform.SetParent(entityParent, false);
+            wall.transform.position = new Vector3(x, (bottom + topY) / 2f, 0f);
+            wall.transform.localScale = new Vector3(0.6f, topY - bottom, 1f);
+            var wsr = wall.AddComponent<SpriteRenderer>();
+            wsr.sprite = PlaceholderVisuals.Square(PlaceholderVisuals.StoneColor);
+            wsr.sortingOrder = -2;
+            wall.AddComponent<BoxCollider2D>();
+            props.Add(wall);
         }
 
         // ---- jetpack flight ---------------------------------------------------------------
@@ -620,7 +647,9 @@ namespace Platformer.Survival
         /// </summary>
         void GenerateJetpackStretch()
         {
-            float step = Random.Range(genZone.SegMin, genZone.SegMax);
+            float lvl = inCampaign ? Ramp : genLevel;
+            // Later flights pack their obstacles closer, with more spikes and live cables.
+            float step = Random.Range(genZone.SegMin, genZone.SegMax) * Mathf.Lerp(1f, 0.85f, lvl);
             float xStart = frontierX;
             RegisterGap(xStart, step);
 
@@ -635,11 +664,11 @@ namespace Platformer.Survival
             float blockX = xStart + step / 2f;
             var block = CreateSolidPlatform($"Debris_{blockX:0}", blockX, blockY, blockW, 0.6f, PlaceholderVisuals.StoneColor);
             props.Add(block);
-            if (Random.value < 0.45f)
+            if (Random.value < Mathf.Lerp(0.35f, 0.7f, lvl))
                 props.Add(Hazard.CreateSpikes(entityParent, blockX, blockY + 0.3f, Mathf.Min(blockW, 1.4f)).gameObject);
 
             // Cable at a height away from the block.
-            if (Random.value < 0.5f)
+            if (Random.value < Mathf.Lerp(0.4f, 0.8f, lvl))
             {
                 float cableY = blockY > baselineY + 3.5f ? Random.Range(baselineY + 0.8f, blockY - 2.2f) : Random.Range(blockY + 2.2f, baselineY + 8f);
                 props.Add(Hazard.CreateCable(entityParent, blockX + Random.Range(-1f, 1f), cableY, Random.Range(2.5f, 4f)).gameObject);

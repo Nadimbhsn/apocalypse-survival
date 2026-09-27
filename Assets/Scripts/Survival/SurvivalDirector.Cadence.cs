@@ -5,8 +5,9 @@ using UnityEngine;
 namespace Platformer.Survival
 {
     /// <summary>
-    /// "LA CADENCE": the runner's Geometry Dash section - a long, hand-authored rhythm
-    /// level that interrupts the run for about eighty seconds.
+    /// "LA CADENCE": the runner's Geometry Dash section - a short, dense, hand-authored
+    /// rhythm level of about forty seconds, picked by how far the run has gone among the
+    /// five levels of CadenceMaps (level 1 early on, level 5 from far enough).
     ///
     /// Inside it the character runs forward on its own and the only input is jump. Every
     /// obstacle sits on the beat of a 140 BPM track synthesised for it (see CadenceMusic),
@@ -39,8 +40,6 @@ namespace Platformer.Survival
         const float CadenceShipMaxFall = 7f;
         const float CadenceLeadIn = 10f;
         const float CadenceRunOut = 18f;
-        /// <summary>From here on the music gains its arpeggio: the flight and the finale.</summary>
-        const float CadenceArpBeat = 100f;
         const float CadenceGravityCeiling = 4.6f;
         const float CadenceShipCeiling = 6.5f;
 
@@ -87,6 +86,9 @@ namespace Platformer.Survival
         bool cadenceBuilt, cadenceActive, cadenceRespawning, cadenceFinished;
         float cadenceStartX, cadenceEndX, cadenceFloorY, cadenceArpX, cadenceFeetOffset;
         float cadenceSpeed;
+        /// <summary>The level being played, its speed at the gate, and where its music gains the arpeggio.</summary>
+        CadenceMap cadenceMap;
+        float cadenceStartSpeed = CadenceSpeed, cadenceArpBeat;
         bool cadenceShip, cadenceMusicB;
         int cadenceAttempts;
         CadenceCheckpoint cadenceCheckpoint;
@@ -150,19 +152,38 @@ namespace Platformer.Survival
             if (player != null && player.collider2d != null && player.collider2d.enabled)
                 cadenceFeetOffset = Mathf.Max(0.2f, player.transform.position.y - player.collider2d.bounds.min.y);
 
-            cadenceSpeedMap.Clear();
-            cadenceSpeedMap.Add((0f, CadenceSpeed));
-            cadenceSpeedMap.Add((141f, CadenceFastSpeed));
+            // The level matching how far the run has come (see ActivityLevel).
+            cadenceMap = CadenceMaps.ForLevel(TierOf(inCampaign ? Ramp : genLevel));
+            var script = ParseCadenceScript(cadenceMap.Script);
 
-            const float endBeat = 188f;
+            // First pass: what the geometry depends on - speeds, length, pits, ceilings.
+            cadenceStartSpeed = CadenceSpeed;
+            float endBeat = 90f;
+            cadenceArpBeat = -1f;
+            var pits = new List<(float from, float to)>();
+            var speeds = new List<(float beat, float speed)>();
+            foreach (var (cmd, a) in script)
+            {
+                switch (cmd)
+                {
+                    case "start": cadenceStartSpeed = a[0]; break;
+                    case "speed": speeds.Add((a[0], a[1])); break;
+                    case "end": endBeat = a[0]; break;
+                    case "arp": cadenceArpBeat = a[0]; break;
+                    case "pit": pits.Add((a[0], a[1])); break;
+                }
+            }
+            if (cadenceArpBeat < 0f) cadenceArpBeat = endBeat * 0.5f;
+            speeds.Sort((p, q) => p.beat.CompareTo(q.beat));
+            cadenceSpeedMap.Clear();
+            cadenceSpeedMap.Add((0f, cadenceStartSpeed));
+            cadenceSpeedMap.AddRange(speeds);
+
             cadenceEndX = CadenceX(endBeat);
-            cadenceArpX = CadenceX(CadenceArpBeat);
+            cadenceArpX = CadenceX(cadenceArpBeat);
 
             // ---- floor, broken by the pits --------------------------------------------------
-            var pits = new List<(float from, float to)>
-            {
-                (23f, 24.25f), (43.7f, 45.8f), (156.3f, 158.4f), (174.7f, 181.9f),
-            };
+            pits.Sort((p, q) => p.from.CompareTo(q.from));
             float floorFrom = xStart;
             foreach (var (from, to) in pits)
             {
@@ -174,13 +195,10 @@ namespace Platformer.Survival
             float runOutEnd = cadenceEndX + CadenceRunOut;
             CadenceFloor(floorFrom, runOutEnd);
 
-            // ---- ceilings: the gravity room (with a hole) and the flight corridor -----------
-            CadenceCeiling(CadenceX(73f), CadenceX(88.9f), CadenceGravityCeiling);
-            CadenceCeiling(CadenceX(90.1f), CadenceX(97f), CadenceGravityCeiling);
-            CadenceCeiling(CadenceX(101.5f), CadenceX(136f), CadenceShipCeiling);
-
             CadencePortal(CadenceKind.End, 0f, CadenceGold, 4.2f, visualOnly: true); // entry arch at beat 0
-            WriteCadenceLevel();
+
+            // Second pass: everything placed along the way.
+            foreach (var (cmd, a) in script) BuildCadenceCommand(cmd, a);
 
             // ---- hand the frontier back to the ordinary run ---------------------------------
             frontierX = runOutEnd;
@@ -192,94 +210,53 @@ namespace Platformer.Survival
             cadenceElements.Sort((p, q) => p.x.CompareTo(q.x));
         }
 
-        /// <summary>
-        /// The level itself, in beats. Obstacles on whole beats are jumped from the beat
-        /// before; the comments give the intended line. Positions were checked against the
-        /// jump arc (2.0 m apex, two beats), the pad arc (3.8 m, 2.8 beats) and the orb
-        /// chains (an orb every two beats at the same height).
-        /// </summary>
-        void WriteCadenceLevel()
+        /// <summary>Splits a level script (see CadenceMaps) into commands and their numbers.</summary>
+        static List<(string cmd, float[] args)> ParseCadenceScript(string script)
         {
-            // ---- 1. First steps: single, double, a held pair, the triple, a pit -------------
-            Spike(4f); Coins(4f);
-            Spike(8f); Coins(8f);
-            Spike(11f, 2);
-            Spike(14f); Spike(16f);                 // hold the button: two jumps in a row
-            Spike(20f, 3); Coins(20.3f);            // the triple
-            // pit 23 - 24.25
+            var list = new List<(string, float[])>();
+            foreach (var raw in script.Split('\n'))
+            {
+                string line = raw;
+                int hash = line.IndexOf('#');
+                if (hash >= 0) line = line.Substring(0, hash);
+                var parts = line.Split((char[])null, System.StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0) continue;
+                var args = new float[parts.Length - 1];
+                for (int i = 1; i < parts.Length; i++)
+                    args[i - 1] = float.Parse(parts[i], System.Globalization.CultureInfo.InvariantCulture);
+                list.Add((parts[0], args));
+            }
+            return list;
+        }
 
-            // ---- 2. Blocks: a ledge, the first coin, stairs, a pad over a pit ---------------
-            Platform(27f, 29f, 1f);
-            Coin(0, 29.8f, 3.3f);                   // jump off the very end of the ledge
-            Spike(32f); Coins(32f);
-            Platform(34f, 36f, 1f);                 // step one...
-            Platform(36f, 38f, 2f);                 // ...and two
-            Spike(40.5f);
-            Pad(43.3f);                             // pad over the pit 43.7 - 45.8
-            Checkpoint(48f);
+        static float Arg(float[] a, int i, float fallback) => i < a.Length ? a[i] : fallback;
 
-            // ---- 3. Orbs: tap on every other beat over a bed of spikes ----------------------
-            SpikeStrip(50.5f, 57f, 0f, false);
-            Orb(50.5f, 2.3f); Orb(52.5f, 2.3f); Orb(54.5f, 2.3f); Orb(56.5f, 2.3f);
-            Spike(60f); Coins(60f);
-            Platform(62.2f, 63.0f, 1f);             // hop block to block...
-            Spike(63.6f);
-            Platform(64.2f, 65.0f, 1f);             // ...over the floor spikes
-            Spike(65.4f);
-            Spike(68.5f, 2);
-            Checkpoint(72f);
-
-            // ---- 4. Gravity: stand on the ceiling, jump "down" --------------------------------
-            CadencePortal(CadenceKind.FlipGravity, 74f, CadenceFlipColor, CadenceGravityCeiling);
-            SpikeStrip(76f, 93f, 0f, false);        // the floor you must not fall back to
-            CeilingSpike(78f);
-            CeilingSpike(81f);
-            CeilingSpike(83.5f, 2);
-            Coin(1, 86.5f, CadenceGravityCeiling - 2.35f); // an upside-down jump reaches it
-            // hole in the ceiling 88.9 - 90.1
-            CeilingSpike(93f);
-            CadencePortal(CadenceKind.NormalGravity, 95f, CadenceGold, CadenceGravityCeiling);
-            Checkpoint(100f);
-            SpawnPickupAt(CadenceX(100f) + 1.6f, CadenceY(0.6f), PickupType.Medkit);
-
-            // ---- 5. The ship: hold to climb, release to dive, weave between pillars ---------
-            CadencePortal(CadenceKind.ShipOn, 102f, CadenceShipColor, CadenceShipCeiling);
-            SpikeStrip(104f, 134f, 0f, false);
-            SpikeStrip(104f, 134f, CadenceShipCeiling, true);
-            FloorPillar(107f, 3.4f);                // over
-            CeilingPillar(110f, 3.0f);              // under
-            FloorPillar(113f, 3.4f);
-            CeilingPillar(116f, 3.0f);
-            FloorPillar(119.5f, 2.0f); CeilingPillar(119.5f, 4.6f); // through the middle
-            FloorPillar(122.5f, 3.8f);
-            CeilingPillar(125f, 2.4f);
-            FloorPillar(127.5f, 1.8f); CeilingPillar(127.5f, 4.3f);
-            Coin(2, 129.5f, 5.3f);                  // climb for it, then dive for the next gap
-            CeilingPillar(132.5f, 2.6f);
-            CadencePortal(CadenceKind.ShipOff, 136f, CadenceCubeColor, CadenceShipCeiling);
-            Checkpoint(140f);
-
-            // ---- 6. Faster: same rhythm, the world goes by a third quicker ------------------
-            SpeedPortal(141f, CadenceFastSpeed);
-            Spike(144f); Coins(144f);
-            Spike(146f, 2);
-            Spike(148f); Coins(148f);
-            Platform(150.5f, 153.5f, 1f);
-            Spike(152f, 1, 1f);                     // a spike on the ledge itself
-            Pad(156f);                              // over the pit 156.3 - 158.4
-            SpikeStrip(159.5f, 162f, 0f, false);
-            Orb(160f, 2.3f);
-            Spike(165f, 3); Coins(165.3f);
-            Pad(167f);                              // too tall to jump: let the pad do it
-            FloorPillar(168f, 2.0f);
-            Checkpoint(170.5f);
-
-            // ---- 7. Finale: a pad into three orbs over the widest pit, and home -------------
-            Spike(173f); Coins(173f);
-            Pad(174.3f);                            // over the pit 174.7 - 181.9
-            Orb(175.68f, 4.05f); Orb(177.68f, 4.05f); Orb(179.68f, 4.05f);
-            Spike(185.5f);
-            CadencePortal(CadenceKind.End, 188f, CadenceGold, 4.2f);
+        void BuildCadenceCommand(string cmd, float[] a)
+        {
+            switch (cmd)
+            {
+                case "ceil": CadenceCeiling(CadenceX(a[0]), CadenceX(a[1]), a[2]); break;
+                case "spike": Spike(a[0], (int)Arg(a, 1, 1), Arg(a, 2, 0f)); break;
+                case "cspike": CeilingSpike(a[0], (int)Arg(a, 1, 1), Arg(a, 2, CadenceGravityCeiling)); break;
+                case "strip": SpikeStrip(a[0], a[1], a[2], false); break;
+                case "cstrip": SpikeStrip(a[0], a[1], a[2], true); break;
+                case "plat": Platform(a[0], a[1], a[2]); break;
+                case "fpillar": FloorPillar(a[0], a[1]); break;
+                case "cpillar": CeilingPillar(a[0], a[1], Arg(a, 2, CadenceShipCeiling)); break;
+                case "pad": Pad(a[0]); break;
+                case "orb": Orb(a[0], a[1]); break;
+                case "flip": CadencePortal(CadenceKind.FlipGravity, a[0], CadenceFlipColor, CadenceGravityCeiling); break;
+                case "normal": CadencePortal(CadenceKind.NormalGravity, a[0], CadenceGold, CadenceGravityCeiling); break;
+                case "ship": CadencePortal(CadenceKind.ShipOn, a[0], CadenceShipColor, CadenceShipCeiling); break;
+                case "cube": CadencePortal(CadenceKind.ShipOff, a[0], CadenceCubeColor, CadenceShipCeiling); break;
+                case "speed": SpeedPortal(a[0], a[1]); break;
+                case "check": Checkpoint(a[0]); break;
+                case "coin": Coin((int)a[0], a[1], a[2]); break;
+                case "coins": Coins(a[0]); break;
+                case "medkit": SpawnPickupAt(CadenceX(a[0]) + 1.6f, CadenceY(0.6f), PickupType.Medkit); break;
+                case "end": CadencePortal(CadenceKind.End, a[0], CadenceGold, 4.2f); break;
+                // start, speed map, arp and pits were handled by the first pass
+            }
         }
 
         // ---- builder vocabulary -------------------------------------------------------------
@@ -309,10 +286,10 @@ namespace Platformer.Survival
             CadenceBlock(x - 0.5f, x + 0.5f, cadenceFloorY, CadenceY(top), registerLedge: true);
         }
 
-        void CeilingPillar(float beat, float bottom)
+        void CeilingPillar(float beat, float bottom, float ceiling)
         {
             float x = CadenceX(beat);
-            CadenceBlock(x - 0.5f, x + 0.5f, CadenceY(bottom), CadenceY(CadenceShipCeiling), registerLedge: true);
+            CadenceBlock(x - 0.5f, x + 0.5f, CadenceY(bottom), CadenceY(ceiling), registerLedge: true);
         }
 
         GameObject CadenceBlock(float xMin, float xMax, float yMin, float yMax, bool registerLedge)
@@ -346,11 +323,11 @@ namespace Platformer.Survival
                 AddSpike(x0 + i * 0.8f, CadenceY(height), hanging: false);
         }
 
-        void CeilingSpike(float beat, int count = 1)
+        void CeilingSpike(float beat, int count, float ceiling)
         {
             float x0 = CadenceX(beat);
             for (int i = 0; i < count; i++)
-                AddSpike(x0 + i * 0.8f, CadenceY(CadenceGravityCeiling), hanging: true);
+                AddSpike(x0 + i * 0.8f, CadenceY(ceiling), hanging: true);
         }
 
         void AddSpike(float x, float baseY, bool hanging)
@@ -703,7 +680,7 @@ namespace Platformer.Survival
             cadenceActive = true;
             cadenceRespawning = false;
             cadenceAttempts = 1;
-            cadenceSpeed = CadenceSpeed;
+            cadenceSpeed = cadenceStartSpeed;
             cadenceShip = false;
             cadenceColliderOffset = player.collider2d != null ? player.collider2d.offset : Vector2.zero;
 
@@ -715,7 +692,7 @@ namespace Platformer.Survival
             cadenceCheckpoint = new CadenceCheckpoint
             {
                 x = cadenceStartX, y = cadenceFloorY + cadenceFeetOffset + 0.03f, beat = 0f,
-                speed = CadenceSpeed, gravity = 1f, ship = false,
+                speed = cadenceStartSpeed, gravity = 1f, ship = false,
             };
 
             if (cadenceBody != null) cadenceBody.Detach();
@@ -727,7 +704,7 @@ namespace Platformer.Survival
 
             // The sector banner already named the section a few metres back; this one only
             // says go, and gets out of the way before the first spike (four beats in).
-            ui.ShowBanner("C'EST PARTI", "Appuie sur SAUT au rythme de la musique", 1.5f);
+            ui.ShowBanner($"NIVEAU {cadenceMap.Level} · {cadenceMap.Name}", "Appuie sur SAUT au rythme de la musique", 1.5f);
             UpdateCadencePresentation();
         }
 
@@ -795,7 +772,8 @@ namespace Platformer.Survival
 
             int coinsFound = 0;
             foreach (bool c in cadenceCoins) if (c) coinsFound++;
-            const int coinReward = 25;
+            // Harder levels pay more.
+            int coinReward = 15 + 10 * cadenceMap.Level;
             int materialReward = coinsFound * 5;
             SaveSystem.AddCoins(coinReward);
             if (materialReward > 0) SaveSystem.AddMaterials(materialReward);
@@ -939,7 +917,7 @@ namespace Platformer.Survival
                 cadenceMusicSource.spatialBlend = 0f;
                 cadenceMusicSource.volume = 0.85f;
             }
-            cadenceMusicB = beat >= CadenceArpBeat;
+            cadenceMusicB = beat >= cadenceArpBeat;
             cadenceMusicSource.clip = cadenceMusicB ? CadenceMusic.LoopB : CadenceMusic.LoopA;
             cadenceMusicSource.Play();
             cadenceMusicSource.time = Mathf.Repeat(beat * CadenceBeatDuration, CadenceMusic.LoopDuration);

@@ -70,6 +70,8 @@ namespace Platformer.Survival
         {
             public float x;
             public ZoneKind kind;
+            /// <summary>Difficulty the piece was built at (see ActivityLevel), shown when it begins.</summary>
+            public float level;
         }
 
         readonly List<GroundSegment> segments = new();
@@ -100,6 +102,7 @@ namespace Platformer.Survival
         readonly List<ZoneKind> setPieceBag = new();
         float lastTowerBaseY;
         float shaftXStart, shaftXEnd, shaftTop;
+        float shaftFallSpeed = 9f;
         /// <summary>Frontier x where the current/last jetpack zone hands back to solid ground.</summary>
         float jetpackLandingX;
 
@@ -522,18 +525,19 @@ namespace Platformer.Survival
             float x = player.transform.position.x;
             while (zoneMarkers.Count > 0 && x >= zoneMarkers[0].x)
             {
-                ActivateZone(zoneMarkers[0].kind);
+                ActivateZone(zoneMarkers[0].kind, zoneMarkers[0].level);
                 zoneMarkers.RemoveAt(0);
             }
         }
 
-        void ActivateZone(ZoneKind kind)
+        void ActivateZone(ZoneKind kind, float pieceLevel)
         {
             activeZone = kind;
             var def = ZoneCatalog.Get(kind);
             skyTarget = def.Sky;
             SkyBackdrop.Instance?.SetTint(def.Tint);
-            ui.ShowBanner(def.Title, def.Subtitle);
+            bool ranked = IsSetPiece(kind) && !inCampaign;
+            ui.ShowBanner(def.Title, ranked ? $"NIVEAU {TierOf(pieceLevel)}  ·  {def.Subtitle}" : def.Subtitle);
             ui.SetZoneLabel(def.Title);
 
             // A campaign level owns its own ambushes and its own storm (see the Storm and
@@ -553,6 +557,8 @@ namespace Platformer.Survival
             {
                 if (chaseWall != null) chaseWall.Dissipate();
                 chaseWall = ChaseWall.Create(entityParent, this, player, player.transform.position.x - 16f);
+                // Faster the further the run: a stumble costs more and more.
+                chaseWall.speedFactor = Mathf.Lerp(0.88f, 0.96f, pieceLevel);
                 Fx.Shake(0.4f, 0.5f);
             }
             else if (chaseWall != null)
@@ -582,7 +588,7 @@ namespace Platformer.Survival
             if (falling && !shaftActive)
             {
                 shaftActive = true;
-                player.maxFallSpeed = 9f; // slower fall so the spike ledges can be steered around
+                player.maxFallSpeed = shaftFallSpeed; // slower fall so the spike ledges can be steered around
                 Fx.Shake(0.2f, 0.2f);
             }
             else if (shaftActive && (!inColumn || player.IsGrounded))

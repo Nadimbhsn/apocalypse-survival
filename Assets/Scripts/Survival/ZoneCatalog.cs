@@ -9,7 +9,7 @@ namespace Platformer.Survival
     /// one flat strip. Ascent is the Doodle-Jump-style vertical climb, always followed by
     /// Rooftops (running along the top) and Descent (a staircase back down).
     /// </summary>
-    public enum ZoneKind { City, Highway, Infested, Wasteland, Ascent, Rooftops, Descent, Shaft, Jetpack, Archipel, Storm, Cadence }
+    public enum ZoneKind { City, Highway, Infested, Wasteland, Ascent, Rooftops, Descent, Shaft, Jetpack, Archipel, Storm, Cadence, Rider }
 
     public struct ZoneDef
     {
