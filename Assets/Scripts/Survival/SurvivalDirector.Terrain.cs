@@ -86,10 +86,6 @@ namespace Platformer.Survival
                         BuildCadence(frontierX);
                         BeginZone(PickNextZone());
                         break;
-                    case ZoneKind.Rider:
-                        BuildRider(frontierX);
-                        BeginZone(PickNextZone());
-                        break;
                     case ZoneKind.Jetpack:
                         GenerateJetpackStretch();
                         break;
@@ -111,7 +107,7 @@ namespace Platformer.Survival
         void BeginZone(ZoneKind kind, float fixedLength = -1f)
         {
             genZone = ZoneCatalog.Get(kind);
-            if (kind == ZoneKind.Descent || kind == ZoneKind.Ascent || kind == ZoneKind.Shaft || kind == ZoneKind.Archipel || kind == ZoneKind.Cadence || kind == ZoneKind.Rider)
+            if (kind == ZoneKind.Descent || kind == ZoneKind.Ascent || kind == ZoneKind.Shaft || kind == ZoneKind.Archipel || kind == ZoneKind.Cadence)
                 genZoneEndX = float.MaxValue; // these end on their own terms
             else
                 genZoneEndX = frontierX + (fixedLength > 0f ? fixedLength : Random.Range(genZone.LengthMin, genZone.LengthMax));
@@ -149,7 +145,6 @@ namespace Platformer.Survival
                 case ZoneKind.Archipel:
                 case ZoneKind.Storm:
                 case ZoneKind.Cadence:
-                case ZoneKind.Rider:
                     sinceSetPiece = 0;
                     return PickStreetZone();
             }
@@ -180,7 +175,6 @@ namespace Platformer.Survival
                 setPieceBag.Add(ZoneKind.Archipel);
                 setPieceBag.Add(ZoneKind.Storm);
                 setPieceBag.Add(ZoneKind.Cadence);
-                setPieceBag.Add(ZoneKind.Rider);
                 // shuffle
                 for (int i = setPieceBag.Count - 1; i > 0; i--)
                 {

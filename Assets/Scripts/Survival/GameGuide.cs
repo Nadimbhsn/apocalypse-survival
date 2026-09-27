@@ -23,7 +23,7 @@ namespace Platformer.Survival
                 Title = "RUNNER INFINI",
                 Goal = "Cours le plus loin possible. La vitesse monte et le terrain ne s'arrête jamais.",
                 Controls = "Joystick pour avancer ou reculer, SAUT pour sauter, TIR pour abattre les morts. Les munitions se ramassent en route.",
-                Tip = "En route, des activités changent les règles : une tour à escalader, une chute libre, un jetpack, des îlots qui dérivent, La Cadence à jouer en rythme et Le Bolide en voiture. Plus tu vas loin, plus elles sont difficiles.",
+                Tip = "En route, des activités changent les règles : une tour à escalader, une chute libre, un jetpack, des îlots qui dérivent et La Cadence à jouer en rythme. Plus tu vas loin, plus elles sont difficiles.",
                 Rewards = "[c]   [g]",
             },
             "expedition" => new GameGuide

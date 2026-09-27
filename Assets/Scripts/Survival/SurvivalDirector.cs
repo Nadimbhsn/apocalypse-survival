@@ -254,7 +254,6 @@ namespace Platformer.Survival
             if (!running) return;
             if (inCampaign) { HandleCampaignDeath(); return; }
             AbortCadence();
-            AbortRider();
             running = false;
             SaveSystem.BestDistance = Mathf.Max(SaveSystem.BestDistance, Distance);
             Sfx.Death();
@@ -278,7 +277,6 @@ namespace Platformer.Survival
             if (inCampaign) { LeaveCampaign(); return; }
             if (!running) return;
             AbortCadence();
-            AbortRider();
             running = false;
             SaveSystem.BestDistance = Mathf.Max(SaveSystem.BestDistance, Distance);
             Time.timeScale = 1f;
@@ -417,7 +415,6 @@ namespace Platformer.Survival
             if (chaseWall != null) { Destroy(chaseWall.gameObject); chaseWall = null; }
             if (drone != null) { Destroy(drone.gameObject); drone = null; }
             ClearCadence();
-            ClearRider();
             ResetScenery();
         }
 
@@ -478,7 +475,6 @@ namespace Platformer.Survival
 
             UpdateZoneMarkers();
             UpdateCadence();
-            UpdateRider();
             UpdateAscent();
             UpdateShaft();
             UpdateJetpack();
@@ -706,8 +702,6 @@ namespace Platformer.Survival
         {
             if (cadenceActive)
                 deathLineY = cadenceFloorY - 40f; // falls there cost a heart and a restart, not the run
-            else if (riderActive)
-                deathLineY = riderTrack.minY - 40f; // the car's own crash check comes first
             else if (ascentActive)
                 deathLineY = Mathf.Max(deathLineY, highestBounceY - ascentFallDepth);
             else
@@ -723,7 +717,6 @@ namespace Platformer.Survival
         {
             if (model?.virtualCamera == null) return;
             float target = cadenceActive ? CadenceOrtho()
-                : riderActive ? RiderOrtho()
                 : ascentActive || shaftActive ? ascentOrthoSize
                 : player.jetpackActive ? Mathf.Max(fastOrthoSize, 5.2f)
                 : Mathf.Lerp(normalOrthoSize, fastOrthoSize, SpeedRamp);

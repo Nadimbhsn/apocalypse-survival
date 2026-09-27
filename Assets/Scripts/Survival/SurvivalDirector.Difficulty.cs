@@ -4,8 +4,7 @@ namespace Platformer.Survival
 {
     /// <summary>
     /// How hard the runner's activities are, from how far the run has gone. Every set piece
-    /// (the tower, the free fall, the flight, the archipelago, the storm, La Cadence, the
-    /// Rider track) reads one level between 0 and 1, fixed when the piece is built, and
+    /// (the tower, the free fall, the flight, the archipelago, the storm, La Cadence) reads one level between 0 and 1, fixed when the piece is built, and
     /// turns it into its own numbers. The level climbs from the first set piece on and stops
     /// at a ceiling: past it, the pieces stay as hard as they get - demanding, never
     /// impossible. The player sees it as "NIVEAU 1" to "NIVEAU 5" when a piece begins.
@@ -26,6 +25,6 @@ namespace Platformer.Survival
 
         static bool IsSetPiece(ZoneKind kind) => kind == ZoneKind.Ascent || kind == ZoneKind.Shaft
             || kind == ZoneKind.Jetpack || kind == ZoneKind.Archipel || kind == ZoneKind.Storm
-            || kind == ZoneKind.Cadence || kind == ZoneKind.Rider;
+            || kind == ZoneKind.Cadence;
     }
 }

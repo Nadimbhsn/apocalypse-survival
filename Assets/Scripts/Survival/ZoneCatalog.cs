@@ -9,7 +9,7 @@ namespace Platformer.Survival
     /// one flat strip. Ascent is the Doodle-Jump-style vertical climb, always followed by
     /// Rooftops (running along the top) and Descent (a staircase back down).
     /// </summary>
-    public enum ZoneKind { City, Highway, Infested, Wasteland, Ascent, Rooftops, Descent, Shaft, Jetpack, Archipel, Storm, Cadence, Rider }
+    public enum ZoneKind { City, Highway, Infested, Wasteland, Ascent, Rooftops, Descent, Shaft, Jetpack, Archipel, Storm, Cadence }
 
     public struct ZoneDef
     {
@@ -167,16 +167,6 @@ namespace Platformer.Survival
                         Tint = new Color(0.62f, 0.50f, 0.95f), Ground = new Color(0.20f, 0.10f, 0.16f),
                         ZombieIntervalMult = 99f, PackChance = 0f, AllowBrute = false,
                         RuinSpacingMin = 14f, RuinSpacingMax = 26f,
-                    };
-
-                case ZoneKind.Rider:
-                    return new ZoneDef
-                    {
-                        Kind = kind, Title = "LE BOLIDE", Subtitle = "Maintiens : accélère au sol, salto en l'air. Atterris à plat !",
-                        // A hot, clear evening: the golden rail reads against it.
-                        Tint = new Color(1.0f, 0.78f, 0.62f), Ground = new Color(0.30f, 0.12f, 0.12f),
-                        ZombieIntervalMult = 99f, PackChance = 0f, AllowBrute = false,
-                        RuinSpacingMin = 12f, RuinSpacingMax = 22f,
                     };
 
                 case ZoneKind.Descent:
