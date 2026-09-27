@@ -537,6 +537,7 @@ namespace Platformer.Survival
         void ActivateZone(ZoneKind kind, float pieceLevel)
         {
             activeZone = kind;
+            NoteZoneForRevive(kind);
             var def = ZoneCatalog.Get(kind);
             skyTarget = def.Sky;
             SkyBackdrop.Instance?.SetTint(def.Tint);

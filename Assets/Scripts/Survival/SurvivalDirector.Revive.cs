@@ -9,9 +9,12 @@ namespace Platformer.Survival
     /// most) or, once per run, by watching an ad - or give up and see the usual end screen.
     ///
     /// "Where they fell" is the last spot they stood on firm ground: while running, every
-    /// frame on a solid, stable street segment outside the set pieces' special rules is
-    /// remembered. A fall into the void therefore brings them back to the edge they jumped
-    /// from; a death in the jetpack flight puts them back in the air with the jetpack on.
+    /// frame on a solid, stable street segment outside the set pieces is remembered, so a
+    /// fall into the void brings them back to the edge they jumped from. A death inside an
+    /// activity (tower, free fall, flight, archipelago, storm, La Cadence) brings them back
+    /// to its start - the firm ground just before it - to play it again from the top, the
+    /// jetpack switched back on for the flight. Ground left behind is torn down after a few
+    /// metres, so if the spot's ground is gone a solid slab is laid back under their feet.
     /// They return at full health, with two and a half seconds of grace, the nearby dead
     /// cleared away and the storm pushed back.
     /// </summary>
@@ -20,7 +23,13 @@ namespace Platformer.Survival
         const float ReviveGrace = 2.5f;
 
         Vector2 safeSpot;
+        float safeGroundY;
         bool hasSafeSpot;
+        /// <summary>The firm ground just before the activity being played, and which one it is.</summary>
+        Vector2 activitySpot;
+        float activityGroundY;
+        bool inActivity;
+        ZoneKind activityKind;
         Vector2 deathSpot;
         bool adReviveUsed;
 
@@ -29,7 +38,26 @@ namespace Platformer.Survival
         void ResetRevive()
         {
             hasSafeSpot = false;
+            inActivity = false;
             adReviveUsed = false;
+        }
+
+        /// <summary>Called as each zone begins: an activity remembers where it was entered from.</summary>
+        void NoteZoneForRevive(ZoneKind kind)
+        {
+            inActivity = IsSetPiece(kind) && !inCampaign;
+            if (!inActivity) return;
+            activityKind = kind;
+            if (hasSafeSpot)
+            {
+                activitySpot = safeSpot;
+                activityGroundY = safeGroundY;
+            }
+            else
+            {
+                activitySpot = player.transform.position;
+                activityGroundY = LocalGroundLevel(activitySpot.x);
+            }
         }
 
         /// <summary>Remembers the last firm, ordinary ground under the player's feet.</summary>
@@ -45,6 +73,7 @@ namespace Platformer.Survival
             float feet = player.collider2d != null ? player.collider2d.bounds.min.y : player.transform.position.y;
             if (Mathf.Abs(feet - seg.topY) > 0.3f) return;   // standing on something else (a crate, an islet)
             safeSpot = player.transform.position;
+            safeGroundY = seg.topY;
             hasSafeSpot = true;
         }
 
@@ -70,19 +99,29 @@ namespace Platformer.Survival
             shaftActive = false;
             player.maxFallSpeed = 16f;
 
-            Vector2 spot = hasSafeSpot ? safeSpot : (Vector2)player.transform.position;
-            bool inFlight = activeZone == ZoneKind.Jetpack && deathSpot.x < jetpackLandingX;
-            if (inFlight)
+            // Died inside an activity: back to its start. Otherwise: the last firm ground.
+            Vector2 spot;
+            float groundY;
+            if (inActivity)
             {
-                // Back in the air where the flight was lost, jetpack on.
-                spot = new Vector2(deathSpot.x, baselineY + 4.5f);
-                StartJetpack();
+                spot = activitySpot;
+                groundY = activityGroundY;
+            }
+            else if (hasSafeSpot)
+            {
+                spot = safeSpot;
+                groundY = safeGroundY;
             }
             else
             {
-                player.jetpackActive = false;
-                player.jetpackCeilingY = float.MaxValue;
+                spot = player.transform.position;
+                groundY = LocalGroundLevel(spot.x);
             }
+            EnsureReviveGround(spot.x, groundY);
+
+            player.jetpackActive = false;
+            player.jetpackCeilingY = float.MaxValue;
+            if (inActivity && activityKind == ZoneKind.Jetpack) StartJetpack();
 
             PlacePlayerAt(spot.x, spot.y + 0.05f);
             player.velocity = Vector2.zero;
@@ -114,6 +153,32 @@ namespace Platformer.Survival
             Sfx.Heal();
             Fx.Burst(player.transform.position, new Color(0.55f, 1f, 0.7f), 30, 4f, 0.12f, 0f);
             ui.ShowBanner("DE RETOUR !", viaAd ? "Merci d'avoir regardé la pub" : "Un kit de soin utilisé", 1.6f);
+        }
+
+        /// <summary>
+        /// Ground behind the player is recycled a few metres back, so the spot to come back to
+        /// may have none left. Lay a solid slab from just behind it up to the next ground that
+        /// still exists (or the next hole, such as the tower's pit), registered like any street
+        /// segment - no gap is left between the spot and the activity ahead.
+        /// </summary>
+        void EnsureReviveGround(float x, float groundY)
+        {
+            if (GetSegmentAt(x, out var seg) && !seg.isGap && seg.go != null && Mathf.Abs(seg.topY - groundY) < 0.3f) return;
+            // The rhythm section's floor is real but registered without an object: trust it.
+            if (InCadenceSpan(x) && GetSegmentAt(x, out seg) && !seg.isGap) return;
+
+            float from = x - 3f;
+            float to = x + 8f;
+            float nextStart = float.MaxValue;
+            foreach (var s in segments)
+                if (s.xStart > x - 0.5f && s.xStart < nextStart) nextStart = s.xStart;
+            if (nextStart < float.MaxValue) to = Mathf.Max(x + 2f, Mathf.Min(nextStart, x + 80f));
+
+            const float thickness = 1.2f;
+            float width = to - from;
+            var slab = CreateSolidPlatform("ReviveGround", (from + to) / 2f, groundY - thickness / 2f, width, thickness, ZoneCatalog.Get(activeZone).Ground);
+            props.Add(slab);
+            segments.Add(new GroundSegment { xStart = from, xEnd = to, topY = groundY, isGap = false, go = slab });
         }
 
         /// <summary>No second chance, or the player declined it: the usual end of the run.</summary>
