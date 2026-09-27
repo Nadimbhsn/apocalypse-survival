@@ -169,6 +169,16 @@ namespace Platformer.Survival
                         RuinSpacingMin = 14f, RuinSpacingMax = 26f,
                     };
 
+                case ZoneKind.Rider:
+                    return new ZoneDef
+                    {
+                        Kind = kind, Title = "LE BOLIDE", Subtitle = "Maintiens : accélère au sol, salto en l'air. Atterris à plat !",
+                        // A hot, clear evening: the golden rail reads against it.
+                        Tint = new Color(1.0f, 0.78f, 0.62f), Ground = new Color(0.30f, 0.12f, 0.12f),
+                        ZombieIntervalMult = 99f, PackChance = 0f, AllowBrute = false,
+                        RuinSpacingMin = 12f, RuinSpacingMax = 22f,
+                    };
+
                 case ZoneKind.Descent:
                     return new ZoneDef
                     {
