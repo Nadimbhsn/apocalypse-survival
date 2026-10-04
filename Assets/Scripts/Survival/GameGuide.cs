@@ -39,7 +39,7 @@ namespace Platformer.Survival
                 Title = "FUSION",
                 Goal = "Bienvenue au laboratoire ! Lâche les remèdes dans le bécher : deux identiques qui se touchent fusionnent. Pilule, gélule, comprimé, pansement, sirop, seringue, fiole, flacon, élixir...",
                 Controls = "Glisse pour viser, relâche pour lâcher.",
-                Tip = "Deux élixirs font un kit de soin (3 en stock maximum). Un kit te fait reprendre une course du Runner là où tu es tombé. Ne laisse rien dépasser du bord !",
+                Tip = "Chaque fusion fait monter le liquide : au trait MAX, 50 pièces et des points bonus. Deux élixirs font un kit de soin (3 en stock maximum). Un kit te fait reprendre une course du Runner là où tu es tombé. Ne laisse rien dépasser du bord !",
                 Rewards = "[c]   [k]",
             },
             "arena" => new GameGuide

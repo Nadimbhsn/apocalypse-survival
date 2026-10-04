@@ -31,6 +31,8 @@ namespace Platformer.Survival
     /// </summary>
     public class LabyrinthGame : MiniGame
     {
+        // Hidden from the home screen for now, kept aside.
+        public override bool ShowOnHub => false;
         public override string Id => "labyrinth";
         public override string Title => "LABYRINTHE";
         public override string Description => "Rapporte les rations sans te faire repérer";

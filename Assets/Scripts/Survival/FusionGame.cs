@@ -147,7 +147,15 @@ namespace Platformer.Survival
         static readonly Color WoodDark = new Color(0.26f, 0.14f, 0.08f);
         static readonly Color BrassColor = new Color(0.86f, 0.64f, 0.30f);
 
-        Transform pipette, pipetteBulb;
+        Transform pipette, pipetteBulb, liquid, liquidTop;
+        /// <summary>How full the beaker's élixir is (0..1), and the level drawn (it eases toward it).</summary>
+        float elixir, elixirShown;
+        int elixirBonusCoins;
+        /// <summary>Fusion "units" to fill the beaker: a fusion into tier t pours in t of them.</summary>
+        const float ElixirUnits = 110f;
+        const int ElixirCoins = 50, ElixirScore = 200;
+        const float LiquidMin = 0.7f;
+        float LiquidMax => LoseLineY - FloorY - 0.25f;
         readonly List<Transform> bubbles = new();
         float pipetteSqueeze;
 
@@ -178,8 +186,8 @@ namespace Platformer.Survival
 
             // The beaker: glass walls and floor (solid), the liquid inside, its lip and marks.
             CreateBox("Glass", new Vector2(0f, (FloorY + TopY) / 2f), new Vector2(HalfWidth * 2f, TopY - FloorY), new Color(0.75f, 0.9f, 0.95f, 0.10f), -4, false);
-            CreateBox("Liquid", new Vector2(0f, FloorY + 0.35f), new Vector2(HalfWidth * 2f, 0.7f), LiquidColor, 1, false);
-            CreateBox("LiquidTop", new Vector2(0f, FloorY + 0.71f), new Vector2(HalfWidth * 2f, 0.04f), new Color(0.7f, 1f, 0.8f, 0.55f), 1, false);
+            liquid = CreateBox("Liquid", new Vector2(0f, FloorY + 0.35f), new Vector2(HalfWidth * 2f, 0.7f), LiquidColor, 1, false).transform;
+            liquidTop = CreateBox("LiquidTop", new Vector2(0f, FloorY + 0.71f), new Vector2(HalfWidth * 2f, 0.04f), new Color(0.7f, 1f, 0.8f, 0.55f), 1, false).transform;
             CreateBox("Floor", new Vector2(0f, FloorY - WallThickness / 2f), new Vector2(HalfWidth * 2f + WallThickness * 2f, WallThickness), GlassEdge, 3, true);
             CreateBox("LeftWall", new Vector2(-HalfWidth - WallThickness / 2f, (FloorY + TopY) / 2f), new Vector2(WallThickness, TopY - FloorY + WallThickness), GlassColor, 3, true);
             CreateBox("RightWall", new Vector2(HalfWidth + WallThickness / 2f, (FloorY + TopY) / 2f), new Vector2(WallThickness, TopY - FloorY + WallThickness), GlassColor, 3, true);
@@ -292,13 +300,26 @@ namespace Platformer.Survival
                 if (pipetteBulb != null)
                     pipetteBulb.localScale = new Vector3(0.5f + pipetteSqueeze * 0.18f, 0.5f - pipetteSqueeze * 0.2f, 1f);
             }
+            // The élixir rises with every fusion (see PourElixir), smoothly.
+            elixirShown = Mathf.MoveTowards(elixirShown, elixir, Time.deltaTime * (elixir < elixirShown ? 0.8f : 0.35f));
+            float h = Mathf.Lerp(LiquidMin, LiquidMax, elixirShown);
+            if (liquid != null)
+            {
+                liquid.position = new Vector3(Origin.x, Origin.y + FloorY + h / 2f, 0f);
+                liquid.localScale = new Vector3(HalfWidth * 2f, h, 1f);
+                var sr = liquid.GetComponent<SpriteRenderer>();
+                // It glows a little brighter as it nears the top.
+                sr.color = Color.Lerp(LiquidColor, new Color(0.55f, 1f, 0.6f, 0.42f), elixirShown);
+            }
+            if (liquidTop != null) liquidTop.position = new Vector3(Origin.x, Origin.y + FloorY + h + 0.01f, 0f);
+
             foreach (var b in bubbles)
             {
                 if (b == null) continue;
                 var p = b.position;
                 p.y += Time.deltaTime * 0.45f;
                 p.x += Mathf.Sin(Time.time * 3f + p.y * 6f) * 0.002f;
-                if (p.y > Origin.y + FloorY + 0.68f)
+                if (p.y > Origin.y + FloorY + h - 0.02f)
                 {
                     p.y = Origin.y + FloorY + 0.04f;
                     p.x = Origin.x + Random.Range(-HalfWidth + 0.2f, HalfWidth - 0.2f);
@@ -324,6 +345,8 @@ namespace Platformer.Survival
         void ResetGame()
         {
             kitsMade = 0;
+            elixir = 0f;
+            elixirBonusCoins = 0;
             RefreshKitHint();
             StopAllCoroutines();
             foreach (var p in pieces) if (p != null) Destroy(p.gameObject);
@@ -452,6 +475,7 @@ namespace Platformer.Survival
             Destroy(a.gameObject);
             Destroy(b.gameObject);
 
+            PourElixir(tier + 1, mid);
             if (tier + 1 == KitTier)
             {
                 BankKit(mid);
@@ -568,6 +592,27 @@ namespace Platformer.Survival
             if (overflowTimer > 1.2f) GameOver();
         }
 
+        /// <summary>
+        /// Every fusion pours a little élixir into the beaker, the bigger the remedy the more.
+        /// When it reaches the MAX mark the brew is ready: coins and bonus points, and the
+        /// beaker drains to start over.
+        /// </summary>
+        void PourElixir(int tier, Vector2 at)
+        {
+            elixir += tier / ElixirUnits;
+            if (elixir < 1f) return;
+            elixir = 0f;
+            elixirBonusCoins += ElixirCoins;
+            score += ElixirScore;
+            SaveSystem.AddCoins(ElixirCoins);
+            Sfx.Milestone();
+            Fx.Shake(0.2f, 0.3f);
+            var top = Origin + new Vector2(0f, LoseLineY - 0.3f);
+            for (int i = 0; i < 3; i++)
+                Fx.Burst(top + new Vector2(Random.Range(-HalfWidth + 0.5f, HalfWidth - 0.5f), 0f), new Color(0.55f, 1f, 0.6f), 20, 4f, 0.1f, 0.6f);
+            Fx.Text(top + Vector2.up * 0.6f, $"ÉLIXIR PRÊT !  +{ElixirCoins} PIÈCES  +{ElixirScore}", new Color(0.6f, 1f, 0.65f), 1.2f);
+        }
+
         /// <summary>Two vials made a healing kit: it flies out of the bin into the stock.</summary>
         void BankKit(Vector2 at)
         {
@@ -612,9 +657,10 @@ namespace Platformer.Survival
             if (record) SaveSystem.FusionBest = score;
 
             overScoreText.text = record ? $"Nouveau record : {score} pts !" : $"Score : {score} pts";
+            int coinsTotal = reward + elixirBonusCoins;   // the élixir bonuses were paid as they came
             overRewardText.text = kitsMade > 0
-                ? $"{reward} [c]      {kitsMade} [k]"
-                : reward > 0 ? $"{reward} [c]" : "Aucun gain cette fois";
+                ? $"{coinsTotal} [c]      {kitsMade} [k]"
+                : coinsTotal > 0 ? $"{coinsTotal} [c]" : "Aucun gain cette fois";
             overPanel.SetActive(true);
             Sfx.Death();
             AdService.OnPlayerDeath();

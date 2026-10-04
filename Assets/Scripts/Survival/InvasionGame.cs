@@ -20,6 +20,8 @@ namespace Platformer.Survival
     /// </summary>
     public class InvasionGame : MiniGame
     {
+        // Hidden from the home screen for now, kept aside.
+        public override bool ShowOnHub => false;
         public override string Id => "invasion";
         public override string Title => "INVASION";
         public override string Description => "Repousse les spectres qui descendent du ciel";
