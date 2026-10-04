@@ -118,6 +118,7 @@ namespace Platformer.Survival
             BuildHudPanel();
             BuildGameOverPanel();
             BuildRevivePanel();
+            BuildMissionsPanel();
             BuildCampaignPanels();
             BuildShopPanel();
             BuildGuidePanel();
@@ -318,9 +319,9 @@ namespace Platformer.Survival
             var cards = new List<(string title, string desc, Action onClick, Func<string> best, string id)>
             {
                 ("RUNNER", "Course sans fin ou niveaux à terminer", ShowRunnerModes,
-                    () => SaveSystem.BestDistance > 0f
-                        ? $"Record : {FormatDistance(SaveSystem.BestDistance)}   ·   {SaveSystem.TotalStars} étoiles"
-                        : "Aucun record", "runner"),
+                    () => (SaveSystem.BestDistance > 0f
+                        ? $"Record : {FormatDistance(SaveSystem.BestDistance)}   ·   "
+                        : "") + $"Missions {DailyMissions.DoneCount}/{DailyMissions.Count}", "runner"),
             };
             foreach (var game in miniGames)
             {
@@ -588,7 +589,7 @@ namespace Platformer.Survival
                     () => $"Étoiles : {SaveSystem.TotalStars} / {LevelCatalog.Count * 3}", "expedition"),
             };
 
-            const float top = 0.82f, bottom = 0.17f;
+            const float top = 0.82f, bottom = 0.29f;
             float slot = (top - bottom) / modes.Length;
             for (int i = 0; i < modes.Length; i++)
             {
@@ -613,6 +614,10 @@ namespace Platformer.Survival
                     new Vector2(0.78f, 0f), new Vector2(0.95f, 0.55f), ApogeeTheme.Gold), 1.5f);
             }
 
+            // The day's three challenges.
+            var missionsBtn = UiKit.CreateButton("MissionsButton", rt, "", new Vector2(0.06f, 0.155f), new Vector2(0.94f, 0.265f), ShowMissions, 30, UiKit.CardColor);
+            missionsButtonLabel = IconText.OnButton(missionsBtn, 32);
+
             UiKit.CreateButton("RunnerModesBack", rt, "RETOUR", new Vector2(0.32f, 0.04f), new Vector2(0.68f, 0.115f), ShowHub);
         }
 
@@ -628,6 +633,7 @@ namespace Platformer.Survival
             UiKit.SetPanel(runnerModesPanel, true);
             for (int i = 0; i < runnerModeBest.Count && i < runnerModeBestProviders.Count; i++)
                 runnerModeBest[i].text = runnerModeBestProviders[i]() ?? "";
+            if (missionsButtonLabel != null) missionsButtonLabel.text = MissionsButtonText();
         }
 
         // ---- expedition (campaign level select) ------------------------------------------
@@ -947,6 +953,8 @@ namespace Platformer.Survival
             hudMaterialsText = CreateHudCounter(rt, "MaterialsText", -76f, ApogeeTheme.Cream);
             hudZoneText = UiKit.Outlined(UiKit.CreateTextFixed("ZoneText", rt, "", 24, TextAnchor.UpperCenter,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(640, 40), new Vector2(0, -86), ApogeeTheme.Gold));
+            hudPowerText = UiKit.Outlined(UiKit.CreateTextFixed("PowerUpText", rt, "", 22, TextAnchor.UpperCenter,
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(640, 36), new Vector2(0, -116), new Color(0.6f, 0.9f, 1f)));
 
             // Campaign-only: how far through the authored level the player is, and how many
             // of its secrets they have turned up. Hidden during an endless run.
@@ -1424,6 +1432,7 @@ namespace Platformer.Survival
             UiKit.SetPanel(hudPanel, false);
             UiKit.SetPanel(gameOverPanel, false);
             UiKit.SetPanel(revivePanel, false);
+            UiKit.SetPanel(missionsPanel, false);
             UiKit.SetPanel(shopPanel, false);
             UiKit.SetPanel(expeditionPanel, false);
             UiKit.SetPanel(runnerModesPanel, false);

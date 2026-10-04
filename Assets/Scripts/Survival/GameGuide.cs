@@ -23,7 +23,7 @@ namespace Platformer.Survival
                 Title = "RUNNER INFINI",
                 Goal = "Cours le plus loin possible. La vitesse monte et le terrain ne s'arrête jamais. Tombé ? Un kit de soin (fabriqué dans Fusion) ou une pub te fait reprendre là où tu étais.",
                 Controls = "Joystick pour avancer ou reculer, SAUT pour sauter, TIR pour abattre les morts. Les munitions se ramassent en route.",
-                Tip = "En route, des activités changent les règles : une tour à escalader, une chute libre, un jetpack, des îlots qui dérivent et La Cadence à jouer en rythme. Plus tu vas loin, plus elles sont difficiles.",
+                Tip = "Ramasse les bonus de la piste (bouclier, pièces x2, aimant, tir illimité). Tous les 1000 m, un boss t'attend : tu l'affrontes avec la vie qu'il te reste. Les activités deviennent plus dures avec la distance, et trois missions t'attendent chaque jour.",
                 Rewards = "[c]   [g]",
             },
             "expedition" => new GameGuide

@@ -51,6 +51,15 @@ namespace Platformer.Survival
             _ => Kit,
         };
 
+        /// <summary>The runner's track bonuses, each on a badge of its own colour.</summary>
+        public static Sprite PowerUp(PowerUpKind kind) => kind switch
+        {
+            PowerUpKind.Shield => Get("pu_shield", (u, v) => Badge(u, v, RunPowerUps.Tint(kind), ShieldShade)),
+            PowerUpKind.DoubleCoins => Get("pu_coins", (u, v) => Badge(u, v, RunPowerUps.Tint(kind), TwoCoinsShade)),
+            PowerUpKind.Magnet => Get("pu_magnet", (u, v) => Badge(u, v, RunPowerUps.Tint(kind), MagnetShade)),
+            _ => Get("pu_ammo", (u, v) => Badge(u, v, RunPowerUps.Tint(kind), (x, y) => AmmoShade(x * 1.15f, y * 1.15f))),
+        };
+
         public static Sprite ForToken(char token) => token switch
         {
             'c' => Coin,
@@ -343,6 +352,40 @@ namespace Platformer.Survival
             if (Mathf.Abs(u) + Mathf.Abs(cy) * 0.6f < 0.1f || (Mathf.Abs(u) < 0.025f && Mathf.Abs(cy) < 0.2f) || (Mathf.Abs(cy) < 0.025f && Mathf.Abs(u) < 0.2f))
                 return new Color(1f, 0.97f, 0.8f);
             return Mix(new Color(0.55f, 0.25f, 0.85f), new Color(0.9f, 0.7f, 1f), 0.5f + (-u + v) * 0.5f);
+        }
+
+        /// <summary>A heater shield, steel with a gold rim and a pale cross.</summary>
+        static Color ShieldShade(float u, float v)
+        {
+            if (v > 0.5f || v < -0.62f) return Color.clear;
+            float half = v > -0.05f ? 0.45f : 0.45f * Mathf.Sqrt(Mathf.Max(0f, (v + 0.62f) / 0.57f));
+            float d = half - Mathf.Abs(u);
+            if (d < 0f) return Color.clear;
+            if (d < 0.07f || v > 0.43f) return new Color(0.95f, 0.75f, 0.3f);
+            if (Mathf.Abs(u) < 0.06f || Mathf.Abs(v - 0.05f) < 0.06f) return new Color(0.92f, 0.96f, 1f);
+            return Mix(new Color(0.2f, 0.42f, 0.7f), new Color(0.45f, 0.7f, 0.95f), 0.5f + (-u + v) * 0.6f);
+        }
+
+        /// <summary>Two coins, one over the other: the double-coins bonus.</summary>
+        static Color TwoCoinsShade(float u, float v)
+        {
+            var front = CoinShade((u + 0.22f) * 1.6f, (v + 0.18f) * 1.6f);
+            if (front.a > 0f) return front;
+            return CoinShade((u - 0.24f) * 1.6f, (v - 0.2f) * 1.6f);
+        }
+
+        /// <summary>A red horseshoe magnet with silver tips.</summary>
+        static Color MagnetShade(float u, float v)
+        {
+            float cy = v - 0.05f;
+            float r = Mathf.Sqrt(u * u + cy * cy);
+            bool arc = cy <= 0f && r > 0.2f && r < 0.5f;
+            bool arm = cy > 0f && cy < 0.45f && Mathf.Abs(u) > 0.2f && Mathf.Abs(u) < 0.5f;
+            if (!arc && !arm) return Color.clear;
+            bool edge = (arc && (r < 0.25f || r > 0.45f)) || (arm && (Mathf.Abs(u) < 0.25f || Mathf.Abs(u) > 0.45f || cy > 0.4f));
+            if (edge) return Ink;
+            if (arm && cy > 0.24f) return new Color(0.88f, 0.9f, 0.94f);
+            return new Color(0.88f, 0.16f, 0.14f);
         }
 
         // A white case with rounded corners, a handle on top and a red cross, like 🩹/⛑.

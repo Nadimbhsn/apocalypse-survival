@@ -25,6 +25,12 @@ namespace Platformer.Mechanics
         /// <summary>No damage is taken before this time (the grace after a revive).</summary>
         public float invulnerableUntil;
 
+        /// <summary>Hits a shield will still swallow whole (the runner's shield power-up).</summary>
+        public int shieldHits;
+
+        /// <summary>Raised when the shield swallowed a hit.</summary>
+        public Action onShieldBlocked;
+
         /// <summary>
         /// Indicates the current HP as a fraction of maxHP, in the range [0, 1].
         /// </summary>
@@ -62,6 +68,12 @@ namespace Platformer.Mechanics
         public void Decrement(int amount)
         {
             if (Time.time < invulnerableUntil) return;
+            if (shieldHits > 0 && amount > 0)
+            {
+                shieldHits--;
+                onShieldBlocked?.Invoke();
+                return;
+            }
             currentHP = Mathf.Clamp(currentHP - amount, 0, maxHP);
             if (currentHP == 0)
             {
@@ -77,6 +89,7 @@ namespace Platformer.Mechanics
         {
             // Death itself (a fall out of the world) is not stopped by a grace period.
             invulnerableUntil = 0f;
+            shieldHits = 0;
             while (currentHP > 0) Decrement();
         }
 

@@ -95,7 +95,7 @@ namespace Platformer.Survival
                 {
                     burstLeft--;
                     burstTimer = Weapon.BurstGap;
-                    if (ammo > 0) FireOne(); else burstLeft = 0;
+                    if (ammo > 0 || RunPowerUps.InfiniteAmmo) FireOne(); else burstLeft = 0;
                 }
                 return;
             }
@@ -103,7 +103,7 @@ namespace Platformer.Survival
             if (!WantsFire()) { dryClicked = false; return; }
             if (cooldown > 0f) return;
 
-            if (ammo <= 0)
+            if (ammo <= 0 && !RunPowerUps.InfiniteAmmo)
             {
                 if (!dryClicked)
                 {
@@ -167,7 +167,7 @@ namespace Platformer.Survival
             projectile.speed = w.BulletSpeed;
             projectile.Style(w.BulletSize, w.BulletColor);
             projectile.Launch(origin, dir, Damage(w.Damage), w.Range, w.ExplosionRadius, w.ExplosionRadius > 0f ? Damage(w.ExplosionDamage) : 0);
-            ammo--;
+            if (!RunPowerUps.InfiniteAmmo) ammo--;
 
             if (w.ExplosionRadius > 0f) Sfx.Attack(); else Sfx.Shoot();
             Fx.Burst(origin + dir.normalized * 0.1f, w.BulletColor, 3, 1.5f, 0.05f, 0f);

@@ -770,6 +770,7 @@ namespace Platformer.Survival
             cadenceActive = false;
             cadenceFinished = true;
 
+            DailyMissions.Report(MissionKind.Cadence, 1);
             int coinsFound = 0;
             foreach (bool c in cadenceCoins) if (c) coinsFound++;
             // Harder levels pay more.

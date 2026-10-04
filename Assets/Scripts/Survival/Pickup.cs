@@ -3,7 +3,7 @@ using Platformer.Mechanics;
 
 namespace Platformer.Survival
 {
-    public enum PickupType { Coin, Material, Medkit, Ammo }
+    public enum PickupType { Coin, Material, Medkit, Ammo, PowerUp }
 
     /// <summary>
     /// Ground pickup collected by the player; coins and materials credit SaveSystem's
@@ -14,6 +14,7 @@ namespace Platformer.Survival
     {
         public PickupType type = PickupType.Coin;
         public int value = 1;
+        public PowerUpKind powerUp;
 
         float bobT;
         Vector3 baseScale;
@@ -42,9 +43,11 @@ namespace Platformer.Survival
             switch (type)
             {
                 case PickupType.Coin:
-                    SaveSystem.AddCoins(value);
+                    int coins = RunPowerUps.DoubleCoins ? value * 2 : value;
+                    SaveSystem.AddCoins(coins);
                     Sfx.Coin();
-                    RewardPopup.Show(pos, value, 0);
+                    RewardPopup.Show(pos, coins, 0);
+                    DailyMissions.Report(MissionKind.Coins, coins);
                     Fx.Burst(pos, PlaceholderVisuals.CoinColor, 5, 1.8f, 0.07f);
                     break;
                 case PickupType.Material:
@@ -60,6 +63,13 @@ namespace Platformer.Survival
                     Sfx.Material();
                     RewardPopup.ShowAmmo(pos, got);
                     Fx.Burst(pos, new Color(0.95f, 0.8f, 0.4f), 6, 1.8f, 0.07f);
+                    break;
+                case PickupType.PowerUp:
+                    RunPowerUps.Activate(powerUp, controller.health);
+                    Sfx.Spring();
+                    Fx.Text(pos + Vector3.up * 0.4f, RunPowerUps.Name(powerUp), RunPowerUps.Tint(powerUp), 1.2f);
+                    Fx.Burst(pos, RunPowerUps.Tint(powerUp), 18, 3f, 0.1f, 0f);
+                    DailyMissions.Report(MissionKind.PowerUps, 1);
                     break;
                 case PickupType.Medkit:
                     if (controller.health != null) controller.health.Increment(value);

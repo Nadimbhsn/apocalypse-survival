@@ -331,6 +331,7 @@ namespace Platformer.Survival
             ResetGenerationState();
             runStartX = 1f;
             ResetRevive();
+            ResetRunExtras();
             zombieTimer = zombieBaseInterval;
             pickupTimer = pickupBaseInterval;
             nextHordeDistance = UnityEngine.Random.Range(80f, 110f);
@@ -479,6 +480,7 @@ namespace Platformer.Survival
             UpdateZoneMarkers();
             UpdateCadence();
             TrackSafeSpot();
+            UpdateRunExtras();
             UpdateAscent();
             UpdateShaft();
             UpdateJetpack();
@@ -649,9 +651,11 @@ namespace Platformer.Survival
         void UpdateMagnet()
         {
             float radius = UpgradeManager.MagnetRadius;
+            bool super = RunPowerUps.Magnet;
+            if (super) radius = Mathf.Max(radius, RunPowerUps.MagnetRadius);
             if (radius <= 0f) return;
             Vector3 target = player.transform.position;
-            float step = 10f * Time.deltaTime;
+            float step = (super ? 16f : 10f) * Time.deltaTime;
             for (int i = 0; i < pickups.Count; i++)
             {
                 var p = pickups[i];
@@ -866,6 +870,7 @@ namespace Platformer.Survival
 
         public void OnZombieKilled(Zombie zombie)
         {
+            DailyMissions.Report(MissionKind.Kills, 1);
             // The dead often carry a few rounds: fighting pays for its own ammunition, a bit.
             if (UnityEngine.Random.value < 0.3f)
                 SpawnPickupAt(zombie.transform.position.x + 0.4f, GetGroundHeightAt(zombie.transform.position.x) + 0.55f, PickupType.Ammo);

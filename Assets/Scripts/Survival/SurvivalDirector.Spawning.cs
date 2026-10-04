@@ -29,6 +29,7 @@ namespace Platformer.Survival
                     TrySpawnAhead(x => SpawnZombieGroup(x, zone));
             }
 
+            UpdatePowerUpSpawns();
             pickupTimer -= Time.deltaTime;
             if (pickupTimer <= 0f)
             {

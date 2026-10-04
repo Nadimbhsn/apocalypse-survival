@@ -68,6 +68,12 @@ namespace Platformer.Survival
         int campaignBossIndex;
         float campaignHealth = 1f;
         string campaignTitle;
+        float campaignStrength = 1f;
+        /// <summary>A runner mini-boss rather than a level's boss: the run goes on after a win.</summary>
+        bool runnerDuel;
+
+        /// <summary>The fighter's health (0..1) when the last duel ended, carried back into the run.</summary>
+        public float LastPlayerHealthFraction => player != null && player.MaxHP > 0 ? Mathf.Clamp01(player.HP / (float)player.MaxHP) : 1f;
         System.Action<CampaignDuelOutcome> campaignOnDone;
 
         Text messageText, bossNameText, playerNameText, bossLevelText;
@@ -175,6 +181,7 @@ namespace Platformer.Survival
             StopAllCoroutines();
             busy = false;
             campaignDuel = false;
+            runnerDuel = false;
             campaignOnDone = null;
             if (bossStage != null) bossStage.SetActive(false);
         }
@@ -185,9 +192,12 @@ namespace Platformer.Survival
         /// with, so reaching the gate in good shape is the real reward for playing well.
         /// onDone is called with whether the boss went down.
         /// </summary>
-        public void StartCampaignDuel(int levelBossIndex, float healthLeft, string levelName, System.Action<CampaignDuelOutcome> onDone)
+        public void StartCampaignDuel(int levelBossIndex, float healthLeft, string levelName, System.Action<CampaignDuelOutcome> onDone,
+            float strength = 1f, bool fromRunner = false)
         {
             campaignDuel = true;
+            campaignStrength = Mathf.Max(1f, strength);
+            runnerDuel = fromRunner;
             campaignBossIndex = levelBossIndex;
             campaignHealth = Mathf.Clamp(healthLeft, 0.15f, 1f); // never walk in already dead
             campaignTitle = levelName;
@@ -206,6 +216,8 @@ namespace Platformer.Survival
 
         void OnResultMenu()
         {
+            // In the runner there is no level list to go back to: the result decides.
+            if (campaignDuel && runnerDuel) { OnResultContinue(); return; }
             if (campaignDuel) FinishCampaignDuel(CampaignDuelOutcome.Quit);
             else ReturnToHub();
         }
@@ -230,7 +242,7 @@ namespace Platformer.Survival
                 // far up the endless ladder the player happens to be.
                 bossIndex = Mathf.Clamp(campaignBossIndex, 0, ArenaCatalog.Bosses.Length - 1);
                 cycle = 0;
-                levelMult = 1f;
+                levelMult = campaignStrength;
             }
             else
             {
@@ -469,10 +481,11 @@ namespace Platformer.Survival
             Sfx.Milestone();
             resultTitle.text = "VICTOIRE !";
             resultTitle.color = UiKit.Gold;
-            resultBody.text = campaignDuel
+            resultBody.text = runnerDuel ? $"{coins} [c]      {materials} [g]\nLa course continue !"
+                : campaignDuel
                 ? $"+{coins} [c]      +{materials} [g]\nNiveau terminé !"
                 : $"+{coins} [c]      +{materials} [g]\nProchain boss débloqué";
-            UiKit.ButtonLabel(resultContinue).text = campaignDuel ? "VOIR LES ÉTOILES" : "BOSS SUIVANT";
+            UiKit.ButtonLabel(resultContinue).text = runnerDuel ? "REPRENDRE LA COURSE" : campaignDuel ? "VOIR LES ÉTOILES" : "BOSS SUIVANT";
             resultPanel.SetActive(true);
             busy = false;
         }
@@ -481,13 +494,15 @@ namespace Platformer.Survival
         {
             yield return Say($"{player.Name} est K.O. ...", 1.2f);
             Sfx.Death();
-            AdService.OnPlayerDeath();
+            // A runner duel lost goes on to the second-chance screen, which handles the ad pacing.
+            if (!runnerDuel) AdService.OnPlayerDeath();
             resultTitle.text = "DÉFAITE";
             resultTitle.color = new Color(0.75f, 0.15f, 0.1f);
-            resultBody.text = campaignDuel
+            resultBody.text = runnerDuel ? "Tu es K.O. : la course s'arrête ici,\nsauf si tu prends une seconde chance."
+                : campaignDuel
                 ? "Refais le niveau et arrive au portail\navec plus de vie."
                 : "Améliore ton personnage dans la boutique\nou change de combattant.";
-            UiKit.ButtonLabel(resultContinue).text = campaignDuel ? "REFAIRE LE NIVEAU" : "RÉESSAYER";
+            UiKit.ButtonLabel(resultContinue).text = runnerDuel ? "CONTINUER" : campaignDuel ? "REFAIRE LE NIVEAU" : "RÉESSAYER";
             resultPanel.SetActive(true);
             busy = false;
         }
