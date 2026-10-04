@@ -10,14 +10,17 @@ namespace Platformer.Survival
     /// <summary>
     /// "FUSION": a Suika-Game-style mini-game in the Apogée world. Remedies drop into a bin;
     /// two identical ones touching fuse into the next: pill, capsule, tablet, plaster,
-    /// syrup, syringe, vial - and two vials make a healing kit, which leaves the bin and
+    /// syrup, syringe, vial, flask, élixir - and two élixirs make a healing kit, which leaves the bin and
     /// goes into the player's stock (three at most). A kit brings the player back into a
     /// Runner run where they fell. Letting the pile rest above the red line for more than a
     /// second ends the game, and the score converts into coins for the shared wallet.
     ///
-    /// Pieces render as colored circles by default. To use your own art, drop Sprites
-    /// named tier0 .. tier6 (pill .. vial) into Assets/Resources/Fusion/ (Texture Type =
-    /// Sprite) and they are picked up automatically, scaled to each tier's radius.
+    /// The bin is a glass beaker in an alchemist's laboratory: a tiled wall and shelves of
+    /// flasks behind, a bench under it, a bubbling liquid at the bottom, graduations and
+    /// a red MAX mark on the glass, and each remedy falls from a pipette.
+    ///
+    /// Remedies are drawn placeholders until painted ones are dropped into
+    /// Assets/Resources/Fusion/Remedes/ as tier0 .. tier8 (pill .. élixir).
     ///
     /// The bin lives in world space far from the runner (around x = 3000) and borrows
     /// the main camera while active (see MiniGame.TakeOverCamera).
@@ -26,14 +29,18 @@ namespace Platformer.Survival
     {
         public override string Id => "fusion";
         public override string Title => "FUSION";
-        public override string Description => "Fusionne les remèdes jusqu'au kit de soin";
+        public override string Description => "Le laboratoire : fusionne les remèdes jusqu'au kit de soin";
         public override string BestLine => SaveSystem.FusionBest > 0 ? $"Record : {SaveSystem.FusionBest} pts" : "Aucun record";
 
         public const int TierCount = 11;
         public static readonly float[] Radii = { 0.24f, 0.30f, 0.37f, 0.45f, 0.54f, 0.64f, 0.75f, 0.88f, 1.02f, 1.18f, 1.36f };
-        public static readonly string[] Names = { "Pilule", "Gélule", "Comprimé", "Pansement", "Sirop", "Seringue", "Fiole", "Kit de soin", "Couronne", "Île", "Planète" };
-        /// <summary>Fusing two of the tier below makes a healing kit: it leaves the bin for the player's stock.</summary>
-        public const int KitTier = 7;
+        public static readonly string[] Names = { "Pilule", "Gélule", "Comprimé", "Pansement", "Sirop", "Seringue", "Fiole", "Flacon", "Élixir", "Kit de soin", "Planète" };
+        /// <summary>
+        /// Fusing two of the tier below (two élixirs, the biggest pieces the beaker holds) makes
+        /// a healing kit: it leaves the beaker for the player's stock. Nine fusions deep - a
+        /// real goal, not a by-product.
+        /// </summary>
+        public const int KitTier = 9;
         public static readonly int[] MergeScores = { 0, 2, 4, 8, 12, 18, 26, 36, 48, 62, 80 };
         static readonly Color[] Colors =
         {
@@ -44,9 +51,9 @@ namespace Platformer.Survival
             new Color(0.72f, 0.30f, 0.58f), // sirop (purple)
             new Color(0.55f, 0.86f, 0.92f), // seringue (cyan)
             new Color(0.42f, 0.86f, 0.42f), // fiole (green)
+            new Color(0.96f, 0.62f, 0.22f), // flacon (amber)
+            new Color(0.78f, 0.50f, 0.98f), // élixir (glowing violet)
             new Color(0.90f, 0.20f, 0.18f), // kit de soin (red cross)
-            new Color(0.95f, 0.70f, 0.18f), // couronne
-            new Color(0.52f, 0.36f, 0.30f), // île flottante
             new Color(0.98f, 0.55f, 0.26f), // planète (the orange giant of the key art)
         };
 
@@ -117,7 +124,7 @@ namespace Platformer.Survival
             BuildWorld();
             // The bin (walls included) plus a small margin must always be on screen.
             const float binWidth = (HalfWidth + WallThickness) * 2f + 0.5f;
-            TakeOverCamera(new Vector3(Origin.x, Origin.y + 0.3f, -10f), 5.3f, ApogeeTheme.SkyAverage, binWidth);
+            TakeOverCamera(new Vector3(Origin.x, Origin.y + 0.3f, -10f), 5.3f, new Color(0.16f, 0.08f, 0.06f), binWidth);
             ResetGame();
         }
 
@@ -131,17 +138,173 @@ namespace Platformer.Survival
             held = null;
         }
 
+        // ---- the laboratory -------------------------------------------------------------
+
+        static readonly Color GlassColor = new Color(0.78f, 0.93f, 0.95f, 0.30f);
+        static readonly Color GlassEdge = new Color(0.86f, 0.97f, 1f, 0.75f);
+        static readonly Color LiquidColor = new Color(0.36f, 0.86f, 0.55f, 0.32f);
+        static readonly Color WoodColor = new Color(0.42f, 0.24f, 0.14f);
+        static readonly Color WoodDark = new Color(0.26f, 0.14f, 0.08f);
+        static readonly Color BrassColor = new Color(0.86f, 0.64f, 0.30f);
+
+        Transform pipette, pipetteBulb;
+        readonly List<Transform> bubbles = new();
+        float pipetteSqueeze;
+
         void BuildWorld()
         {
             root = new GameObject("FusionWorld").transform;
 
-            CreateBox("Backdrop", new Vector2(0f, (FloorY + TopY) / 2f), new Vector2(HalfWidth * 2f, TopY - FloorY), new Color(0.20f, 0.06f, 0.05f, 0.82f), -5, false);
-            CreateBox("Floor", new Vector2(0f, FloorY - WallThickness / 2f), new Vector2(HalfWidth * 2f + WallThickness * 2f, WallThickness), new Color(0.46f, 0.30f, 0.25f), -1, true);
-            CreateBox("LeftWall", new Vector2(-HalfWidth - WallThickness / 2f, (FloorY + TopY) / 2f), new Vector2(WallThickness, TopY - FloorY + WallThickness), new Color(0.46f, 0.30f, 0.25f), -1, true);
-            CreateBox("RightWall", new Vector2(HalfWidth + WallThickness / 2f, (FloorY + TopY) / 2f), new Vector2(WallThickness, TopY - FloorY + WallThickness), new Color(0.46f, 0.30f, 0.25f), -1, true);
+            // The laboratory wall: warm tiles from edge to edge of any screen.
+            var wall = new GameObject("LabWall");
+            wall.transform.SetParent(root, false);
+            wall.transform.position = Origin;
+            var wsr = wall.AddComponent<SpriteRenderer>();
+            wsr.sprite = LabTile;
+            wsr.drawMode = SpriteDrawMode.Tiled;
+            wsr.size = new Vector2(40f, 30f);
+            wsr.sortingOrder = -10;
 
-            var line = CreateBox("LoseLine", new Vector2(0f, LoseLineY), new Vector2(HalfWidth * 2f, 0.05f), new Color(0.8f, 0.2f, 0.15f, 0.55f), -2, false);
+            // Shelves of jars on both sides (a wide screen sees them; a phone sees the beaker).
+            BuildShelf(new Vector2(-HalfWidth - 2.6f, 2.2f), 3f);
+            BuildShelf(new Vector2(-HalfWidth - 2.6f, -0.6f), 3f);
+            BuildShelf(new Vector2(HalfWidth + 2.6f, 1.4f), 3f);
+            BuildShelf(new Vector2(HalfWidth + 2.6f, -1.4f), 3f);
+
+            // The bench the beaker stands on.
+            CreateBox("Bench", new Vector2(0f, FloorY - 0.85f), new Vector2(40f, 1.1f), WoodColor, -6, false);
+            CreateBox("BenchEdge", new Vector2(0f, FloorY - 0.32f), new Vector2(40f, 0.12f), new Color(0.6f, 0.38f, 0.22f), -5, false);
+            CreateBox("BenchShade", new Vector2(0f, FloorY - 3.4f), new Vector2(40f, 4f), WoodDark, -6, false);
+
+            // The beaker: glass walls and floor (solid), the liquid inside, its lip and marks.
+            CreateBox("Glass", new Vector2(0f, (FloorY + TopY) / 2f), new Vector2(HalfWidth * 2f, TopY - FloorY), new Color(0.75f, 0.9f, 0.95f, 0.10f), -4, false);
+            CreateBox("Liquid", new Vector2(0f, FloorY + 0.35f), new Vector2(HalfWidth * 2f, 0.7f), LiquidColor, 1, false);
+            CreateBox("LiquidTop", new Vector2(0f, FloorY + 0.71f), new Vector2(HalfWidth * 2f, 0.04f), new Color(0.7f, 1f, 0.8f, 0.55f), 1, false);
+            CreateBox("Floor", new Vector2(0f, FloorY - WallThickness / 2f), new Vector2(HalfWidth * 2f + WallThickness * 2f, WallThickness), GlassEdge, 3, true);
+            CreateBox("LeftWall", new Vector2(-HalfWidth - WallThickness / 2f, (FloorY + TopY) / 2f), new Vector2(WallThickness, TopY - FloorY + WallThickness), GlassColor, 3, true);
+            CreateBox("RightWall", new Vector2(HalfWidth + WallThickness / 2f, (FloorY + TopY) / 2f), new Vector2(WallThickness, TopY - FloorY + WallThickness), GlassColor, 3, true);
+            // A bright edge and a long highlight, so the walls read as glass.
+            CreateBox("LeftEdge", new Vector2(-HalfWidth - WallThickness + 0.03f, (FloorY + TopY) / 2f), new Vector2(0.05f, TopY - FloorY), GlassEdge, 4, false);
+            CreateBox("RightEdge", new Vector2(HalfWidth + WallThickness - 0.03f, (FloorY + TopY) / 2f), new Vector2(0.05f, TopY - FloorY), GlassEdge, 4, false);
+            CreateBox("Shine", new Vector2(-HalfWidth + 0.35f, (FloorY + TopY) / 2f + 0.6f), new Vector2(0.09f, (TopY - FloorY) * 0.7f), new Color(1f, 1f, 1f, 0.16f), 4, false);
+            // Lip: the rim flares out a little at the top.
+            CreateBox("LipL", new Vector2(-HalfWidth - WallThickness, TopY + 0.05f), new Vector2(0.55f, 0.12f), GlassEdge, 4, false);
+            CreateBox("LipR", new Vector2(HalfWidth + WallThickness, TopY + 0.05f), new Vector2(0.55f, 0.12f), GlassEdge, 4, false);
+            // Graduations up the left side, a longer one every metre.
+            for (int i = 1; FloorY + i * 0.5f < TopY - 0.2f; i++)
+            {
+                bool major = i % 2 == 0;
+                CreateBox("Mark", new Vector2(-HalfWidth + (major ? 0.22f : 0.14f), FloorY + i * 0.5f), new Vector2(major ? 0.42f : 0.26f, 0.03f), new Color(1f, 1f, 1f, 0.35f), 4, false);
+            }
+
+            // The MAX mark: a red line with a tab on each side of the glass.
+            var line = CreateBox("LoseLine", new Vector2(0f, LoseLineY), new Vector2(HalfWidth * 2f, 0.05f), new Color(0.9f, 0.2f, 0.15f, 0.55f), 4, false);
             loseLine = line.GetComponent<SpriteRenderer>();
+            CreateBox("MaxTabL", new Vector2(-HalfWidth - WallThickness - 0.2f, LoseLineY), new Vector2(0.4f, 0.16f), new Color(0.9f, 0.2f, 0.15f), 4, false);
+            CreateBox("MaxTabR", new Vector2(HalfWidth + WallThickness + 0.2f, LoseLineY), new Vector2(0.4f, 0.16f), new Color(0.9f, 0.2f, 0.15f), 4, false);
+
+            // Bubbles rising through the liquid.
+            bubbles.Clear();
+            for (int i = 0; i < 9; i++)
+            {
+                var b = CreateBox("Bubble", new Vector2(Random.Range(-HalfWidth + 0.2f, HalfWidth - 0.2f), FloorY + Random.Range(0.05f, 0.65f)),
+                    Vector2.one * Random.Range(0.06f, 0.12f), new Color(0.85f, 1f, 0.9f, 0.6f), 1, false);
+                b.GetComponent<SpriteRenderer>().sprite = PlaceholderVisuals.Circle(Color.white);
+                bubbles.Add(b.transform);
+            }
+
+            // The pipette the remedies fall from: a glass tube and a red rubber bulb.
+            pipette = new GameObject("Pipette").transform;
+            pipette.SetParent(root, false);
+            Part(pipette, PlaceholderVisuals.Square(Color.white), new Color(0.85f, 0.97f, 1f, 0.55f), new Vector2(0f, 0.45f), new Vector2(0.22f, 0.9f), 5);
+            Part(pipette, PlaceholderVisuals.Square(Color.white), new Color(1f, 1f, 1f, 0.7f), new Vector2(-0.06f, 0.45f), new Vector2(0.04f, 0.8f), 6);
+            Part(pipette, PlaceholderVisuals.Square(Color.white), BrassColor, new Vector2(0f, 0.95f), new Vector2(0.3f, 0.1f), 6);
+            pipetteBulb = Part(pipette, PlaceholderVisuals.Circle(Color.white), new Color(0.82f, 0.18f, 0.14f), new Vector2(0f, 1.22f), new Vector2(0.5f, 0.5f), 6);
+        }
+
+        void BuildShelf(Vector2 at, float width)
+        {
+            CreateBox("Shelf", at, new Vector2(width, 0.14f), WoodColor, -8, false);
+            CreateBox("ShelfShade", at + new Vector2(0f, -0.1f), new Vector2(width, 0.06f), WoodDark, -8, false);
+            // Jars of the remedies themselves, small, on the plank.
+            int n = Mathf.Max(2, Mathf.FloorToInt(width / 0.8f));
+            for (int i = 0; i < n; i++)
+            {
+                int tier = Random.Range(0, KitTier);
+                float size = Random.Range(0.42f, 0.6f);
+                var jar = CreateBox("Jar", at + new Vector2(-width / 2f + (i + 0.5f) * width / n, 0.07f + size / 2f), Vector2.one, Color.white, -7, false);
+                var sr = jar.GetComponent<SpriteRenderer>();
+                sr.sprite = PieceSprite(tier);
+                sr.color = new Color(0.85f, 0.85f, 0.85f, 0.9f);
+                jar.transform.localScale = Vector3.one * ScaleFor(sr.sprite, size);
+            }
+        }
+
+        Transform Part(Transform parent, Sprite sprite, Color color, Vector2 local, Vector2 size, int order)
+        {
+            var go = new GameObject("Part");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = local;
+            go.transform.localScale = new Vector3(size.x, size.y, 1f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.color = color;
+            sr.sortingOrder = order;
+            return go.transform;
+        }
+
+        static Sprite labTile;
+
+        /// <summary>One wall tile with its grout, repeated across the laboratory wall.</summary>
+        static Sprite LabTile
+        {
+            get
+            {
+                if (labTile != null) return labTile;
+                const int n = 32;
+                var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Repeat };
+                var px = new Color[n * n];
+                var tile = new Color(0.30f, 0.16f, 0.13f);
+                var grout = new Color(0.18f, 0.09f, 0.07f);
+                for (int y = 0; y < n; y++)
+                    for (int x = 0; x < n; x++)
+                    {
+                        bool g = x < 2 || y < 2;
+                        float shade = 1f + ((x * 7 + y * 13) % 5) * 0.012f - (y / (float)n) * 0.06f;
+                        px[y * n + x] = g ? grout : tile * shade;
+                    }
+                tex.SetPixels(px);
+                tex.Apply();
+                labTile = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), n / 0.9f, 0, SpriteMeshType.FullRect);
+                return labTile;
+            }
+        }
+
+        /// <summary>The pipette follows the remedy it holds and squeezes on a drop; bubbles rise.</summary>
+        void UpdateLab()
+        {
+            if (pipette != null)
+            {
+                float x = held != null ? held.transform.position.x : pipette.position.x;
+                float r = held != null ? Radii[held.tier] : 0.3f;
+                pipette.position = new Vector3(x, Origin.y + DropY + r + 0.02f, 0f);
+                pipetteSqueeze = Mathf.MoveTowards(pipetteSqueeze, 0f, Time.deltaTime * 4f);
+                if (pipetteBulb != null)
+                    pipetteBulb.localScale = new Vector3(0.5f + pipetteSqueeze * 0.18f, 0.5f - pipetteSqueeze * 0.2f, 1f);
+            }
+            foreach (var b in bubbles)
+            {
+                if (b == null) continue;
+                var p = b.position;
+                p.y += Time.deltaTime * 0.45f;
+                p.x += Mathf.Sin(Time.time * 3f + p.y * 6f) * 0.002f;
+                if (p.y > Origin.y + FloorY + 0.68f)
+                {
+                    p.y = Origin.y + FloorY + 0.04f;
+                    p.x = Origin.x + Random.Range(-HalfWidth + 0.2f, HalfWidth - 0.2f);
+                }
+                b.position = p;
+            }
         }
 
         GameObject CreateBox(string name, Vector2 localPos, Vector2 size, Color color, int order, bool solid)
@@ -261,6 +424,7 @@ namespace Platformer.Survival
             piece.dropped = true;
             piece.spawnTime = Time.time;
             Sfx.Drop();
+            pipetteSqueeze = 1f;
             dropCooldown = 0.5f;
             StartCoroutine(SpawnHeldAfter(0.5f));
         }
@@ -332,7 +496,9 @@ namespace Platformer.Survival
 
         void Update()
         {
-            if (!IsActive || !playing) return;
+            if (!IsActive) return;
+            UpdateLab();
+            if (!playing) return;
             dropCooldown -= Time.deltaTime;
             HandleInput();
             CheckOverflow();
@@ -427,7 +593,7 @@ namespace Platformer.Survival
         void RefreshKitHint()
         {
             if (kitHint != null)
-                kitHint.text = $"Kits de soin {SaveSystem.ReviveKits}/{SaveSystem.MaxReviveKits} [k]    deux fioles en font un";
+                kitHint.text = $"Kits de soin {SaveSystem.ReviveKits}/{SaveSystem.MaxReviveKits} [k]    deux élixirs en font un";
         }
 
         void GameOver()

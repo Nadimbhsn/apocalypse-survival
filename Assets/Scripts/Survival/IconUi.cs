@@ -46,6 +46,8 @@ namespace Platformer.Survival
             4 => Get("remedy4", (u, v) => Badge(u, v, badge, SyrupShade)),
             5 => Get("remedy5", (u, v) => Badge(u, v, badge, SyringeShade)),
             6 => Get("remedy6", (u, v) => Badge(u, v, badge, VialShade)),
+            7 => Get("remedy7", (u, v) => Badge(u, v, badge, FlaskShade)),
+            8 => Get("remedy8", (u, v) => Badge(u, v, badge, ElixirShade)),
             _ => Kit,
         };
 
@@ -314,6 +316,33 @@ namespace Platformer.Survival
             if (v + 0.18f > 0.08f) return new Color(0.9f, 0.97f, 0.95f);      // glass above the liquid
             bool bubble = Mathf.Sqrt((u + 0.12f) * (u + 0.12f) + (v + 0.3f) * (v + 0.3f)) < 0.05f;
             return bubble ? new Color(0.8f, 1f, 0.8f) : new Color(0.3f, 0.82f, 0.36f);
+        }
+
+        /// <summary>An amber Erlenmeyer flask with a cork.</summary>
+        static Color FlaskShade(float u, float v)
+        {
+            if (v > 0.42f && v < 0.6f && Mathf.Abs(u) < 0.13f) return new Color(0.62f, 0.42f, 0.24f);   // cork
+            if (v > 0.12f && v <= 0.42f && Mathf.Abs(u) < 0.12f) return Mathf.Abs(u) > 0.08f ? Ink : new Color(0.95f, 0.92f, 0.85f);
+            // conical body: half-width grows from 0.12 at the neck to 0.5 at the base
+            if (v > 0.12f || v < -0.56f) return Color.clear;
+            float half = Mathf.Lerp(0.5f, 0.12f, (v + 0.5f) / 0.62f);
+            if (Mathf.Abs(u) > half + 0.05f) return Color.clear;
+            if (Mathf.Abs(u) > half - 0.01f || v < -0.5f) return Ink;
+            return v < -0.12f ? new Color(0.96f, 0.6f, 0.18f) : new Color(0.95f, 0.92f, 0.85f);
+        }
+
+        /// <summary>A heart-shaped bottle of glowing élixir with a little star of light.</summary>
+        static Color ElixirShade(float u, float v)
+        {
+            if (v > 0.34f && v < 0.56f && Mathf.Abs(u) < 0.1f) return v > 0.5f ? Ink : new Color(0.95f, 0.85f, 0.4f);   // stopper
+            float x = u / 0.55f, y = (v + 0.08f) / 0.5f;
+            float h = x * x + Mathf.Pow(y - Mathf.Sqrt(Mathf.Abs(x)) * 0.6f, 2f);
+            if (h > 1.12f) return Color.clear;
+            if (h > 0.9f) return Ink;
+            float cy = v + 0.05f;
+            if (Mathf.Abs(u) + Mathf.Abs(cy) * 0.6f < 0.1f || (Mathf.Abs(u) < 0.025f && Mathf.Abs(cy) < 0.2f) || (Mathf.Abs(cy) < 0.025f && Mathf.Abs(u) < 0.2f))
+                return new Color(1f, 0.97f, 0.8f);
+            return Mix(new Color(0.55f, 0.25f, 0.85f), new Color(0.9f, 0.7f, 1f), 0.5f + (-u + v) * 0.5f);
         }
 
         // A white case with rounded corners, a handle on top and a red cross, like 🩹/⛑.
