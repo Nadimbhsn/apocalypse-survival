@@ -74,6 +74,14 @@ namespace Platformer.Survival
                 Tip = "Les squelettes à lanterne ne doivent pas te voir : reste hors de leur lumière ou cache-toi dans les buissons. Les zombies, eux, te pourchassent sans relâche.",
                 Rewards = "[c]   [g]",
             },
+            "bastion" => new GameGuide
+            {
+                Title = "BASTION",
+                Goal = "Les morts suivent le chemin jusqu'au bastion. Pose des tours sur les emplacements pour les arrêter avant la porte.",
+                Controls = "Touche un emplacement pour construire ou améliorer une tour. Touche ton héros puis le terrain pour le déplacer.",
+                Tip = "Archers et pylône touchent les volants, le canon frappe les groupes, le givre ralentit. Ton héros a un pouvoir selon ton personnage : utilise-le au bon moment !",
+                Rewards = "[c]   [g]",
+            },
             _ => new GameGuide { Title = id.ToUpperInvariant(), Goal = "", Controls = "", Tip = "", Rewards = "" },
         };
     }

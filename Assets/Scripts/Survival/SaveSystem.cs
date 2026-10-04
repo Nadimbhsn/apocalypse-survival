@@ -94,6 +94,22 @@ namespace Platformer.Survival
             set { PlayerPrefs.SetInt("labyrinth_best_floor", value); PlayerPrefs.Save(); }
         }
 
+        /// <summary>Stars (0 to 3) earned on a Bastion campaign map.</summary>
+        public static int GetBastionStars(int map) => PlayerPrefs.GetInt($"bastion_stars_{map}", 0);
+        public static void SetBastionStars(int map, int stars)
+        {
+            if (stars <= GetBastionStars(map)) return;
+            PlayerPrefs.SetInt($"bastion_stars_{map}", stars);
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>Most waves held on Bastion's endless map.</summary>
+        public static int BastionEndlessBest
+        {
+            get => PlayerPrefs.GetInt("bastion_endless_best", 0);
+            set { PlayerPrefs.SetInt("bastion_endless_best", value); PlayerPrefs.Save(); }
+        }
+
         /// <summary>Highest wave fully survived in the Barricade mini-game.</summary>
         public static int BarricadeBestWave
         {
