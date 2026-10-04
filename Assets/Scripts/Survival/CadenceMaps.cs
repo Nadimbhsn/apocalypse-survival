@@ -11,7 +11,8 @@ namespace Platformer.Survival
     /// <summary>
     /// The La Cadence levels, one per difficulty level of the runner's activities: the
     /// further the run has gone, the harder the level it meets (see ActivityLevel). Each is
-    /// about ninety beats - forty seconds of music - packed tight.
+    /// sixty to seventy-five beats - about half a minute of music - with no empty stretch
+    /// between its sections, yet a breath between two moves.
     ///
     /// A level is written as a script, one command per line, in beats of the 140 BPM track
     /// (the run speed is constant between speed portals, so a beat is a place):
@@ -42,219 +43,163 @@ namespace Platformer.Survival
             new CadenceMap
             {
                 Name = "PREMIER SOUFFLE", Level = 1, Script = @"
-# jumps, singles to triples, and a pit
-spike 4
-coins 4
-spike 6
-spike 9 2
-spike 12
-spike 14
-spike 17 3
-coins 17.3
-pit 20 21.25
-# blocks, stairs and a pad over a pit
-plat 23 25 1
-coin 0 25.8 3.3
-spike 28
-coins 28
-plat 30 32 1
-plat 32 34 2
-coin 1 35 3.9
-spike 36.5
-pad 39.3
-pit 39.7 41.8
-check 44
-# orbs over a bed of spikes, then block hops
-arp 46
-strip 46.5 53 0
+spike 3
+spike 5
+spike 7 2
+coins 7
+spike 10
+spike 12 3
+pit 15 16.25
+plat 18 20 1
+coin 0 20.8 3.3
+spike 22.5
+plat 24 26 1
+plat 26 28 2
+coin 1 29 3.9
+spike 30.5
+pad 33.3
+pit 33.7 35.8
+check 38
+arp 38
+strip 40.5 47 0
+orb 40.5 2.3
+orb 42.5 2.3
+orb 44.5 2.3
 orb 46.5 2.3
-orb 48.5 2.3
-orb 50.5 2.3
-orb 52.5 2.3
-spike 56
-coins 56
-plat 58.2 59.0 1
-spike 59.6
-plat 60.2 61.0 1
-spike 61.4
-spike 64.5 2
-check 68
-# finale: a pad into three orbs over the widest pit
-spike 70
-coins 70
-pad 71.3
-pit 71.7 78.9
-orb 72.68 4.05
-orb 74.68 4.05
-orb 76.68 4.05
-coin 2 75.68 5.8
-spike 82.5
-spike 85 2
-spike 88
-end 92
+spike 49
+pad 50.3
+pit 50.7 57.9
+orb 51.68 4.05
+orb 53.68 4.05
+orb 55.68 4.05
+coin 2 54.68 5.8
+spike 60
+end 62
 ",
             },
             new CadenceMap
             {
                 Name = "CONTRETEMPS", Level = 2, Script = @"
-# quick jumps
 spike 3
 spike 5
 spike 7 2
 coins 7
 plat 10 12 1
 coin 0 12.8 3.3
-spike 15
-spike 17
-spike 19 3
-coins 19.3
-pit 22 23.25
-check 26
-# upside down: walk the ceiling, jump down past its spikes
-ceil 28 43.9 4.6
-ceil 45.1 52 4.6
-flip 29
-strip 31 48 0
-cspike 33
-cspike 36
-cspike 38.5 2
-coin 1 41.5 2.25
-cspike 48
-normal 50
-check 55
-# faster: the same moves, a third quicker
-arp 56
-speed 58 8.3
-spike 61
-coins 61
-spike 63 2
-spike 65
-plat 67.5 70.5 1
-spike 69 1 1
-pad 73
-pit 73.3 75.4
-strip 76.5 79 0
-orb 77 2.3
-coin 2 78 4.2
-spike 82 3
-coins 82.3
-pad 84
-fpillar 85 2.0
-spike 88.5
-end 91
+spike 15 3
+pit 18 19.25
+check 21
+ceil 22 36 4.6
+flip 23
+strip 25 37 0
+cspike 27
+cspike 29.5
+cspike 32 2
+coin 1 34.5 2.25
+normal 36
+check 40
+arp 40
+speed 41 8.3
+spike 44
+spike 46 2
+plat 48.5 51.5 1
+spike 50 1 1
+pad 54
+pit 54.3 56.4
+strip 57.5 60 0
+orb 58 2.3
+coin 2 59 4.2
+spike 63 3
+end 66
 ",
             },
             new CadenceMap
             {
                 Name = "ENVOL", Level = 3, Script = @"
-# a short run-up
-spike 4
-coins 4
-spike 6 2
-spike 9
-spike 11
-spike 14 3
-plat 17 19 1
-coin 0 19.8 3.3
-check 22
-# the ship: hold to climb, release to dive between the pillars
-ceil 23.5 58 6.5
-ship 24
-strip 26 56 0
-cstrip 26 56 6.5
-fpillar 29 3.4
+spike 3
+spike 5 2
+spike 8
+spike 10 3
+plat 13 15 1
+coin 0 15.8 3.3
+check 18
+ceil 19.5 46 6.5
+ship 20
+strip 22 44 0
+cstrip 22 44 6.5
+fpillar 24.5 3.4
+cpillar 27 3.0
+fpillar 29.5 3.4
 cpillar 32 3.0
-fpillar 35 3.4
-cpillar 38 3.0
-fpillar 41.5 2.0
-cpillar 41.5 4.6
-fpillar 44.5 3.8
-cpillar 47 2.4
-fpillar 49.5 1.8
-cpillar 49.5 4.3
-coin 1 51.5 5.3
-cpillar 54.5 2.6
-cube 58
-check 62
-medkit 62
-# and upside down
-arp 62
-ceil 63 78.9 4.6
-ceil 80.1 87 4.6
-flip 64
-strip 66 83 0
-cspike 68
-cspike 71
-cspike 73.5 2
-coin 2 76.5 2.25
-cspike 83
-normal 85
-spike 89.5
-end 93
+fpillar 35 2.0
+cpillar 35 4.6
+fpillar 38 3.8
+cpillar 40.5 2.4
+coin 1 43 5.3
+cube 46
+check 49
+medkit 49
+arp 49
+ceil 50 62 4.6
+flip 51
+strip 53 63 0
+cspike 55
+cspike 57.5
+cspike 60 2
+coin 2 61.5 2.25
+normal 62
+spike 67
+end 69
 ",
             },
             new CadenceMap
             {
                 Name = "PULSAR", Level = 4, Script = @"
 start 8.3
-# fast from the first beat
-spike 4
-coins 4
-spike 6
-spike 8 2
-spike 11
-spike 13
-spike 15 3
-pit 18 19.25
-plat 21 23 1
-coin 0 23.8 3.3
-spike 25.5
-pad 28.3
-pit 28.7 30.8
-check 33
-# a tighter flight: a pillar every two and a half beats
-ceil 34.5 64 6.5
-ship 35
-strip 37 62 0
-cstrip 37 62 6.5
+spike 3
+spike 5
+spike 7 2
+spike 10
+spike 12 3
+pit 15 16.25
+plat 18 20 1
+coin 0 20.8 3.3
+pad 23.3
+pit 23.7 25.8
+check 28
+ceil 29.5 52 6.5
+ship 30
+strip 32 50 0
+cstrip 32 50 6.5
+fpillar 34 3.6
+cpillar 36.5 2.8
 fpillar 39 3.6
 cpillar 41.5 2.8
-fpillar 44 3.6
-cpillar 46.5 2.8
-fpillar 49 2.2
-cpillar 49 4.5
-fpillar 51.5 3.8
-cpillar 54 2.2
-fpillar 56.5 1.8
-cpillar 56.5 4.0
-coin 1 58.5 5.3
-cpillar 60.5 2.6
-cube 64
-check 67
-medkit 67
-# orbs, then the pad and orbs over the long pit
-arp 67
-strip 69.5 76 0
-orb 69.5 2.3
-orb 71.5 2.3
-orb 73.5 2.3
-orb 75.5 2.3
-spike 79
-pad 80.3
-pit 80.7 87.9
-orb 81.68 4.05
-orb 83.68 4.05
-orb 85.68 4.05
-coin 2 86.68 6.0
-spike 90
-end 92
+fpillar 44 2.2
+cpillar 44 4.5
+fpillar 46.5 1.8
+cpillar 46.5 4.0
+coin 1 48.5 5.3
+cube 52
+check 55
+medkit 55
+arp 55
+spike 57
+pad 58.3
+pit 58.7 65.9
+orb 59.68 4.05
+orb 61.68 4.05
+orb 63.68 4.05
+coin 2 64.68 6.0
+spike 68
+spike 70 2
+end 72
 ",
             },
             new CadenceMap
             {
                 Name = "APOGÉE", Level = 5, Script = @"
 start 8.3
-# no warm-up
 spike 3
 spike 5 2
 spike 7
@@ -265,48 +210,40 @@ spike 16.6
 plat 17.2 18 1
 spike 18.4
 check 21
-# upside down, spikes closer together
-ceil 22 36.9 4.6
-ceil 38.1 45 4.6
+ceil 22 34 4.6
 flip 23
-strip 25 42 0
+strip 25 35 0
 cspike 27
 cspike 29 2
-cspike 31.5
-cspike 33.5 2
-coin 0 35.5 2.25
-cspike 41
-normal 43
-check 47
-medkit 47
-# the tightest flight
-ceil 48.5 73 6.5
-ship 49
-strip 51 71 0
-cstrip 51 71 6.5
-fpillar 53 3.6
-cpillar 55.5 2.8
-fpillar 58 3.8
-cpillar 60.5 2.4
-fpillar 63 2.0
-cpillar 63 4.4
-coin 1 65 5.4
-cpillar 67.5 2.6
-fpillar 69.5 3.4
-cube 73
-check 76
-# faster still, and home over the pit
-arp 76
-speed 77 9.2
-spike 79
-pad 80.3
-pit 80.7 87.9
-orb 81.68 4.05
-orb 83.68 4.05
-orb 85.68 4.05
-coin 2 84.68 6.0
-spike 90
-end 92
+cspike 31.5 2
+coin 0 33.5 2.25
+normal 34
+check 38
+medkit 38
+ceil 39.5 58 6.5
+ship 40
+strip 42 56 0
+cstrip 42 56 6.5
+fpillar 44 3.6
+cpillar 46.5 2.6
+fpillar 49 3.8
+cpillar 51 2.4
+fpillar 53 2.0
+cpillar 53 4.4
+coin 1 55 5.4
+cube 58
+check 61
+arp 61
+speed 62 9.2
+spike 64
+pad 65.3
+pit 65.7 72.9
+orb 66.68 4.05
+orb 68.68 4.05
+orb 70.68 4.05
+coin 2 69.68 6.0
+spike 75
+end 77
 ",
             },
         };

@@ -7,10 +7,11 @@ using Platformer.Mechanics;
 namespace Platformer.Survival
 {
     /// <summary>
-    /// Procedural art for the runner's rhythm section (La Cadence): Geometry-Dash-style
-    /// shapes - dark fills behind a bright rim - drawn once at runtime and tinted per use.
-    /// Everything is baked white-on-dark so a single sprite serves every colour, and the
-    /// beat pulse only has to change a renderer's colour.
+    /// Procedural art for the runner's rhythm section (La Cadence), in the Apogée's own
+    /// look rather than an arcade one: crimson thorns, warm stone blocks with a lip of red
+    /// grass, paper lanterns to tap, red mushrooms that fling, stone arches for the gates,
+    /// pennants for checkpoints and golden feathers as the hidden prizes. Drawn once at
+    /// runtime; a renderer's tint recolours the lit parts.
     /// </summary>
     public static class CadenceArt
     {
@@ -78,80 +79,133 @@ namespace Platformer.Survival
             return Mathf.Sqrt(dx * dx + dy * dy);
         }
 
-        static Color SpikeShade(float x, float y, int w, int h)
+        // ---- the Apogée look: thorns, stone, lanterns, mushrooms, arches, feathers -------
+        // Colours are baked in (warm stone, crimson thorns); the renderer's tint only warms
+        // or recolours the lit parts, and the beat pulse only nudges their brightness.
+
+        static float Hash(float x, float y)
         {
-            float ax = 3f, ay = 1f, bx = w - 3f, by = 1f, cx = w * 0.5f, cy = h - 2f;
-            // inside test via edge signs
+            float h = Mathf.Sin(x * 12.9898f + y * 78.233f) * 43758.5453f;
+            return h - Mathf.Floor(h);
+        }
+
+        static bool InTri(float x, float y, float ax, float ay, float bx, float by, float cx, float cy)
+        {
             float e1 = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
             float e2 = (cx - bx) * (y - by) - (cy - by) * (x - bx);
             float e3 = (ax - cx) * (y - cy) - (ay - cy) * (x - cx);
-            bool inside = e1 >= 0 && e2 >= 0 && e3 >= 0;
-            if (!inside) return Color.clear;
-            float d = Mathf.Min(SegDist(x, y, ax, ay, bx, by), Mathf.Min(SegDist(x, y, bx, by, cx, cy), SegDist(x, y, cx, cy, ax, ay)));
-            return Layered(d, 5f);
+            return (e1 >= 0 && e2 >= 0 && e3 >= 0) || (e1 <= 0 && e2 <= 0 && e3 <= 0);
         }
 
-        static Color BlockShade(float x, float y, int w, int h)
+        /// <summary>A crimson thorn bush: a dark woody tuft with three thorns and two leaves.</summary>
+        static Color SpikeShade(float x, float y, int w, int h)
         {
-            float d = Mathf.Min(Mathf.Min(x, w - x), Mathf.Min(y, h - y));
-            if (d < 4.5f) return Rim;
-            // A faint inner frame, the Geometry Dash block's signature.
-            if (d > 10f && d < 12f) return Color.Lerp(Fill, Rim, 0.35f);
-            return Fill;
-        }
-
-        static Color RingShade(float x, float y, int w, int h)
-        {
-            float cx = w * 0.5f, cy = h * 0.5f;
-            float r = Mathf.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-            float outer = w * 0.46f, inner = w * 0.36f;
-            if (r <= outer && r >= inner) return Rim;
-            if (r < inner)
-            {
-                float glow = Mathf.Clamp01(1f - r / inner) * 0.55f + 0.12f;
-                return new Color(1f, 1f, 1f, glow);
-            }
+            var thorn = new Color(0.80f, 0.17f, 0.11f);
+            var thornLit = new Color(1f, 0.42f, 0.28f);
+            var wood = new Color(0.30f, 0.08f, 0.06f);
+            var leaf = new Color(0.95f, 0.42f, 0.16f);
+            // leaves first so the thorns sit in front of them
+            float l1 = Mathf.Pow((x - 17f) / 8f, 2f) + Mathf.Pow((y - 24f) / 4.5f, 2f);
+            float l2 = Mathf.Pow((x - 47f) / 8f, 2f) + Mathf.Pow((y - 28f) / 4.5f, 2f);
+            bool thornC = InTri(x, y, 23f, 8f, 41f, 8f, 32f, 62f);
+            bool thornL = InTri(x, y, 7f, 8f, 23f, 8f, 9f, 42f);
+            bool thornR = InTri(x, y, 41f, 8f, 57f, 8f, 55f, 42f);
+            if (thornC) return x < 31f ? thornLit : thorn;
+            if (thornL) return x < 12f ? thornLit : thorn;
+            if (thornR) return x < 48f ? thornLit : thorn;
+            if (l1 < 1f || l2 < 1f) return leaf;
+            float mound = Mathf.Pow((x - 32f) / 29f, 2f) + Mathf.Pow((y - 4f) / 9f, 2f);
+            if (mound < 1f && y >= 0f) return wood;
             return Color.clear;
         }
 
+        /// <summary>A block of warm stone with a lip of crimson grass on top (nine-sliced).</summary>
+        static Color BlockShade(float x, float y, int w, int h)
+        {
+            var edge = new Color(0.20f, 0.12f, 0.10f);
+            float grassTop = h - 4f + 2.5f * Mathf.Sin(x * 0.7f);
+            if (y > grassTop) return Color.clear;
+            if (y > h - 12f) return y > h - 6f ? new Color(0.92f, 0.30f, 0.18f) : new Color(0.70f, 0.14f, 0.10f);
+            if (x < 2.5f || x > w - 2.5f || y < 2.5f) return edge;
+            float n = Hash(Mathf.Floor(x / 3f), Mathf.Floor(y / 3f)) * 0.08f;
+            var stone = new Color(0.48f + n, 0.36f + n, 0.31f + n);
+            return y > h - 15f ? stone * 0.8f : stone;
+        }
+
+        /// <summary>A paper lantern glowing gold: ribbed body, dark caps, a soft halo.</summary>
+        static Color RingShade(float x, float y, int w, int h)
+        {
+            float cx = w * 0.5f, cy = h * 0.48f;
+            if (Mathf.Abs(x - cx) < 9f && y > cy + 28f && y < cy + 36f) return new Color(0.35f, 0.18f, 0.10f);   // top cap
+            if (Mathf.Abs(x - cx) < 9f && y < cy - 28f && y > cy - 33f) return new Color(0.35f, 0.18f, 0.10f);   // bottom cap
+            float nx = (x - cx) / 25f, ny = (y - cy) / 29f;
+            float r = nx * nx + ny * ny;
+            if (r <= 1f)
+            {
+                float rib = Mathf.Abs(Mathf.Sin(nx * Mathf.PI * 2.2f));
+                float glow = 0.75f + 0.25f * (1f - r);
+                var c = rib < 0.12f ? new Color(0.85f, 0.62f, 0.35f) : new Color(1f, 0.95f, 0.78f);
+                return new Color(c.r * glow, c.g * glow, c.b * glow, 1f);
+            }
+            float d = Mathf.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+            if (d < w * 0.48f) return new Color(1f, 0.9f, 0.6f, 0.28f * (1f - d / (w * 0.48f)));
+            return Color.clear;
+        }
+
+        /// <summary>A springy red mushroom with white spots.</summary>
         static Color PadShade(float x, float y, int w, int h)
         {
-            float cx = w * 0.5f, rx = w * 0.46f, ry = h * 0.9f;
-            float nx = (x - cx) / rx, ny = y / ry;
-            float r = nx * nx + ny * ny;
-            if (r > 1f) return Color.clear;
-            return r > 0.55f ? Rim : new Color(1f, 1f, 1f, 0.55f);
+            float cx = w * 0.5f;
+            if (y < 11f) return Mathf.Abs(x - cx) < 7f ? new Color(0.95f, 0.90f, 0.80f) : Color.clear;   // stem
+            float nx = (x - cx) / 30f, ny = (y - 10f) / 21f;
+            if (nx * nx + ny * ny > 1f) return Color.clear;
+            float s1 = Mathf.Pow(x - cx, 2f) + Mathf.Pow(y - 23f, 2f);
+            float s2 = Mathf.Pow(x - cx + 15f, 2f) + Mathf.Pow(y - 15f, 2f);
+            float s3 = Mathf.Pow(x - cx - 15f, 2f) + Mathf.Pow(y - 15f, 2f);
+            if (s1 < 16f || s2 < 10f || s3 < 10f) return new Color(1f, 0.97f, 0.92f);
+            return y < 13f ? new Color(0.55f, 0.10f, 0.08f) : new Color(0.86f, 0.18f, 0.14f);
         }
 
+        /// <summary>A stone arch with a glow inside it; the tint gives each gate its colour.</summary>
         static Color PortalShade(float x, float y, int w, int h)
         {
-            float nx = (x - w * 0.5f) / (w * 0.46f), ny = (y - h * 0.5f) / (h * 0.48f);
-            float r = Mathf.Sqrt(nx * nx + ny * ny);
-            if (r > 1f) return Color.clear;
-            if (r > 0.78f) return Rim;
-            return new Color(1f, 1f, 1f, 0.16f + 0.18f * (1f - r));
+            float cx = w * 0.5f;
+            const float spring = 116f;               // where the pillars turn into the arch
+            bool outer = y < spring ? (x > 2f && x < w - 2f) : Mathf.Pow(x - cx, 2f) + Mathf.Pow(y - spring, 2f) < 22f * 22f;
+            if (!outer || y < 1f) return Color.clear;
+            bool inner = y < spring ? (x > 11f && x < w - 11f) : Mathf.Pow(x - cx, 2f) + Mathf.Pow(y - spring, 2f) < 13f * 13f;
+            if (inner) return new Color(1f, 1f, 1f, 0.14f + 0.12f * Mathf.Clamp01(y / h));
+            // stones of the frame, with joints every 16 px and a glowing rune now and then
+            bool joint = y < spring && Mathf.Repeat(y, 16f) < 1.5f;
+            bool rune = y < spring && Mathf.Repeat(y + 8f, 32f) < 4f && Mathf.Abs(x - (x < cx ? 6.5f : w - 6.5f)) < 1.6f;
+            if (rune) return Color.white;
+            float n = Hash(Mathf.Floor(x / 4f), Mathf.Floor(y / 8f)) * 0.1f;
+            return joint ? new Color(0.45f, 0.42f, 0.40f) : new Color(0.78f + n, 0.75f + n, 0.72f + n);
         }
 
+        /// <summary>A checkpoint pennant: a dark pole and a pale flag that the tint colours.</summary>
         static Color DiamondShade(float x, float y, int w, int h)
         {
-            float d = Mathf.Abs(x - w * 0.5f) + Mathf.Abs(y - h * 0.5f);
-            float outer = w * 0.46f;
-            if (d > outer) return Color.clear;
-            return d > outer - 7f ? Rim : new Color(1f, 1f, 1f, 0.18f);
+            if (x > 13f && x < 18f && y > 3f && y < 61f) return new Color(0.30f, 0.18f, 0.12f);
+            float wave = 2.5f * Mathf.Sin(y * 0.25f);
+            if (InTri(x, y, 18f, 60f, 18f, 32f, 57f + wave, 46f)) return Color.white;
+            return Color.clear;
         }
 
+        /// <summary>A golden feather: a curved vane on a bright quill, its barbs drawn in.</summary>
         static Color CoinShade(float x, float y, int w, int h)
         {
-            float cx = w * 0.5f, cy = h * 0.5f;
-            float dx = x - cx, dy = y - cy;
-            float r = Mathf.Sqrt(dx * dx + dy * dy);
-            float outer = w * 0.46f;
-            if (r > outer) return Color.clear;
-            if (r > outer - 6f) return Rim;
-            // five-pointed star cut into the face
-            float a = Mathf.Atan2(dy, dx) + Mathf.PI / 2f;
-            float star = 0.42f + 0.22f * Mathf.Cos(5f * a);
-            return r < outer * star ? Rim : new Color(0.85f, 0.85f, 0.85f, 1f);
+            // along the feather (diagonal, tip up-right) and across it
+            float u = ((x - w * 0.5f) + (y - h * 0.5f)) * 0.7071f;
+            float v = (-(x - w * 0.5f) + (y - h * 0.5f)) * 0.7071f;
+            float t = (u + 38f) / 76f;                  // 0 at the quill end, 1 at the tip
+            if (t < -0.08f || t > 1f) return Color.clear;
+            if (t < 0.05f) return Mathf.Abs(v) < 1.8f ? new Color(0.95f, 0.9f, 0.75f) : Color.clear;   // bare quill
+            float half = 15f * Mathf.Sin(Mathf.PI * Mathf.Clamp01((t - 0.05f) / 0.95f)) + v * 0.08f;
+            if (Mathf.Abs(v) > half) return Color.clear;
+            if (Mathf.Abs(v) < 1.6f) return Color.white;                                              // the quill
+            bool barb = Mathf.Repeat(u * 0.5f + Mathf.Abs(v) * 0.35f, 3f) < 0.7f;
+            return barb ? new Color(0.78f, 0.72f, 0.62f) : new Color(1f, 0.97f, 0.88f);
         }
     }
 
@@ -319,11 +373,11 @@ namespace Platformer.Survival
         Transform pivot;
         SpriteRenderer copy;
         TrailRenderer trail;
+        SpriteRenderer glider;
         float angle;
+        Vector2 squash = Vector2.one;
+        bool wasGrounded = true;
         public bool shipMode;
-
-        /// <summary>Degrees per second while airborne: one full turn over a two-beat jump.</summary>
-        const float SpinSpeed = 420f;
 
         public static CadenceBody Attach(PlayerController target, Color trailColor)
         {
@@ -340,16 +394,29 @@ namespace Platformer.Survival
             body.copy = art.AddComponent<SpriteRenderer>();
             body.copy.sortingOrder = (body.source != null ? body.source.sortingOrder : 0) + 6;
 
-            // A short glowing trail behind the character, the section's other signature.
+            // A faint wisp of wind behind the character - not a neon streak.
             body.trail = go.AddComponent<TrailRenderer>();
-            body.trail.time = 0.22f;
-            body.trail.startWidth = 0.28f;
+            body.trail.time = 0.12f;
+            body.trail.startWidth = 0.1f;
             body.trail.endWidth = 0f;
             body.trail.minVertexDistance = 0.05f;
             body.trail.material = new Material(Shader.Find("Sprites/Default"));
-            body.trail.startColor = new Color(trailColor.r, trailColor.g, trailColor.b, 0.75f);
-            body.trail.endColor = new Color(trailColor.r, trailColor.g, trailColor.b, 0f);
+            body.trail.startColor = new Color(1f, 0.95f, 0.85f, 0.35f);
+            body.trail.endColor = new Color(1f, 0.95f, 0.85f, 0f);
             body.trail.sortingOrder = body.copy.sortingOrder - 1;
+
+            // The glider for the flying parts: a great crimson leaf held overhead.
+            var wing = new GameObject("Glider");
+            wing.transform.SetParent(body.pivot, false);
+            wing.transform.localPosition = new Vector3(0f, 0.62f, 0f);
+            wing.transform.localRotation = Quaternion.Euler(0f, 0f, -8f);
+            body.glider = wing.AddComponent<SpriteRenderer>();
+            var leafTex = ApogeeTheme.LeafTexture;
+            if (leafTex != null)
+                body.glider.sprite = Sprite.Create(leafTex, new Rect(0, 0, leafTex.width, leafTex.height), new Vector2(0.5f, 0.5f), leafTex.width / 1.5f);
+            body.glider.color = new Color(1f, 0.55f, 0.4f);
+            body.glider.sortingOrder = body.copy.sortingOrder + 1;
+            body.glider.enabled = false;
 
             if (body.source != null) body.source.enabled = false;
             return body;
@@ -371,7 +438,7 @@ namespace Platformer.Survival
         public void SetTrailColor(Color c)
         {
             if (trail == null) return;
-            trail.startColor = new Color(c.r, c.g, c.b, 0.75f);
+            trail.startColor = new Color(c.r, c.g, c.b, 0.35f);
             trail.endColor = new Color(c.r, c.g, c.b, 0f);
         }
 
@@ -394,21 +461,27 @@ namespace Platformer.Survival
             copy.transform.localPosition = -offset;
 
             float dt = Time.deltaTime;
+            if (glider != null) glider.enabled = shipMode && copy.enabled;
             if (shipMode)
             {
-                // Nose follows the flight path, like the ship.
-                float target = Mathf.Clamp(Mathf.Atan2(player.velocity.y, Mathf.Max(1f, player.velocity.x)) * Mathf.Rad2Deg, -35f, 35f);
-                angle = Mathf.LerpAngle(angle, target, 1f - Mathf.Exp(-14f * dt));
-            }
-            else if (!player.IsGrounded)
-            {
-                angle -= SpinSpeed * dt * player.gravitySign;
+                // Gliding: the body leans gently with the flight path.
+                float target = Mathf.Clamp(Mathf.Atan2(player.velocity.y, Mathf.Max(1f, player.velocity.x)) * Mathf.Rad2Deg, -20f, 20f);
+                angle = Mathf.LerpAngle(angle, target, 1f - Mathf.Exp(-10f * dt));
             }
             else
             {
-                angle = Mathf.MoveTowardsAngle(angle, 0f, 1100f * dt);
+                // On foot the character stays upright - no spinning: it stretches as it takes
+                // off and squashes as it lands, and leans a little into the run.
+                bool grounded = player.IsGrounded;
+                if (wasGrounded && !grounded) squash = new Vector2(0.86f, 1.16f);
+                else if (!wasGrounded && grounded) squash = new Vector2(1.18f, 0.82f);
+                wasGrounded = grounded;
+                float lean = grounded ? -6f : -2f;
+                angle = Mathf.MoveTowardsAngle(angle, lean * player.gravitySign, 400f * dt);
             }
+            squash = Vector2.Lerp(squash, Vector2.one, 1f - Mathf.Exp(-12f * dt));
             pivot.localRotation = Quaternion.Euler(0f, 0f, angle);
+            pivot.localScale = new Vector3(squash.x, squash.y, 1f);
         }
     }
 }

@@ -163,8 +163,8 @@ namespace Platformer.Survival
                     return new ZoneDef
                     {
                         Kind = kind, Title = "LA CADENCE", Subtitle = "Tout avance seul : saute en rythme !",
-                        // A deep violet dusk, so the gold rims and red spikes carry the scene.
-                        Tint = new Color(0.62f, 0.50f, 0.95f), Ground = new Color(0.20f, 0.10f, 0.16f),
+                        // A late, warm dusk over the stone and the thorns.
+                        Tint = new Color(0.98f, 0.66f, 0.56f), Ground = new Color(0.28f, 0.12f, 0.10f),
                         ZombieIntervalMult = 99f, PackChance = 0f, AllowBrute = false,
                         RuinSpacingMin = 14f, RuinSpacingMax = 26f,
                     };

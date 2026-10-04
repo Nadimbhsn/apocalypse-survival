@@ -44,8 +44,9 @@ namespace Platformer.Survival
         const float CadenceShipCeiling = 6.5f;
 
         static readonly Color CadenceGold = new Color(0.96f, 0.74f, 0.36f);
-        static readonly Color CadenceSpikeColor = new Color(1f, 0.44f, 0.30f);
-        static readonly Color CadencePadColor = new Color(1f, 0.84f, 0.22f);
+        // The art is coloured already (see CadenceArt): thorns and mushrooms keep theirs.
+        static readonly Color CadenceSpikeColor = Color.white;
+        static readonly Color CadencePadColor = Color.white;
         static readonly Color CadenceOrbColor = new Color(1f, 0.90f, 0.38f);
         static readonly Color CadenceFlipColor = new Color(0.35f, 0.85f, 1f);
         static readonly Color CadenceShipColor = new Color(1f, 0.45f, 0.80f);
@@ -301,7 +302,7 @@ namespace Platformer.Survival
             sr.sprite = CadenceArt.Block;
             sr.drawMode = SpriteDrawMode.Sliced;
             sr.size = new Vector2(xMax - xMin, yMax - yMin);
-            sr.color = CadenceGold;
+            sr.color = Color.white;
             sr.sortingOrder = -1;
             var col = go.AddComponent<BoxCollider2D>();
             col.size = sr.size;
@@ -536,7 +537,7 @@ namespace Platformer.Survival
                             cadenceCoins[e.coinIndex] = true;
                             Sfx.Milestone();
                             Fx.Burst(new Vector3(e.x, e.y, 0f), CadenceGold, 26, 4f, 0.12f, 0.3f);
-                            Fx.Text(new Vector3(e.x, e.y + 0.7f, 0f), "PIÈCE SECRÈTE !", CadenceGold, 1.1f);
+                            Fx.Text(new Vector3(e.x, e.y + 0.7f, 0f), "PLUME D'OR !", CadenceGold, 1.1f);
                             if (e.go != null) e.go.SetActive(false);
                         }
                         break;
@@ -585,7 +586,7 @@ namespace Platformer.Survival
                     break;
                 case CadenceKind.ShipOn:
                     SetCadenceShip(true);
-                    GateFlash(e, "MAINTIENS POUR VOLER");
+                    GateFlash(e, "MAINTIENS POUR PLANER");
                     break;
                 case CadenceKind.ShipOff:
                     SetCadenceShip(false);
@@ -761,7 +762,7 @@ namespace Platformer.Survival
             player.controlEnabled = true;
             cadenceRespawning = false;
 
-            Fx.Text(new Vector3(cp.x, cp.y + 1.4f, 0f), $"TENTATIVE {cadenceAttempts}", ApogeeTheme.Cream, 1.1f);
+            Fx.Text(new Vector3(cp.x, cp.y + 1.4f, 0f), $"ESSAI {cadenceAttempts}", ApogeeTheme.Cream, 1.1f);
         }
 
         void FinishCadence()
@@ -781,8 +782,8 @@ namespace Platformer.Survival
 
             Sfx.Milestone();
             Fx.Burst(player.transform.position, CadenceGold, 40, 6f, 0.14f, 0.4f);
-            string tries = cadenceAttempts == 1 ? "sans une seule chute !" : $"en {cadenceAttempts} tentatives";
-            ui.ShowBanner("CADENCE TERMINÉE", $"{tries}  ·  {coinsFound}/3 secrètes  ·  +{coinReward} [c]" +
+            string tries = cadenceAttempts == 1 ? "sans une seule chute !" : $"en {cadenceAttempts} essais";
+            ui.ShowBanner("CADENCE TERMINÉE", $"{tries}  ·  {coinsFound}/3 plumes d'or  ·  {coinReward} [c]" +
                                               (materialReward > 0 ? $"   +{materialReward} [g]" : ""), 3.2f);
         }
 
@@ -967,9 +968,10 @@ namespace Platformer.Survival
             float frac = Mathf.Repeat(musicTime / CadenceBeatDuration, 1f);
             float pulse = Mathf.Exp(-frac * 7f);
 
-            float rim = 0.72f + 0.5f * pulse;
+            // The stone breathes with the beat, softly.
+            float rim = 0.93f + 0.1f * pulse;
             foreach (var sr in cadencePulse)
-                if (sr != null) sr.color = new Color(CadenceGold.r * rim, CadenceGold.g * rim, CadenceGold.b * rim, 1f);
+                if (sr != null) sr.color = new Color(rim, rim, rim, 1f);
 
             float px = player.transform.position.x;
             foreach (var e in cadenceElements)
@@ -978,7 +980,7 @@ namespace Platformer.Survival
                 switch (e.kind)
                 {
                     case CadenceKind.Spike:
-                        float k = 0.78f + 0.4f * pulse;
+                        float k = 0.92f + 0.12f * pulse;
                         e.sr.color = new Color(e.baseColor.r * k, e.baseColor.g * k, e.baseColor.b * k, 1f);
                         break;
                     case CadenceKind.Orb:
@@ -986,7 +988,9 @@ namespace Platformer.Survival
                         e.go.transform.Rotate(0f, 0f, -90f * Time.deltaTime);
                         break;
                     case CadenceKind.Coin:
-                        e.go.transform.localScale = new Vector3(e.baseScale.x * Mathf.Cos(Time.time * 3f), e.baseScale.y, 1f);
+                        // A feather sways in the air rather than spinning like a coin.
+                        e.go.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(Time.time * 2.2f + e.x) * 14f);
+                        e.go.transform.position = new Vector3(e.x, e.y + Mathf.Sin(Time.time * 1.7f + e.x) * 0.08f, 0f);
                         break;
                     case CadenceKind.Pad:
                         e.go.transform.localScale = Vector3.Lerp(e.go.transform.localScale, e.baseScale, 1f - Mathf.Exp(-10f * Time.deltaTime));
@@ -1000,8 +1004,8 @@ namespace Platformer.Survival
             float progress = Mathf.Clamp01((px - cadenceStartX) / Mathf.Max(1f, cadenceEndX - cadenceStartX));
             int coins = 0;
             foreach (bool c in cadenceCoins) if (c) coins++;
-            ui.SetZoneLabel($"LA CADENCE   {Mathf.FloorToInt(progress * 100f)} %");
-            ui.SetSectionHud(progress, $"Tentative {cadenceAttempts}   ·   secrètes {coins}/3");
+            ui.SetZoneLabel("LA CADENCE");
+            ui.SetSectionHud(progress, $"Essai {cadenceAttempts}   ·   plumes d'or {coins}/3");
         }
     }
 }
