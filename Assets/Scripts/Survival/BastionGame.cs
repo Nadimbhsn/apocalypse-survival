@@ -1238,6 +1238,9 @@ namespace Platformer.Survival
 
         // ---- towers' look ------------------------------------------------------------------
 
+        /// <summary>Height above the tower's base of a point drawn at this pixel row of its 256 px art.</summary>
+        static float ArtHeight(float pixelRow) => (238f - pixelRow) / 256f * TowerWidth;
+
         void DrawTower(Tower t)
         {
             if (t.go != null) Destroy(t.go);
@@ -1258,7 +1261,7 @@ namespace Platformer.Survival
                     var b = Art($"barrel_{t.level}", 0.5f, 256f / TowerWidth);
                     var barrel = new GameObject("Barrel");
                     barrel.transform.SetParent(go.transform, false);
-                    barrel.transform.localPosition = new Vector3(0f, 0.72f * scale, -0.05f);
+                    barrel.transform.localPosition = new Vector3(0f, ArtHeight(170f - 10f * t.level) * scale, -0.05f);
                     var bsr = barrel.AddComponent<SpriteRenderer>();
                     bsr.sprite = Sprite.Create(b.texture, b.rect, new Vector2(0.15f, 0.5f), 256f / TowerWidth);
                     bsr.sortingOrder = order + 1;
@@ -1267,14 +1270,15 @@ namespace Platformer.Survival
                     break;
                 }
                 case TowerKind.Brazier:
-                    t.flame = Place("Flame", Art("flame", 0.12f), new Vector2(0f, 0.86f * scale), 0.75f * scale, order + 1, -0.05f, go.transform);
-                    Place("FireGlow", Art("glow"), new Vector2(0f, 1.0f * scale), 1.8f * scale, order - 1, 0.02f, go.transform, new Color(1f, 0.55f, 0.2f, 0.45f));
+                    float bowl = ArtHeight(150f - 14f * t.level) * scale;
+                    t.flame = Place("Flame", Art("flame", 0.12f), new Vector2(0f, bowl), 0.75f * scale, order + 1, -0.05f, go.transform);
+                    Place("FireGlow", Art("glow"), new Vector2(0f, bowl + 0.2f), 1.8f * scale, order - 1, 0.02f, go.transform, new Color(1f, 0.55f, 0.2f, 0.45f));
                     break;
                 case TowerKind.Frost:
-                    t.glow = Place("Aura", Art("glow"), new Vector2(0f, 0.95f * scale), 1.6f * scale, order + 1, -0.05f, go.transform, new Color(0.6f, 0.9f, 1f, 0.35f));
+                    t.glow = Place("Aura", Art("glow"), new Vector2(0f, ArtHeight(110f - 10f * t.level) * scale), 1.6f * scale, order + 1, -0.05f, go.transform, new Color(0.6f, 0.9f, 1f, 0.35f));
                     break;
                 case TowerKind.Pylon:
-                    float topY = (0.95f + 0.13f * t.level) * scale;
+                    float topY = ArtHeight(120f - 22f * t.level + 12f) * scale;
                     t.glow = Place("Orb", Art("orb"), new Vector2(0f, topY), 0.7f, order + 1, -0.05f, go.transform);
                     break;
             }
@@ -1297,7 +1301,8 @@ namespace Platformer.Survival
                 t.glow.color = c;
             }
             if (t.barrel != null && t.anim > 0f)
-                t.barrel.localPosition = new Vector3(-t.barrel.right.x * t.anim * 0.08f, 0.72f * (1f + 0.06f * (t.level - 1)) - t.barrel.right.y * t.anim * 0.08f, -0.05f);
+                t.barrel.localPosition = new Vector3(-t.barrel.right.x * t.anim * 0.08f,
+                    ArtHeight(170f - 10f * t.level) * (1f + 0.06f * (t.level - 1)) - t.barrel.right.y * t.anim * 0.08f, -0.05f);
         }
 
         // ---- input, ring menu ------------------------------------------------------------------
