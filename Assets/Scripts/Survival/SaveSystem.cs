@@ -239,6 +239,24 @@ namespace Platformer.Survival
         public static int GetBarricadeTrap(int lane, int type) => PlayerPrefs.GetInt($"barricade_trap_{lane}_{type}", 0);
         public static void SetBarricadeTrap(int lane, int type, int level) => PlayerPrefs.SetInt($"barricade_trap_{lane}_{type}", level);
 
+        /// <summary>A Barricade trap's solidity, 1 = intact, 0 = broken.</summary>
+        public static float GetBarricadeWear(int lane, int type) => PlayerPrefs.GetFloat($"barricade_wear_{lane}_{type}", 1f);
+        public static void SetBarricadeWear(int lane, int type, float solidity) => PlayerPrefs.SetFloat($"barricade_wear_{lane}_{type}", Mathf.Clamp01(solidity));
+
+        /// <summary>When the Barricade was last looked after (UTC ticks as text), for the slow wear of an idle base.</summary>
+        public static long BarricadeLastSeen
+        {
+            get => long.TryParse(PlayerPrefs.GetString("barricade_last_seen", "0"), out long t) ? t : 0L;
+            set => PlayerPrefs.SetString("barricade_last_seen", value.ToString());
+        }
+
+        /// <summary>Times the Barricade base was given up for good (each one boosts the farm for ever).</summary>
+        public static int BarricadePrestige
+        {
+            get => PlayerPrefs.GetInt("barricade_prestige", 0);
+            set { PlayerPrefs.SetInt("barricade_prestige", value); PlayerPrefs.Save(); }
+        }
+
         /// <summary>Materials produced by the finished lanes and not yet collected.</summary>
         public static float BarricadeFarmStock
         {
