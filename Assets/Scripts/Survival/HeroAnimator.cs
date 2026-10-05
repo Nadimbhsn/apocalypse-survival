@@ -5,16 +5,20 @@ using Platformer.Mechanics;
 namespace Platformer.Survival
 {
     /// <summary>
-    /// The hero of the Apogée book, as a painted sprite sheet (Resources/Hero/hero_sheet):
-    /// thirty-two 256 px frames cut from the character's reference portrait and posed like a
-    /// puppet - idle, run, jump, fall, land, shoot, hurt, death and victory.
+    /// The hero of the Apogée book, as two painted sprite sheets (Resources/Hero/hero_sheet_0
+    /// and _1, 4 x 4 frames of 512 px each): thirty-two frames cut from the character's
+    /// reference portrait and posed like a puppet - idle, run, jump, fall, land, shoot, hurt,
+    /// death and victory. Mipmapped, so he stays smooth while the camera zooms out.
     /// </summary>
     public static class HeroSprites
     {
-        public const int Frame = 256, Columns = 8;
-        /// <summary>How tall the hero stands in the world, and where his feet are (the old sprite's).</summary>
-        const float PixelsPerUnit = 267f;
-        static readonly Vector2 Pivot = new Vector2(0.47f, 0.46f);
+        public const int Frame = 512, Columns = 4, PerSheet = 16, Sheets = 2;
+        /// <summary>
+        /// About 1.2 units tall (he is drawn 455 px high), feet where the old sprite's were:
+        /// 0.4 units under the player's origin, so the collider is unchanged.
+        /// </summary>
+        const float PixelsPerUnit = 379f;
+        static readonly Vector2 Pivot = new Vector2(0.47f, 0.338f);
 
         public static readonly Dictionary<string, (int start, int count)> Anims = new()
         {
@@ -34,17 +38,20 @@ namespace Platformer.Survival
         {
             if (loaded) return;
             loaded = true;
-            var tex = Resources.Load<Texture2D>("Hero/hero_sheet");
-            if (tex == null) return;
-            int rows = tex.height / Frame;
-            frames = new Sprite[Columns * rows];
-            for (int i = 0; i < frames.Length; i++)
+            var list = new List<Sprite>();
+            for (int s = 0; s < Sheets; s++)
             {
-                int cx = i % Columns, cy = i / Columns;
-                // Rows are laid out from the top of the sheet.
-                var rect = new Rect(cx * Frame, tex.height - (cy + 1) * Frame, Frame, Frame);
-                frames[i] = Sprite.Create(tex, rect, Pivot, PixelsPerUnit);
+                var tex = Resources.Load<Texture2D>($"Hero/hero_sheet_{s}");
+                if (tex == null) return;
+                for (int k = 0; k < PerSheet; k++)
+                {
+                    int cx = k % Columns, cy = k / Columns;
+                    // Rows are laid out from the top of the sheet.
+                    var rect = new Rect(cx * Frame, tex.height - (cy + 1) * Frame, Frame, Frame);
+                    list.Add(Sprite.Create(tex, rect, Pivot, PixelsPerUnit));
+                }
             }
+            frames = list.ToArray();
         }
 
         public static Sprite Get(string anim, int index)
