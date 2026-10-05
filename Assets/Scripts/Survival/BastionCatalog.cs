@@ -6,7 +6,7 @@ namespace Platformer.Survival
     public enum TowerKind { Archer, Cannon, Brazier, Frost, Pylon }
     public enum CreepKind { Walker, Runner, Brute, Armored, Specter, Colossus }
 
-    /// <summary>One kind of tower, with its numbers at level 1 (see BastionCatalog.Stat for 2 and 3).</summary>
+    /// <summary>One kind of tower, with its numbers at level 1 (see BastionCatalog.DamageAt and the rest for the others).</summary>
     public class TowerDef
     {
         public TowerKind Kind;
@@ -63,7 +63,7 @@ namespace Platformer.Survival
     /// </summary>
     public static class BastionCatalog
     {
-        public const int MaxTowerLevel = 3;
+        public const int MaxTowerLevel = 5;
         public const int StartLives = 20;
         public const float SellRefund = 0.6f;
 
@@ -83,8 +83,11 @@ namespace Platformer.Survival
 
         public static TowerDef Tower(TowerKind k) => Towers[(int)k];
 
-        /// <summary>Price to reach a level (2 or 3) from the one below.</summary>
-        public static int UpgradeCost(TowerDef t, int toLevel) => Mathf.RoundToInt(t.Cost * (toLevel == 2 ? 0.8f : 1.25f));
+        /// <summary>Price of each level, as a share of the tower's own price: dearer and dearer.</summary>
+        static readonly float[] UpgradeShare = { 0f, 0f, 1.0f, 1.6f, 3.0f, 4.5f };
+
+        /// <summary>Price to reach a level (2 to 5) from the one below.</summary>
+        public static int UpgradeCost(TowerDef t, int toLevel) => Mathf.RoundToInt(t.Cost * UpgradeShare[Mathf.Clamp(toLevel, 2, MaxTowerLevel)]);
 
         /// <summary>Gold spent on a tower up to its level, for the resale price.</summary>
         public static int Invested(TowerDef t, int level)
@@ -94,9 +97,13 @@ namespace Platformer.Survival
             return sum;
         }
 
-        /// <summary>Each level: half again the damage, a little more range, a little faster.</summary>
-        public static float DamageAt(TowerDef t, int level) => t.Damage * Mathf.Pow(1.6f, level - 1);
-        public static float RangeAt(TowerDef t, int level) => t.Range + 0.3f * (level - 1);
+        /// <summary>
+        /// Levels 2 and 3: +60 % damage and +0.3 m each. Levels 4 and 5, the costly ones:
+        /// +35 % damage and +0.15 m. Every level fires 13 % faster.
+        /// </summary>
+        public static float DamageAt(TowerDef t, int level) =>
+            t.Damage * Mathf.Pow(1.6f, Mathf.Min(level, 3) - 1) * Mathf.Pow(1.35f, Mathf.Max(0, level - 3));
+        public static float RangeAt(TowerDef t, int level) => t.Range + 0.3f * (Mathf.Min(level, 3) - 1) + 0.15f * Mathf.Max(0, level - 3);
         public static float IntervalAt(TowerDef t, int level) => t.Interval * Mathf.Pow(0.87f, level - 1);
 
         public static readonly CreepDef[] Creeps =
@@ -136,6 +143,11 @@ namespace Platformer.Survival
         };
 
         static Vector2 V(float x, float y) => new Vector2(x, y);
+
+        /// <summary>A tower stands at least this far from the road's centre line (the road is 1 m wide).</summary>
+        public const float RoadClearance = 0.85f;
+        /// <summary>...and this far from another tower.</summary>
+        public const float TowerSpacing = 1.0f;
 
         /// <summary>
         /// Build spots for a map, found rather than hand-placed: points of a 0.9 m grid that

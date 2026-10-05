@@ -77,9 +77,9 @@ namespace Platformer.Survival
             "bastion" => new GameGuide
             {
                 Title = "BASTION",
-                Goal = "Les morts suivent le chemin jusqu'au bastion. Pose des tours sur les emplacements pour les arrêter avant la porte.",
-                Controls = "Touche un emplacement pour construire ou améliorer une tour. Touche ton héros puis le terrain pour le déplacer.",
-                Tip = "Archers et pylône touchent les volants, le canon frappe les groupes, le givre ralentit. Ton héros a un pouvoir selon ton personnage : utilise-le au bon moment !",
+                Goal = "Les morts suivent le chemin jusqu'au bastion. Pose des tours où tu veux au bord du chemin pour les arrêter avant la porte.",
+                Controls = "Touche l'herbe pour bâtir : une tour touchée montre sa fiche, touche-la encore pour la poser. Touche une tour pour l'améliorer (5 niveaux). Le crâne lance la vague suivante à tout moment, même pendant une vague. Touche ton héros puis le terrain pour le déplacer.",
+                Tip = "Archers et pylône touchent les volants, le canon frappe les groupes, le givre ralentit. Ton héros a un pouvoir selon ton personnage : utilise-le au bon moment ! En mode infini, quitte quand tu veux : ta partie t'attend.",
                 Rewards = "[c]   [g]",
             },
             _ => new GameGuide { Title = id.ToUpperInvariant(), Goal = "", Controls = "", Tip = "", Rewards = "" },
