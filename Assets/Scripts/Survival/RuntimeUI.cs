@@ -292,119 +292,6 @@ namespace Platformer.Survival
             _ => stat.ToString()
         };
 
-        // ---- hub -----------------------------------------------------------------------
-
-        /// <summary>
-        /// Home screen on the Apogée key art: the painted hero stays visible on the left
-        /// (the art is cover-cropped around him), the logo sits on top, the mini-game cards
-        /// stack in a column on the right, and the bottom row holds the characters card
-        /// (with the equipped character animated) and the upgrades button.
-        /// </summary>
-        void BuildHubPanel()
-        {
-            var rt = UiKit.CreateRect("HubPanel", canvas.transform, Vector2.zero, Vector2.one);
-            hubPanel = rt.gameObject;
-            rt.gameObject.AddComponent<Image>().color = ApogeeTheme.Maroon;
-            UiKit.CreateArtBackdrop("KeyArt", rt, "home_art", 0.29f, 0.5f);
-
-            // Soft darkening at the bottom and on the right so cards read on any part of the art.
-            var bottomShade = UiKit.CreateImage("BottomShade", rt, Vector2.zero, new Vector2(1f, 0.42f), ApogeeTheme.VerticalFade, new Color(0.16f, 0.03f, 0.03f, 0.85f), false);
-            bottomShade.raycastTarget = false;
-
-            var logo = UiKit.CreateImage("Logo", rt, new Vector2(0.06f, 0.80f), new Vector2(0.94f, 0.965f), ApogeeTheme.ArtSprite("logo_dark"), Color.white);
-            logo.preserveAspect = true;
-
-            hubWalletText = CreateIconChip("Wallet", rt, new Vector2(0.50f, 0.748f), new Vector2(0.96f, 0.792f), 26);
-
-            // Mini-game cards: the runner first, then every registered mini-game.
-            var cards = new List<(string title, string desc, Action onClick, Func<string> best, string id)>
-            {
-                ("RUNNER", "Course sans fin ou niveaux à terminer", ShowRunnerModes,
-                    () => (SaveSystem.BestDistance > 0f
-                        ? $"Record : {FormatDistance(SaveSystem.BestDistance)}   ·   "
-                        : "") + $"Missions {DailyMissions.DoneCount}/{DailyMissions.Count}", "runner"),
-            };
-            foreach (var game in miniGames)
-            {
-                if (!game.ShowOnHub) continue;
-                var captured = game;
-                cards.Add((game.Title, game.Description, () => LaunchWithGuide(captured.Id, () => EnterMiniGame(captured)), () => captured.BestLine, game.Id));
-            }
-
-            const float cardsTop = 0.735f;
-            const float cardsBottom = 0.195f;
-            float slot = (cardsTop - cardsBottom) / cards.Count;
-            hubCardBestTexts.Clear();
-            for (int i = 0; i < cards.Count; i++)
-            {
-                var (title, desc, onClick, best, id) = cards[i];
-                float yMax = cardsTop - i * slot;
-                float yMin = yMax - slot + 0.012f;
-                var card = UiKit.CreateButton($"Card_{title}", rt, "", new Vector2(0.50f, yMin), new Vector2(0.96f, yMax),
-                    () => onClick(), 30, UiKit.CardColor);
-                var titleText = UiKit.Outlined(UiKit.CreateText("CardTitle", card.transform, title, 34, TextAnchor.MiddleLeft,
-                    new Vector2(0.07f, 0.56f), new Vector2(0.64f, 0.94f), ApogeeTheme.Gold), 1.5f);
-                UiKit.FitLabel(titleText, 34);
-                // What the game pays, where the eye lands after the title.
-                CreateRewardBadge(card.transform, id, new Vector2(0.64f, 0.58f), new Vector2(0.93f, 0.93f));
-                var descText = UiKit.CreateText("CardDesc", card.transform, desc, 20, TextAnchor.UpperLeft,
-                    new Vector2(0.07f, 0.24f), new Vector2(0.63f, 0.56f), UiKit.TextDim);
-                UiKit.FitLabel(descText, 20);
-                var bestText = IconText.Create("CardBest", card.transform, "", 18, TextAnchor.LowerLeft,
-                    new Vector2(0.07f, 0.06f), new Vector2(0.62f, 0.26f), ApogeeTheme.Cream);
-                hubCardBestTexts.Add(bestText);
-                // The runner card opens its own page, where each mode has its own help.
-                if (id != "runner") CreateHelpButton(card.transform, new Vector2(0.64f, 0.12f), new Vector2(0.82f, 0.48f), id);
-                UiKit.Outlined(UiKit.CreateText("CardArrow", card.transform, "›", 54, TextAnchor.MiddleRight,
-                    new Vector2(0.84f, 0f), new Vector2(0.96f, 0.5f), ApogeeTheme.Gold), 1.5f);
-            }
-            hubCardBestProviders = cards.ConvertAll(c => c.best);
-
-            // Characters card with the equipped character animated (isolated preview camera).
-            var charBtn = UiKit.CreateButton("CharactersButton", rt, "", new Vector2(0.04f, 0.035f), new Vector2(0.40f, 0.168f), ShowCharacters, 28, UiKit.CardColor);
-            var previewArea = UiKit.CreateRect("CharacterPreviewArea", charBtn.transform, new Vector2(0.02f, 0.04f), new Vector2(0.44f, 0.96f));
-            var previewRt = UiKit.CreateRect("CharacterPreview", previewArea, Vector2.zero, Vector2.one);
-            var fitter = previewRt.gameObject.AddComponent<AspectRatioFitter>();
-            fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
-            fitter.aspectRatio = 1f;
-            var previewImg = previewRt.gameObject.AddComponent<RawImage>();
-            previewImg.texture = previewTexture;
-            previewImg.raycastTarget = false;
-            var charLabel = UiKit.Outlined(UiKit.CreateText("CharactersLabel", charBtn.transform, "PERSONNAGES", 24, TextAnchor.MiddleLeft,
-                new Vector2(0.44f, 0.5f), new Vector2(0.97f, 0.9f), ApogeeTheme.Gold), 1.5f);
-            UiKit.FitLabel(charLabel, 24);
-            hubCharacterText = UiKit.CreateText("HubCharacter", charBtn.transform, "", 22, TextAnchor.MiddleLeft,
-                new Vector2(0.44f, 0.12f), new Vector2(0.97f, 0.5f), ApogeeTheme.Cream);
-            UiKit.FitLabel(hubCharacterText, 22);
-
-            // The weapons card shows the gun currently equipped.
-            var armsBtn = UiKit.CreateButton("ArmoryButton", rt, "", new Vector2(0.42f, 0.035f), new Vector2(0.66f, 0.168f), ShowArmory, 28, UiKit.CardColor);
-            hubWeaponIcon = UiKit.CreateImage("Weapon", armsBtn.transform, new Vector2(0.1f, 0.40f), new Vector2(0.9f, 0.92f), null, Color.white);
-            hubWeaponIcon.raycastTarget = false;
-            var armsLabel = UiKit.Outlined(UiKit.CreateText("ArmoryLabel", armsBtn.transform, "ARMES", 24, TextAnchor.MiddleCenter,
-                new Vector2(0.05f, 0.06f), new Vector2(0.95f, 0.38f), ApogeeTheme.Gold), 1.5f);
-            UiKit.FitLabel(armsLabel, 24);
-
-            UiKit.CreateButton("ShopButtonHub", rt, "AMÉLIORATIONS", new Vector2(0.68f, 0.035f), new Vector2(0.96f, 0.168f), ShowShop, 24);
-        }
-
-        List<Func<string>> hubCardBestProviders = new();
-
-        void RefreshHub()
-        {
-            hubWalletText.text = WalletLine();
-            if (hubWeaponIcon != null) hubWeaponIcon.sprite = WeaponCatalog.SpriteFor(WeaponCatalog.Equipped);
-            var skin = SkinCatalog.Find(SaveSystem.SelectedSkinId);
-            hubCharacterText.text = skin.Name;
-            if (previewCharacter != null)
-            {
-                var sr = previewCharacter.GetComponent<SpriteRenderer>();
-                if (sr != null) sr.color = skin.Tint;
-            }
-            for (int i = 0; i < hubCardBestTexts.Count && i < hubCardBestProviders.Count; i++)
-                hubCardBestTexts[i].text = hubCardBestProviders[i]() ?? "";
-        }
-
         // ---- characters page -----------------------------------------------------------
 
         /// <summary>
@@ -1454,7 +1341,6 @@ namespace Platformer.Survival
             HideAllShellPanels();
             HideBanner();
             UiKit.SetPanel(hubPanel, true);
-            if (previewCamera != null) previewCamera.enabled = true;
             RefreshHub();
         }
 

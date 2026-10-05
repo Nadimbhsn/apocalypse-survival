@@ -50,7 +50,7 @@ namespace Platformer.Survival
                 new Vector2(0.06f, 0.21f), new Vector2(0.94f, 0.27f), ApogeeTheme.Gold);
             UiKit.CreateButton("MissionsPlay", rt, "COURIR", new Vector2(0.2f, 0.125f), new Vector2(0.8f, 0.195f),
                 () => LaunchWithGuide("runner", StartRunner), 30);
-            UiKit.CreateButton("MissionsBack", rt, "RETOUR", new Vector2(0.32f, 0.03f), new Vector2(0.68f, 0.1f), ShowRunnerModes);
+            UiKit.CreateButton("MissionsBack", rt, "RETOUR", new Vector2(0.32f, 0.03f), new Vector2(0.68f, 0.1f), CloseMissions);
             missionsPanel.SetActive(false);
 
             DailyMissions.Completed += m =>
