@@ -29,6 +29,9 @@ namespace Platformer.Survival
 
             if (player.GetComponent<PlayerCombat>() == null)
                 player.gameObject.AddComponent<PlayerCombat>();
+            // The book's hero, painted, in place of the sample character.
+            if (player.GetComponent<HeroAnimator>() == null)
+                player.gameObject.AddComponent<HeroAnimator>();
             if (player.GetComponent<PlayerDamageFeedback>() == null)
                 player.gameObject.AddComponent<PlayerDamageFeedback>();
             if (player.GetComponent<PlayerJuice>() == null)

@@ -156,6 +156,7 @@ namespace Platformer.Survival
 
             var sourceAnimator = player.GetComponent<Animator>();
             var animator = previewCharacter.AddComponent<Animator>();
+            previewCharacter.AddComponent<HeroAnimator>();
             if (sourceAnimator != null) animator.runtimeAnimatorController = sourceAnimator.runtimeAnimatorController;
 
             var camGo = new GameObject("SkinPreviewCamera");

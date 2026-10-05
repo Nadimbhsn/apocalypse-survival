@@ -36,6 +36,8 @@ namespace Platformer.Survival
 
         public WeaponDef Weapon => weapon ??= WeaponCatalog.Equipped;
         public int Ammo => ammo;
+        /// <summary>When the last round left the barrel (the hero's shooting pose reads it).</summary>
+        public float LastShotTime { get; private set; } = -10f;
         public int MaxAmmo => Weapon.MaxAmmo;
 
         int Damage(int baseDamage) => Mathf.Max(1, Mathf.RoundToInt(baseDamage * UpgradeManager.FirePowerMultiplier));
@@ -168,6 +170,7 @@ namespace Platformer.Survival
             projectile.Style(w.BulletSize, w.BulletColor);
             projectile.Launch(origin, dir, Damage(w.Damage), w.Range, w.ExplosionRadius, w.ExplosionRadius > 0f ? Damage(w.ExplosionDamage) : 0);
             if (!RunPowerUps.InfiniteAmmo) ammo--;
+            LastShotTime = Time.time;
 
             if (w.ExplosionRadius > 0f) Sfx.Attack(); else Sfx.Shoot();
             Fx.Burst(origin + dir.normalized * 0.1f, w.BulletColor, 3, 1.5f, 0.05f, 0f);
