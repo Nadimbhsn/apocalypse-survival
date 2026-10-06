@@ -117,8 +117,31 @@ namespace Platformer.Survival
             renderer.sortingOrder = 2;
         }
 
+        float nextGhost;
+
+        /// <summary>Fading copies of the hero left behind by a dash.</summary>
+        void SpawnGhost()
+        {
+            var src = GetComponent<SpriteRenderer>();
+            if (src == null || src.sprite == null) return;
+            var go = new GameObject("DashGhost");
+            go.transform.position = transform.position;
+            go.transform.localScale = transform.lossyScale;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = src.sprite;
+            sr.flipX = src.flipX;
+            sr.sortingOrder = src.sortingOrder - 1;
+            sr.color = new Color(1f, 0.78f, 0.4f, 0.55f);
+            go.AddComponent<FadeAndDie>().duration = 0.25f;
+        }
+
         void Update()
         {
+            if (player.IsDashing && Time.time >= nextGhost)
+            {
+                nextGhost = Time.time + 0.035f;
+                SpawnGhost();
+            }
             if (trail != null)
             {
                 var emission = trail.emission;
@@ -130,6 +153,28 @@ namespace Platformer.Survival
                 var emission = flame.emission;
                 emission.rateOverTimeMultiplier = player.JetpackThrusting ? 90f : 0f;
             }
+        }
+    }
+
+    /// <summary>Fades a sprite out and destroys it.</summary>
+    public class FadeAndDie : MonoBehaviour
+    {
+        public float duration = 0.3f;
+        SpriteRenderer sr;
+        float t;
+
+        void Awake() => sr = GetComponent<SpriteRenderer>();
+
+        void Update()
+        {
+            t += Time.deltaTime;
+            if (sr != null)
+            {
+                var c = sr.color;
+                c.a *= Mathf.Clamp01(1f - Time.deltaTime / Mathf.Max(0.01f, duration - t + Time.deltaTime));
+                sr.color = c;
+            }
+            if (t >= duration) Destroy(gameObject);
         }
     }
 }

@@ -202,6 +202,26 @@ namespace Platformer.Survival
             var controller = other.GetComponent<PlayerController>();
             if (controller == null || controller.health == null || !controller.health.IsAlive) return;
 
+            // Landing on its head crushes it and bounces the hero off (a brute only staggers).
+            var mine = GetComponent<Collider2D>();
+            if (mine != null && controller.velocity.y < -0.5f && other.bounds.min.y > mine.bounds.center.y + mine.bounds.extents.y * 0.25f)
+            {
+                controller.Bounce(7.5f);
+                controller.jumpState = PlayerController.JumpState.InFlight;
+                Fx.Burst(new Vector3(transform.position.x, mine.bounds.max.y, 0f), bloodColor, 10, 3f, 0.09f);
+                Fx.Shake(0.12f, 0.12f);
+                Sfx.Bounce();
+                if (kind == ZombieKind.Brute) { TakeDamage(3); nextContactTime = Time.time + 0.4f; }
+                else
+                {
+                    Fx.Text(transform.position + Vector3.up * 1.0f, "ÉCRASÉ !", ApogeeTheme.Gold, 0.8f);
+                    TakeDamage(999);
+                }
+                return;
+            }
+            // A dash or the Envol goes straight through: the director deals with that.
+            if (controller.IsDashing) return;
+
             nextContactTime = Time.time + contactCooldown;
             controller.health.Decrement(UpgradeManager.ReduceDamageToPlayer(contactDamage));
         }

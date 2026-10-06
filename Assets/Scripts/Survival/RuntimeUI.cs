@@ -870,6 +870,7 @@ namespace Platformer.Survival
 
             BuildRunnerHudExtras(rt);
             BuildVirtualControls(rt);
+            BuildDashButton(rt);
 
             // PAUSE, under the health bar and the level's counters.
             var pauseRt = (RectTransform)CreatePauseButton(rt, Vector2.zero, Vector2.zero, PauseRunner).transform;
@@ -919,14 +920,15 @@ namespace Platformer.Survival
             // and a pad sitting in that strip loses the touch mid-drag.
             var pad = CreateFixedRect("Joystick", hud, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(440, 170), new Vector2(104, 96));
             var padImg = pad.gameObject.AddComponent<Image>();
-            padImg.sprite = ApogeeTheme.Chip;
+            padImg.sprite = HubArt.Get("ui_pill", 30f) ?? ApogeeTheme.Chip;
             padImg.type = Image.Type.Sliced;
-            padImg.color = new Color(1f, 1f, 1f, 0.8f);
+            padImg.color = new Color(1f, 1f, 1f, 0.82f);
             var knob = CreateFixedRect("Knob", pad, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(140, 140), Vector2.zero);
             var knobImg = knob.gameObject.AddComponent<Image>();
             knobImg.sprite = ApogeeTheme.Round;
             knobImg.color = new Color(1f, 1f, 1f, 0.92f);
             knobImg.raycastTarget = false;
+            GlassRing(knob);
             var joystick = pad.gameObject.AddComponent<VirtualJoystick>();
             joystick.knob = knob;
             UiKit.CreateText("JoyHint", pad, "‹                 ›", 44, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Color(ApogeeTheme.Gold.r, ApogeeTheme.Gold.g, ApogeeTheme.Gold.b, 0.6f));
@@ -934,17 +936,21 @@ namespace Platformer.Survival
             // Jump (big, bottom-right) and fire (left of it).
             var jump = CreateFixedRect("JumpButton", hud, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(230, 230), new Vector2(-40, 60));
             var jumpImg = jump.gameObject.AddComponent<Image>();
-            jumpImg.sprite = ApogeeTheme.Round;
-            jumpImg.color = new Color(1f, 1f, 1f, 0.9f);
+            jumpImg.sprite = HubArt.Get("ui_disc") ?? ApogeeTheme.Round;
+            jumpImg.color = new Color(0.22f, 0.07f, 0.05f, 0.72f);
+            GlassRing(jump);
+            var chevrons = UiKit.CreateImage("Chevrons", jump, new Vector2(0.28f, 0.34f), new Vector2(0.72f, 0.84f), HubArt.Get("icon_upgrade"), Color.white);
+            chevrons.raycastTarget = false;
             var jumpBtn = jump.gameObject.AddComponent<HoldButton>();
             jumpBtn.onDown = MobileInput.PressJump;
             jumpBtn.onUp = MobileInput.ReleaseJump;
-            UiKit.Outlined(UiKit.CreateText("JumpLabel", jump, "SAUT", 34, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream));
+            UiKit.Outlined(UiKit.CreateText("JumpLabel", jump, "SAUT", 26, TextAnchor.MiddleCenter, new Vector2(0f, 0.08f), new Vector2(1f, 0.34f), ApogeeTheme.Gold));
 
             var fire = CreateFixedRect("FireButton", hud, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(180, 180), new Vector2(-300, 100));
             var fireImg = fire.gameObject.AddComponent<Image>();
-            fireImg.sprite = ApogeeTheme.Round;
-            fireImg.color = new Color(1.0f, 0.72f, 0.4f, 0.9f);
+            fireImg.sprite = HubArt.Get("ui_disc") ?? ApogeeTheme.Round;
+            fireImg.color = new Color(0.32f, 0.10f, 0.05f, 0.72f);
+            GlassRing(fire);
             var fireBtn = fire.gameObject.AddComponent<HoldButton>();
             fireBtn.onDown = () => MobileInput.FireHeld = true;
             fireBtn.onUp = () => MobileInput.FireHeld = false;
@@ -959,6 +965,17 @@ namespace Platformer.Survival
             art.pivot = new Vector2(1f, 0f);
             art.sizeDelta = new Vector2(180, 46);
             art.anchoredPosition = new Vector2(-300, 286);
+        }
+
+        /// <summary>The hub's gold ring around a round control (it does not catch touches).</summary>
+        static void GlassRing(RectTransform target)
+        {
+            var ring = HubArt.Get("ui_ring");
+            if (ring == null) return;
+            var img = UiKit.CreateImage("Ring", target, Vector2.zero, Vector2.one, ring, Color.white, false);
+            img.rectTransform.offsetMin = new Vector2(-6, -6);
+            img.rectTransform.offsetMax = new Vector2(6, 6);
+            img.raycastTarget = false;
         }
 
         static RectTransform CreateFixedRect(string name, Transform parent, Vector2 anchor, Vector2 pivot, Vector2 size, Vector2 anchoredPos)

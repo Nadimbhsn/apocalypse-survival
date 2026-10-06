@@ -18,7 +18,16 @@ namespace Platformer.Survival
         /// <summary>True while the on-screen JUMP button is held (jetpack thrust).</summary>
         public static bool JumpHeld;
 
-        static bool jumpPressed, jumpReleased;
+        static bool jumpPressed, jumpReleased, dashPressed;
+
+        public static void PressDash() => dashPressed = true;
+
+        public static bool ConsumeDashPressed()
+        {
+            bool value = dashPressed;
+            dashPressed = false;
+            return value;
+        }
 
         public static void PressJump() { jumpPressed = true; JumpHeld = true; }
         public static void ReleaseJump() { jumpReleased = true; JumpHeld = false; }
@@ -46,6 +55,7 @@ namespace Platformer.Survival
             JumpHeld = false;
             jumpPressed = false;
             jumpReleased = false;
+            dashPressed = false;
         }
     }
 }

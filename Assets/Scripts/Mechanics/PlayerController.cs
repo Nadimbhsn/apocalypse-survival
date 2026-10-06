@@ -58,6 +58,31 @@ namespace Platformer.Mechanics
         public bool rhythmMode;
         public float rhythmJumpVelocity = 9.3f;
 
+        [Header("Dash (runner): la Ruée")]
+        public bool dashEnabled = true;
+        public float dashSpeed = 13f;
+        public float dashDuration = 0.18f;
+        public float dashCooldown = 1.6f;
+        float dashUntil, nextDashTime = -10f, dashDir = 1f;
+        bool airDashUsed;
+        /// <summary>True for the short burst of a dash.</summary>
+        public bool IsDashing => Time.time < dashUntil;
+        /// <summary>0 when a dash is ready, up to 1 right after one.</summary>
+        public float DashCooldown01 => Mathf.Clamp01((nextDashTime - Time.time) / Mathf.Max(0.01f, dashCooldown));
+        /// <summary>Raised the moment a dash starts (the director grants its grace and its kills).</summary>
+        public System.Action<PlayerController> OnDash;
+
+        void TryDash()
+        {
+            if (!dashEnabled || rhythmMode || jetpackActive || Time.time < nextDashTime) return;
+            if (!IsGrounded && airDashUsed) return;
+            dashDir = spriteRenderer != null && spriteRenderer.flipX ? -1f : 1f;
+            dashUntil = Time.time + dashDuration;
+            nextDashTime = Time.time + dashCooldown;
+            if (!IsGrounded) airDashUsed = true;
+            OnDash?.Invoke(this);
+        }
+
         /// <summary>A jump press not yet used by a jump, within the buffer window (jump orbs read it).</summary>
         public bool JumpPressedRecently => Time.time - jumpPressedTime <= jumpBufferTime;
         public bool JumpHeldNow => controlEnabled && (m_JumpAction.IsPressed() || MobileInput.JumpHeld);
@@ -125,6 +150,10 @@ namespace Platformer.Mechanics
                 bool pressed = m_JumpAction.WasPressedThisFrame() || MobileInput.ConsumeJumpPressed();
                 bool released = m_JumpAction.WasReleasedThisFrame() || MobileInput.ConsumeJumpReleased();
                 if (pressed) jumpPressedTime = Time.time;
+                var kb = Keyboard.current;
+                bool dash = MobileInput.ConsumeDashPressed()
+                    || (kb != null && (kb.leftShiftKey.wasPressedThisFrame || kb.xKey.wasPressedThisFrame || kb.kKey.wasPressedThisFrame));
+                if (dash) TryDash();
                 if (released && !rhythmMode)
                 {
                     stopJump = true;
@@ -136,6 +165,7 @@ namespace Platformer.Mechanics
                 move.x = 0;
                 MobileInput.ConsumeJumpPressed();
                 MobileInput.ConsumeJumpReleased();
+                MobileInput.ConsumeDashPressed();
             }
             UpdateJumpState();
             base.Update();
@@ -148,6 +178,7 @@ namespace Platformer.Mechanics
             {
                 lastGroundedTime = Time.time;
                 airJumpsUsed = 0;
+                airDashUsed = false;
             }
 
             if (jetpackActive)
@@ -250,6 +281,12 @@ namespace Platformer.Mechanics
             animator.SetFloat("velocityX", Mathf.Abs(velocity.x) / maxSpeed);
 
             targetVelocity = move * maxSpeed;
+            if (IsDashing)
+            {
+                // A flat, fast burst: no falling while it lasts.
+                targetVelocity = new Vector2(dashDir * dashSpeed, 0f);
+                if (velocity.y * gravitySign < 0f) velocity.y = 0f;
+            }
         }
 
         public enum JumpState

@@ -64,7 +64,9 @@ namespace Platformer.Survival
 
         void UpdateElan()
         {
-            if (inCampaign || player == null || player.health == null) return;
+            if (player == null || player.health == null) return;
+            UpdateDashKills();
+            if (inCampaign) return;
 
             // A hit breaks the meter.
             int hp = Mathf.RoundToInt(player.health.NormalizedHP * player.health.maxHP);
@@ -110,6 +112,30 @@ namespace Platformer.Survival
                 e.rateOverDistanceMultiplier = EnvolActive ? 10f : 0f;
             }
             ui.UpdateElan(Elan01, ElanMultiplier, EnvolActive);
+        }
+
+        /// <summary>La Ruée: a moment untouchable, and whatever it goes through dies.</summary>
+        void OnPlayerDash(Platformer.Mechanics.PlayerController p)
+        {
+            if (!running) return;
+            if (p.health != null) p.health.invulnerableUntil = Mathf.Max(p.health.invulnerableUntil, Time.time + p.dashDuration + 0.1f);
+            Fx.Burst(p.transform.position, new Color(1f, 0.85f, 0.55f), 12, 3f, 0.08f, 0f);
+            Fx.Shake(0.08f, 0.1f);
+            Sfx.Attack();
+        }
+
+        void UpdateDashKills()
+        {
+            if (!player.IsDashing) return;
+            foreach (var z in Zombie.Active)
+            {
+                if (z == null || !z.IsAlive) continue;
+                if (((Vector2)z.transform.position - (Vector2)player.transform.position).sqrMagnitude > 1.25f * 1.25f) continue;
+                Fx.Text(z.transform.position + Vector3.up * 1.0f, "RUÉE !", ApogeeTheme.Gold, 0.8f);
+                Fx.Hitstop(0.05f, 0.2f);
+                z.TakeDamage(z.kind == ZombieKind.Brute ? 3 : 999);
+                break;
+            }
         }
 
         bool CrossedGap(float fromX, float toX)

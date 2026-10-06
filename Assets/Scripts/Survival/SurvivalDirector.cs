@@ -193,6 +193,7 @@ namespace Platformer.Survival
             MobileInput.Reset();
 
             PlayerDeath.OnExecute += HandlePlayerDeath;
+            player.OnDash = OnPlayerDash;
             CreateFallDeathZone();
             CreateAshDrift();
             SetupScenery();
@@ -466,6 +467,7 @@ namespace Platformer.Survival
             else
                 ui.UpdateHud(player.health, Distance, SaveSystem.Coins, SaveSystem.Materials);
             ui.UpdateWeaponHud(combat);
+            ui.UpdateDash(player.dashEnabled && !player.rhythmMode && !player.jetpackActive ? player.DashCooldown01 : -1f);
 
             // Slower, more precise steering while climbing the tower; the rhythm section
             // sets its own fixed speed.

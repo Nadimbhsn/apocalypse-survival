@@ -107,6 +107,37 @@ namespace Platformer.Survival
                 : multiplier >= 3 ? new Color(1f, 0.62f, 0.25f) : ApogeeTheme.Gold;
         }
 
+        GameObject dashRoot;
+        Image dashCooldown;
+
+        void BuildDashButton(RectTransform hud)
+        {
+            var dash = CreateFixedRect("DashButton", hud, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(140, 140), new Vector2(-70, 320));
+            dashRoot = dash.gameObject;
+            var img = dash.gameObject.AddComponent<Image>();
+            img.sprite = HubArt.Get("ui_disc") ?? ApogeeTheme.Round;
+            img.color = new Color(0.30f, 0.12f, 0.05f, 0.72f);
+            GlassRing(dash);
+            var btn = dash.gameObject.AddComponent<HoldButton>();
+            btn.onDown = MobileInput.PressDash;
+            btn.onUp = () => { };
+            UiKit.Outlined(UiKit.CreateText("Arrow", dash, "»", 64, TextAnchor.MiddleCenter, new Vector2(0f, 0.3f), new Vector2(1f, 0.95f), ApogeeTheme.Cream), 2f);
+            UiKit.Outlined(UiKit.CreateText("Label", dash, "RUÉE", 22, TextAnchor.MiddleCenter, new Vector2(0f, 0.06f), new Vector2(1f, 0.36f), ApogeeTheme.Gold), 1.5f);
+            dashCooldown = UiKit.CreateImage("Cooldown", dash, new Vector2(0.04f, 0.04f), new Vector2(0.96f, 0.96f), HubArt.Get("ui_disc") ?? ApogeeTheme.Round, new Color(0.05f, 0.02f, 0.02f, 0.6f), false);
+            dashCooldown.type = Image.Type.Filled;
+            dashCooldown.fillMethod = Image.FillMethod.Radial360;
+            dashCooldown.raycastTarget = false;
+        }
+
+        /// <summary>Cooldown of the Ruée (0 = ready); a negative value hides the button.</summary>
+        public void UpdateDash(float cooldown01)
+        {
+            if (dashRoot == null) return;
+            bool show = cooldown01 >= 0f;
+            if (dashRoot.activeSelf != show) dashRoot.SetActive(show);
+            if (show) dashCooldown.fillAmount = cooldown01;
+        }
+
         void HideElan()
         {
             if (elanRoot != null && elanRoot.activeSelf) elanRoot.SetActive(false);
