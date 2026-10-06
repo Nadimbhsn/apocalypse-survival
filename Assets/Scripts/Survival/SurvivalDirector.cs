@@ -332,6 +332,7 @@ namespace Platformer.Survival
             runStartX = 1f;
             ResetRevive();
             ResetRunExtras();
+            ResetElan();
             zombieTimer = zombieBaseInterval;
             pickupTimer = pickupBaseInterval;
             nextHordeDistance = UnityEngine.Random.Range(80f, 110f);
@@ -471,6 +472,8 @@ namespace Platformer.Survival
             player.maxSpeed = cadenceActive ? cadenceSpeed : ascentActive ? ascentSteerSpeed : CurrentRunSpeed;
             // Thorn brambles of the Déferlante drag the run down to a wade.
             if (Brambles.Slowing) player.maxSpeed *= Brambles.SpeedFactor;
+            // L'Envol: faster, as long as the ground is the ordinary kind.
+            if (EnvolActive && !cadenceActive && !ascentActive) player.maxSpeed *= EnvolSpeedBoost;
 
             GenerateGroundAhead();
             GenerateBackgroundDecorOrScenery();
@@ -481,6 +484,7 @@ namespace Platformer.Survival
             UpdateCadence();
             TrackSafeSpot();
             UpdateRunExtras();
+            UpdateElan();
             UpdateAscent();
             UpdateShaft();
             UpdateJetpack();
@@ -641,6 +645,7 @@ namespace Platformer.Survival
             if (Distance < nextMilestone) return;
             const int bonus = 3;
             SaveSystem.AddCoins(bonus);
+            AddElan(10f);
             Sfx.Milestone();
             Fx.Text(player.transform.position + Vector3.up * 0.8f, $"+{bonus}", PlaceholderVisuals.CoinColor, 1.2f);
             string subtitle = SpeedRamp < 1f ? "Vitesse max augmentée" : "Continue comme ça !";
@@ -652,7 +657,7 @@ namespace Platformer.Survival
         void UpdateMagnet()
         {
             float radius = UpgradeManager.MagnetRadius;
-            bool super = RunPowerUps.Magnet;
+            bool super = RunPowerUps.Magnet || EnvolActive;
             if (super) radius = Mathf.Max(radius, RunPowerUps.MagnetRadius);
             if (radius <= 0f) return;
             Vector3 target = player.transform.position;
@@ -872,6 +877,7 @@ namespace Platformer.Survival
         public void OnZombieKilled(Zombie zombie)
         {
             DailyMissions.Report(MissionKind.Kills, 1);
+            AddElan(12f);
             // The dead often carry a few rounds: fighting pays for its own ammunition, a bit.
             if (UnityEngine.Random.value < 0.3f)
                 SpawnPickupAt(zombie.transform.position.x + 0.4f, GetGroundHeightAt(zombie.transform.position.x) + 0.55f, PickupType.Ammo);
@@ -885,6 +891,7 @@ namespace Platformer.Survival
         public void OnPickupCollected(Pickup pickup)
         {
             pickups.Remove(pickup);
+            ElanOnPickup(pickup);
         }
     }
 }

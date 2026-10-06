@@ -324,7 +324,17 @@ namespace Platformer.Survival
             if (type == PickupType.Ammo) sr.color = Color.white;
             sr.sortingOrder = 4;
 
-            if (type == PickupType.Medkit)
+            bool painted = RunnerArt.Available && type != PickupType.Ammo && type != PickupType.PowerUp;
+            if (painted)
+            {
+                // Painted pickups: a spinning gold coin, a bronze gear, a red potion.
+                go.transform.localScale = Vector3.one;
+                sr.color = Color.white;
+                if (type == PickupType.Coin) Flipbook.Attach(sr, RunnerArt.Frames("pickup_coin", 8, 192f), 12f);
+                else sr.sprite = RunnerArt.Get(type == PickupType.Material ? "pickup_gear" : "pickup_potion", new Vector2(0.5f, 0.5f), default, 192f);
+            }
+
+            if (type == PickupType.Medkit && !painted)
             {
                 // A small pale cross on the red box so it reads as a medkit at a glance.
                 var cross = new GameObject("Cross");

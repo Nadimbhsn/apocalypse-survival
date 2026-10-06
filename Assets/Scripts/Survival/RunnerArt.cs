@@ -60,15 +60,32 @@ namespace Platformer.Survival
             _ => ArtStyle.Grass,
         };
 
-        public static Sprite Get(string name, Vector2 pivot, Vector4 border = default)
+        public static Sprite Get(string name, Vector2 pivot, Vector4 border = default, float ppu = Ppu)
         {
-            string key = $"{name}|{pivot.x:0.###}|{pivot.y:0.###}|{border}";
+            string key = $"{name}|{pivot.x:0.###}|{pivot.y:0.###}|{border}|{ppu}";
             if (sprites.TryGetValue(key, out var s)) return s;
             var tex = Resources.Load<Texture2D>("Runner/" + name);
             if (tex != null)
-                s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), pivot, Ppu, 0, SpriteMeshType.FullRect, border);
+                s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), pivot, ppu, 0, SpriteMeshType.FullRect, border);
             sprites[key] = s;
             return s;
+        }
+
+        static readonly Dictionary<string, Sprite[]> strips = new();
+
+        /// <summary>The frames of a horizontal strip of equal square-ish frames, centred.</summary>
+        public static Sprite[] Frames(string name, int count, float ppu)
+        {
+            string key = name + "|" + count + "|" + ppu;
+            if (strips.TryGetValue(key, out var f)) return f;
+            var tex = Resources.Load<Texture2D>("Runner/" + name);
+            if (tex == null) { strips[key] = null; return null; }
+            int w = tex.width / count;
+            f = new Sprite[count];
+            for (int i = 0; i < count; i++)
+                f[i] = Sprite.Create(tex, new Rect(i * w, 0, w, tex.height), new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
+            strips[key] = f;
+            return f;
         }
 
         /// <summary>A painted prop, its pivot at its feet.</summary>
@@ -242,5 +259,31 @@ namespace Platformer.Survival
                 ArtStyle.Stone => new[] { "crate_0", "crate_1", "lantern_0", "rock_1", "fence" },
                 _ => new[] { "bush_0", "bush_1", "bush_2", "rock_0", "rock_1", "lantern_0", "fence", "stump", "crate_0" },
             };
+    }
+
+    /// <summary>Plays a looping strip of frames on a sprite (the spinning coins).</summary>
+    public class Flipbook : MonoBehaviour
+    {
+        Sprite[] frames;
+        SpriteRenderer sr;
+        float fps, t;
+
+        public static Flipbook Attach(SpriteRenderer sr, Sprite[] frames, float fps)
+        {
+            if (frames == null || frames.Length == 0) return null;
+            var f = sr.gameObject.AddComponent<Flipbook>();
+            f.sr = sr;
+            f.frames = frames;
+            f.fps = fps;
+            f.t = Random.Range(0f, frames.Length);
+            sr.sprite = frames[0];
+            return f;
+        }
+
+        void Update()
+        {
+            t += Time.deltaTime * fps;
+            sr.sprite = frames[(int)t % frames.Length];
+        }
     }
 }

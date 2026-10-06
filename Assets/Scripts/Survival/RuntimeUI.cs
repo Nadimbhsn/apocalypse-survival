@@ -786,6 +786,8 @@ namespace Platformer.Survival
         public void UpdateCampaignHud(Health health, float progress, int secretsFound, int secretsTotal)
         {
             if (healthSlider != null && health != null) healthSlider.value = health.NormalizedHP;
+            UpdateHearts(health);
+            HideElan();
             if (hudDistanceText != null) hudDistanceText.text = $"{Mathf.RoundToInt(progress * 100f)} %";
             if (hudProgressRoot != null && !hudProgressRoot.activeSelf) hudProgressRoot.SetActive(true);
             if (hudProgressFill != null) hudProgressFill.fillAmount = progress;
@@ -866,6 +868,7 @@ namespace Platformer.Survival
             hudSecretsText = UiKit.Outlined(UiKit.CreateTextFixed("SecretsText", rt, "", 22, TextAnchor.UpperLeft,
                 new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(330, 34), new Vector2(30, -106), ApogeeTheme.Cream));
 
+            BuildRunnerHudExtras(rt);
             BuildVirtualControls(rt);
 
             // PAUSE, under the health bar and the level's counters.
@@ -1386,6 +1389,7 @@ namespace Platformer.Survival
         public void UpdateHud(Health health, float distance, int coins, int materials)
         {
             if (healthSlider != null && health != null) healthSlider.value = health.NormalizedHP;
+            UpdateHearts(health);
             if (hudDistanceText != null) hudDistanceText.text = FormatDistance(distance);
             if (hudCoinsText != null) hudCoinsText.text = $"{coins} [c]";
             if (hudMaterialsText != null) hudMaterialsText.text = $"{materials} [g]";
