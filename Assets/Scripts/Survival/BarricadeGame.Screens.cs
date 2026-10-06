@@ -74,22 +74,14 @@ namespace Platformer.Survival
             menuShards = Pill(m, "Shards", new Vector2(0.26f, 0.745f), new Vector2(0.74f, 0.795f), 34);
 
             var card = Glass(m, "LandCard", new Vector2(0.06f, 0.43f), new Vector2(0.94f, 0.72f)).rectTransform;
-            var thumb = UiKit.CreateImage("Thumb", card, new Vector2(0.05f, 0.42f), new Vector2(0.95f, 0.95f), null, Color.white, false);
-            thumb.raycastTarget = false;
-            var tex = Resources.Load<Texture2D>("Hub/card_barricade");
-            if (tex != null)
-            {
-                thumb.sprite = Sprite.Create(tex, new Rect(0, tex.height * 0.3f, tex.width, tex.height * 0.5f), new Vector2(0.5f, 0.5f), 100f);
-                thumb.preserveAspect = false;
-            }
-            landName = UiKit.Outlined(UiKit.CreateText("Name", card, "", 40, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.3f), new Vector2(0.95f, 0.42f), ApogeeTheme.Gold), 2f);
+            landName = UiKit.Outlined(UiKit.CreateText("Name", card, "", 40, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.66f), new Vector2(0.95f, 0.9f), ApogeeTheme.Gold), 2f);
             UiKit.FitLabel(landName, 40);
-            landSub = UiKit.CreateText("Sub", card, "", 24, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.21f), new Vector2(0.95f, 0.3f), ApogeeTheme.Cream);
+            landSub = UiKit.CreateText("Sub", card, "", 26, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.48f), new Vector2(0.95f, 0.64f), ApogeeTheme.Cream);
             UiKit.FitLabel(landSub, 24);
-            landStats = UiKit.CreateText("Stats", card, "", 22, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.12f), new Vector2(0.95f, 0.21f), UiKit.TextDim);
+            landStats = UiKit.CreateText("Stats", card, "", 24, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.3f), new Vector2(0.95f, 0.46f), UiKit.TextDim);
             UiKit.FitLabel(landStats, 22);
-            landBest = UiKit.Outlined(UiKit.CreateText("Best", card, "", 26, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.03f), new Vector2(0.95f, 0.12f), ApogeeTheme.Gold), 1.5f);
-            landLock = UiKit.Outlined(UiKit.CreateText("Lock", card, "", 30, TextAnchor.MiddleCenter, new Vector2(0.08f, 0.5f), new Vector2(0.92f, 0.9f), ApogeeTheme.Cream), 2.5f);
+            landBest = UiKit.Outlined(UiKit.CreateText("Best", card, "", 30, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.08f), new Vector2(0.95f, 0.26f), ApogeeTheme.Gold), 1.5f);
+            landLock = UiKit.Outlined(UiKit.CreateText("Lock", card, "", 30, TextAnchor.MiddleCenter, new Vector2(0.08f, 0.06f), new Vector2(0.92f, 0.3f), ApogeeTheme.Cream), 2.5f);
             UiKit.FitLabel(landLock, 30);
             prevLand = UiKit.CreateButton("Prev", m, "‹", new Vector2(0.0f, 0.53f), new Vector2(0.1f, 0.62f), () => ChangeLand(-1), 60, new Color(0.22f, 0.10f, 0.08f));
             nextLand = UiKit.CreateButton("Next", m, "›", new Vector2(0.9f, 0.53f), new Vector2(1f, 0.62f), () => ChangeLand(1), 60, new Color(0.22f, 0.10f, 0.08f));
