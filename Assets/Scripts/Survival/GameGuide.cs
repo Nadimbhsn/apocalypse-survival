@@ -78,7 +78,7 @@ namespace Platformer.Survival
             {
                 Title = "BASTION",
                 Goal = "Les morts suivent le chemin jusqu'au bastion. Pose des tours où tu veux au bord du chemin pour les arrêter avant la porte.",
-                Controls = "Touche l'herbe pour bâtir : une tour touchée montre sa fiche, touche-la encore pour la poser. Touche une tour pour l'améliorer (5 niveaux). Le crâne lance la vague suivante à tout moment, même pendant une vague. Touche ton héros puis le terrain pour le déplacer.",
+                Controls = "Touche l'herbe pour bâtir : une tour touchée montre sa fiche, touche-la encore pour la poser. Touche une tour pour l'améliorer (5 niveaux). Le crâne lance la vague suivante à tout moment, même pendant une vague. Touche ton héros puis le terrain pour le déplacer. Zoome avec deux doigts, la molette ou + et -, glisse pour te déplacer ; VOIR ZONES montre en vert où une tour peut aller.",
                 Tip = "Archers et pylône touchent les volants, le canon frappe les groupes, le givre ralentit. Ton héros a un pouvoir selon ton personnage : utilise-le au bon moment ! En mode infini, quitte quand tu veux : ta partie t'attend.",
                 Rewards = "[c]   [g]",
             },

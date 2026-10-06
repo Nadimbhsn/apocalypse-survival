@@ -55,13 +55,15 @@ namespace Platformer.Survival
         }
 
         static readonly Vector2 Origin = new Vector2(12000f, 3000f);
-        /// <summary>The painted map covers x -12..12, y -7..5 (2048 x 1024 px).</summary>
-        const float MapPpu = 2048f / 24f;
+        /// <summary>The painted map covers x -12..12, y -7..5, whatever its resolution.</summary>
+        const float MapWidth = 24f;
         static readonly Vector2 MapCentre = new Vector2(0f, -1f);
         const float IslandHalfW = 8.75f, IslandHalfH = 4.8f;
-        /// <summary>What the camera keeps in view: the island and the top of its cliff.</summary>
-        const float ViewTop = 5.2f, ViewBottom = -6.0f, ViewHalfW = 9.3f;
-        const float HudTop = 0.88f;
+        /// <summary>What the camera fits at zoom 1: the island's grass, edge to edge (the HUD floats over it).</summary>
+        const float FitTop = 4.95f, FitBottom = -5.1f, FitHalfW = 9.5f;
+        /// <summary>How far the view may pan when zoomed in.</summary>
+        const float PanLeft = -9.8f, PanRight = 9.8f, PanBottom = -6.2f, PanTop = 5.3f;
+        const float MaxZoom = 2.6f;
         const float BetweenWaves = 12f;
         const float HeroRange = 1.9f, HeroInterval = 0.7f, HeroSpeed = 3f;
         const float TowerWidth = 1.7f;
@@ -169,7 +171,22 @@ namespace Platformer.Survival
         bool MenuOpen => selected != null || spotOpen;
         Vector2 MenuPoint => selected != null ? selected.at : spot;
         GameObject rangeRing, padRing;
-        bool pressActive, pressOverUi;
+        bool pressActive, pressOverUi, dragged, pinched;
+        Vector2 pressStart, lastDrag;
+        float lastPinchDist;
+        Vector2 lastPinchMid;
+
+        // zoom and pan
+        float zoom = 1f;
+        Vector2 viewCentre;
+        bool viewSet;
+
+        // the overlay showing where a tower may stand
+        bool zonesShown;
+        SpriteRenderer zonesSr;
+        Texture2D zonesTex;
+        Button zonesButton;
+        Text zonesLabel;
 
         // ---- art ----------------------------------------------------------------------------
 
@@ -285,6 +302,29 @@ namespace Platformer.Survival
             clr.anchorMin = clr.anchorMax = new Vector2(1f, 0f);
             clr.sizeDelta = new Vector2(320, 40);
             clr.anchoredPosition = new Vector2(-290, 330);
+
+            // Top left, under the strip: where towers may go, and the zoom.
+            var zr = UiKit.CreateRect("Zones", hud, new Vector2(0f, 1f), new Vector2(0f, 1f));
+            zr.pivot = new Vector2(0f, 1f);
+            zr.sizeDelta = new Vector2(250f, 84f);
+            zr.anchoredPosition = new Vector2(24f, -128f);
+            var zImg = zr.gameObject.AddComponent<Image>();
+            zImg.sprite = ApogeeTheme.Chip;
+            zImg.type = Image.Type.Sliced;
+            zonesButton = zr.gameObject.AddComponent<Button>();
+            zonesButton.targetGraphic = zImg;
+            zonesButton.onClick.AddListener(ToggleZones);
+            zonesLabel = UiKit.Outlined(UiKit.CreateText("Label", zr, "ZONES", 30, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream), 1.5f);
+            zonesLabel.rectTransform.offsetMin = new Vector2(12f, 4f);
+            zonesLabel.rectTransform.offsetMax = new Vector2(-12f, -4f);
+            UiKit.FitLabel(zonesLabel, 30);
+            RoundButton("ZoomIn", hud, new Vector2(0f, 1f), new Vector2(84, 84), new Vector2(330f, -170f), () => ZoomButton(1.35f), new Color(0.95f, 0.85f, 0.75f));
+            RoundButton("ZoomOut", hud, new Vector2(0f, 1f), new Vector2(84, 84), new Vector2(430f, -170f), () => ZoomButton(1f / 1.35f), new Color(0.95f, 0.85f, 0.75f));
+            foreach (var (nm, txt, x) in new[] { ("ZoomIn", "+", 330f), ("ZoomOut", "-", 430f) })
+            {
+                var b = hud.Find(nm);
+                UiKit.Outlined(UiKit.CreateText("Sign", b, txt, 54, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream), 2f).raycastTarget = false;
+            }
 
             // The ring menu that opens around a pad: five towers, or a tower's actions.
             var ring = UiKit.CreateRect("Ring", hud, Vector2.zero, Vector2.one);
@@ -494,6 +534,9 @@ namespace Platformer.Survival
             drifters.Clear();
             if (root != null) Destroy(root.gameObject);
             root = null;
+            zonesSr = null;
+            if (zonesTex != null) Destroy(zonesTex);
+            zonesTex = null;
             hero = null;
             rangeRing = null;
             padRing = null;
@@ -527,7 +570,11 @@ namespace Platformer.Survival
 
             BuildWorld();
             TakeOverCamera(new Vector3(Origin.x, Origin.y, -10f), 7f, new Color(0.95f, 0.58f, 0.42f));
+            zoom = 1f;
+            viewSet = false;
             FrameCamera();
+            if (zonesShown) RefreshZones();
+            UpdateZonesLabel();
 
             selectPanel.SetActive(false);
             overPanel.SetActive(false);
@@ -543,17 +590,55 @@ namespace Platformer.Survival
         /// <summary>Portrait catalog coordinates to the landscape island: a quarter turn.</summary>
         static Vector2 Turn(Vector2 p) => new Vector2(-p.y, p.x);
 
+        /// <summary>Orthographic size that fits the whole island at zoom 1.</summary>
+        float BaseOrtho => Mathf.Max((FitTop - FitBottom) / 2f, FitHalfW / Mathf.Max(0.1f, cam != null ? cam.aspect : 1.78f));
+
         void FrameCamera()
         {
             if (cam == null) return;
-            float aspect = Mathf.Max(0.1f, cam.aspect);
-            float needH = (ViewTop - ViewBottom) / HudTop;
-            float ortho = Mathf.Max(needH / 2f, ViewHalfW / aspect);
-            float visible = ortho * 2f;
-            // The view's top edge sits a touch above the island, under the HUD strip.
-            float topY = ViewTop + visible * (1f - HudTop);
+            if (!viewSet) { viewCentre = new Vector2(0f, (FitTop + FitBottom) / 2f); viewSet = true; }
+            float ortho = BaseOrtho / zoom;
             cam.orthographicSize = ortho;
-            cam.transform.position = new Vector3(Origin.x, Origin.y + topY - ortho, -10f);
+            viewCentre = ClampView(viewCentre, ortho);
+            cam.transform.position = new Vector3(Origin.x + viewCentre.x, Origin.y + viewCentre.y, -10f);
+        }
+
+        Vector2 ClampView(Vector2 c, float ortho)
+        {
+            float halfW = ortho * Mathf.Max(0.1f, cam.aspect), halfH = ortho;
+            c.x = halfW * 2f >= PanRight - PanLeft ? (PanLeft + PanRight) / 2f : Mathf.Clamp(c.x, PanLeft + halfW, PanRight - halfW);
+            float fitMid = (FitTop + FitBottom) / 2f;
+            c.y = halfH * 2f >= PanTop - PanBottom ? fitMid : Mathf.Clamp(c.y, PanBottom + halfH, PanTop - halfH);
+            if (zoom <= 1.001f) c = new Vector2(0f, fitMid);
+            return c;
+        }
+
+        /// <summary>Zooms keeping the point under the finger (or cursor) where it is.</summary>
+        void ZoomAt(Vector2 screen, float newZoom)
+        {
+            if (cam == null) return;
+            newZoom = Mathf.Clamp(newZoom, 1f, MaxZoom);
+            if (Mathf.Approximately(newZoom, zoom)) return;
+            var before = cam.ScreenToWorldPoint(new Vector3(screen.x, screen.y, 10f));
+            Vector2 wp = new Vector2(before.x - Origin.x, before.y - Origin.y);
+            float k = zoom / newZoom;
+            viewCentre = wp + (viewCentre - wp) * k;
+            zoom = newZoom;
+            FrameCamera();
+        }
+
+        void PanByScreen(Vector2 delta)
+        {
+            if (cam == null || zoom <= 1.001f) return;
+            float unitsPerPixel = 2f * cam.orthographicSize / Mathf.Max(1, Screen.height);
+            viewCentre -= delta * unitsPerPixel;
+            FrameCamera();
+        }
+
+        void ZoomButton(float factor)
+        {
+            if (!playing) return;
+            ZoomAt(new Vector2(Screen.width / 2f, Screen.height / 2f), zoom * factor);
         }
 
         // ---- world ------------------------------------------------------------------------
@@ -583,7 +668,7 @@ namespace Platformer.Survival
             mapTexture = Resources.Load<Texture2D>(mapIndex < 0 ? "Bastion/map_endless" : $"Bastion/map_{mapIndex}");
             if (mapTexture != null)
             {
-                var island = Sprite.Create(mapTexture, new Rect(0, 0, mapTexture.width, mapTexture.height), new Vector2(0.5f, 0.5f), MapPpu);
+                var island = Sprite.Create(mapTexture, new Rect(0, 0, mapTexture.width, mapTexture.height), new Vector2(0.5f, 0.5f), mapTexture.width / MapWidth);
                 Place("Island", island, MapCentre, 1f, -50, 6f);
             }
 
@@ -732,6 +817,7 @@ namespace Platformer.Survival
             FrameCamera();
             float realDt = Time.deltaTime;
             AnimateScenery(realDt);
+            AnimateZones();
             UpdateShots(realDt * speed);
             UpdateBolts();
             if (MenuOpen) PlaceRing();
@@ -1406,21 +1492,71 @@ namespace Platformer.Survival
 
         // ---- input, ring menu ------------------------------------------------------------------
 
+        /// <summary>
+        /// A tap builds or selects; a drag pans the zoomed view; two fingers pinch to zoom; the
+        /// mouse wheel zooms on the cursor.
+        /// </summary>
         void HandleInput()
         {
             var pointer = Pointer.current;
             if (pointer == null || cam == null) return;
+
+            var mouse = Mouse.current;
+            if (mouse != null)
+            {
+                float wheel = mouse.scroll.ReadValue().y;
+                if (Mathf.Abs(wheel) > 0.01f && !IsPointerOverUi())
+                    ZoomAt(mouse.position.ReadValue(), zoom * (wheel > 0f ? 1.15f : 1f / 1.15f));
+            }
+
+            var ts = Touchscreen.current;
+            if (ts != null)
+            {
+                int n = 0;
+                Vector2 a = default, b = default;
+                foreach (var t in ts.touches)
+                {
+                    if (!t.press.isPressed) continue;
+                    if (n == 0) a = t.position.ReadValue(); else if (n == 1) b = t.position.ReadValue();
+                    n++;
+                }
+                if (n >= 2)
+                {
+                    float dist = Vector2.Distance(a, b);
+                    Vector2 mid = (a + b) / 2f;
+                    if (pinched && lastPinchDist > 1f)
+                    {
+                        ZoomAt(mid, zoom * dist / lastPinchDist);
+                        PanByScreen(mid - lastPinchMid);
+                    }
+                    pinched = true;
+                    lastPinchDist = dist;
+                    lastPinchMid = mid;
+                    return;
+                }
+                lastPinchDist = 0f;
+            }
+
+            Vector2 pos = pointer.position.ReadValue();
             if (pointer.press.wasPressedThisFrame)
             {
                 pressActive = true;
                 pressOverUi = IsPointerOverUi();
+                pressStart = lastDrag = pos;
+                dragged = false;
+                pinched = false;
+            }
+            if (pressActive && pointer.press.isPressed && !pressOverUi)
+            {
+                if (!dragged && (pos - pressStart).magnitude > Screen.height * 0.025f) dragged = true;
+                if (dragged) PanByScreen(pos - lastDrag);
+                lastDrag = pos;
             }
             if (!pointer.press.wasReleasedThisFrame || !pressActive) return;
             pressActive = false;
-            if (pressOverUi) return;
+            if (pressOverUi || dragged || pinched) return;
 
-            Vector2 screen = pointer.position.ReadValue();
-            var world = cam.ScreenToWorldPoint(new Vector3(screen.x, screen.y, 10f));
+            var world = cam.ScreenToWorldPoint(new Vector3(pos.x, pos.y, 10f));
             OnTap(new Vector2(world.x - Origin.x, world.y - Origin.y));
         }
 
@@ -1697,6 +1833,7 @@ namespace Platformer.Survival
             Sfx.Material();
             Fx.Burst(W(spot, -3f), new Color(0.75f, 0.65f, 0.55f), 18, 3f, 0.1f, 0.4f);
             CloseMenus();
+            if (zonesShown) RefreshZones();
             messageText.text = "";
             RefreshHud();
         }
@@ -1727,6 +1864,7 @@ namespace Platformer.Survival
             if (t.pad != null) Destroy(t.pad);
             Fx.Burst(W(t.at, -3f), new Color(0.6f, 0.55f, 0.5f), 18, 3f, 0.1f, 0.5f);
             towers.Remove(t);
+            if (zonesShown) RefreshZones();
             Sfx.Drop();
             CloseMenus();
             RefreshHud();
@@ -1803,6 +1941,70 @@ namespace Platformer.Survival
             AdService.OnPlayerDeath();
         }
 
+        // ---- where towers may go ----------------------------------------------------------------
+
+        const int ZonesW = 400, ZonesH = 220;
+        const float ZonesLeft = -10f, ZonesRight = 10f, ZonesBottom = -5.5f, ZonesTop = 5.5f;
+
+        void ToggleZones()
+        {
+            if (!playing) return;
+            zonesShown = !zonesShown;
+            if (zonesShown) RefreshZones();
+            else if (zonesSr != null) zonesSr.gameObject.SetActive(false);
+            UpdateZonesLabel();
+            Sfx.Drop();
+        }
+
+        void UpdateZonesLabel()
+        {
+            if (zonesLabel == null) return;
+            zonesLabel.text = zonesShown ? "CACHER ZONES" : "VOIR ZONES";
+            zonesLabel.color = zonesShown ? new Color(0.6f, 1f, 0.55f) : ApogeeTheme.Cream;
+        }
+
+        /// <summary>
+        /// Paints every point of the island where a tower could stand in soft green, with a
+        /// brighter outline, using the very rule a tap checks (PlacementProblem).
+        /// </summary>
+        void RefreshZones()
+        {
+            if (root == null) return;
+            if (zonesTex == null)
+                zonesTex = new Texture2D(ZonesW, ZonesH, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            var ok = new bool[ZonesW * ZonesH];
+            float sx = (ZonesRight - ZonesLeft) / ZonesW, sy = (ZonesTop - ZonesBottom) / ZonesH;
+            for (int y = 0; y < ZonesH; y++)
+                for (int x = 0; x < ZonesW; x++)
+                    ok[y * ZonesW + x] = PlacementProblem(new Vector2(ZonesLeft + (x + 0.5f) * sx, ZonesBottom + (y + 0.5f) * sy)) == null;
+            var px = new Color32[ZonesW * ZonesH];
+            var fill = new Color32(110, 255, 120, 80);
+            var edge = new Color32(190, 255, 170, 230);
+            for (int y = 0; y < ZonesH; y++)
+                for (int x = 0; x < ZonesW; x++)
+                {
+                    int i = y * ZonesW + x;
+                    if (!ok[i]) { px[i] = new Color32(0, 0, 0, 0); continue; }
+                    bool border = x == 0 || y == 0 || x == ZonesW - 1 || y == ZonesH - 1
+                        || !ok[i - 1] || !ok[i + 1] || !ok[i - ZonesW] || !ok[i + ZonesW];
+                    px[i] = border ? edge : fill;
+                }
+            zonesTex.SetPixels32(px);
+            zonesTex.Apply();
+            if (zonesSr == null)
+            {
+                var sprite = Sprite.Create(zonesTex, new Rect(0, 0, ZonesW, ZonesH), new Vector2(0.5f, 0.5f), ZonesW / (ZonesRight - ZonesLeft));
+                zonesSr = Place("Zones", sprite, new Vector2((ZonesLeft + ZonesRight) / 2f, (ZonesBottom + ZonesTop) / 2f), 1f, -45, 5.8f);
+            }
+            zonesSr.gameObject.SetActive(true);
+        }
+
+        void AnimateZones()
+        {
+            if (zonesSr == null || !zonesSr.gameObject.activeSelf) return;
+            zonesSr.color = new Color(1f, 1f, 1f, 0.75f + 0.25f * Mathf.Sin(Time.time * 3f));
+        }
+
         // ---- the endless run, kept when left alive ------------------------------------------
 
         const string EndlessSaveKey = "bastion_endless_run";
@@ -1867,6 +2069,7 @@ namespace Platformer.Survival
             }
             heroPos = heroTarget = new Vector2(save.heroX, save.heroY);
             PlaceHero();
+            if (zonesShown) RefreshZones();
             Say(wave > 0 ? $"Partie reprise après la vague {wave}" : "Partie reprise", 3f);
             RefreshHud();
             return true;
