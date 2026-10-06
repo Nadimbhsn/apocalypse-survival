@@ -53,9 +53,9 @@ namespace Platformer.Survival
             "barricade" => new GameGuide
             {
                 Title = "BARRICADE",
-                Goal = "Tiens la palissade face aux morts qui sortent du bois. Chaque vague tenue rapporte des débris, et tes défenses restent d'une partie à l'autre.",
-                Controls = "Maintiens un couloir pour tirer dedans. Entre les vagues, touche un couloir pour y bâtir UNE défense : Pieux, Brasier ou Arbalète, puis améliore-la.",
-                Tip = "Une défense au niveau 5 produit des matériaux, même jeu fermé : pense à RÉCOLTER. Le Feu-follet survole Pieux et Brasier (l'Arbalète le touche), le Colosse met la défense de son couloir hors service. Un Colosse mène la charge toutes les 5 vagues !",
+                Goal = "Tiens la palissade le plus longtemps possible. Chaque partie rapporte des ÉCLATS : dépense-les à la FORGE pour devenir plus fort, et va toujours plus loin. Tiens la vague 15 pour ouvrir la terre suivante (5 terres).",
+                Controls = "Maintiens un couloir pour tirer dedans. Entre les vagues, touche un couloir pour y bâtir UNE défense (Pieux, Brasier ou Arbalète) et améliore-la avec tes débris. MOLOTOV enflamme le couloir le plus chargé.",
+                Tip = "Toutes les 3 vagues, choisis une BÉNÉDICTION. Toutes les 5 vagues, un Colosse porte un coffre d'éclats. Enchaîne les morts pour faire des SÉRIES. Le MOULIN de la Forge produit des matériaux même jeu fermé.",
                 Rewards = "[g]",
             },
             "invasion" => new GameGuide

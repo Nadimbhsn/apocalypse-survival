@@ -23,6 +23,8 @@ namespace Platformer.Survival
         public static Sprite Coin => Get("coin", CoinShade);
         public static Sprite Gear => Get("gear", GearShade);
         public static Sprite Debris => Get("debris", DebrisShade);
+        /// <summary>A violet crystal: the Barricade's Éclats, spent at the Forge.</summary>
+        public static Sprite Shard => Get("shard", ShardShade);
         public static Sprite TrapSpikes => Get("trap_spikes", SpikesShade);
         public static Sprite TrapToxic => Get("trap_toxic", ToxicShade);
         public static Sprite TrapWire => Get("trap_wire", WireShade);
@@ -65,6 +67,7 @@ namespace Platformer.Survival
             'c' => Coin,
             'g' => Gear,
             'd' => Debris,
+            'e' => Shard,
             'a' => Ammo,
             'k' => Kit,
             _ => null,
@@ -101,6 +104,20 @@ namespace Platformer.Survival
         }
 
         static Color Mix(Color a, Color b, float t) => Color.Lerp(a, b, Mathf.Clamp01(t));
+
+        // A tall violet crystal, lit on its left face, with a white glint.
+        static Color ShardShade(float u, float v)
+        {
+            float d = Mathf.Abs(u) / 0.56f + Mathf.Abs(v) / 0.94f;
+            if (d > 1f) return Color.clear;
+            if (d > 0.86f) return new Color(0.24f, 0.08f, 0.42f);
+            var dark = new Color(0.38f, 0.16f, 0.66f);
+            var lit = new Color(0.80f, 0.64f, 1f);
+            var c = u < 0f ? Mix(dark, lit, 0.55f + v * 0.3f) : Mix(dark, lit, 0.15f + v * 0.2f);
+            if (Mathf.Abs(u) < 0.035f) c = Mix(c, Color.white, 0.35f);
+            if (u < -0.12f && u > -0.3f && v > 0.08f && v < 0.48f) c = Mix(c, Color.white, 0.55f);
+            return c;
+        }
 
         // A gold coin seen face-on: dark rim, bright face with an embossed inner ring and a
         // highlight in the upper left, like the 🪙 emoji.
