@@ -330,8 +330,8 @@ namespace Platformer.Survival
                 // Painted pickups: a spinning gold coin, a bronze gear, a red potion.
                 go.transform.localScale = Vector3.one;
                 sr.color = Color.white;
-                if (type == PickupType.Coin) Flipbook.Attach(sr, RunnerArt.Frames("pickup_coin", 8, 192f), 12f);
-                else sr.sprite = RunnerArt.Get(type == PickupType.Material ? "pickup_gear" : "pickup_potion", new Vector2(0.5f, 0.5f), default, 192f);
+                if (type == PickupType.Coin) Flipbook.Attach(sr, RunnerArt.Frames("pickup_coin", 8, 230f), 12f);
+                else sr.sprite = RunnerArt.Get(type == PickupType.Material ? "pickup_gear" : "pickup_potion", new Vector2(0.5f, 0.5f), default, 200f);
             }
 
             if (type == PickupType.Medkit && !painted)

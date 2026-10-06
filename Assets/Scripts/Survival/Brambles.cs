@@ -25,6 +25,30 @@ namespace Platformer.Survival
             go.transform.SetParent(parent, false);
             go.transform.position = new Vector3(x, groundY, 0f);
 
+            if (RunnerArt.Available)
+            {
+                // Painted: a thicket of violet thorns with a couple of bushes caught in it.
+                var thorns = new GameObject("Thorns");
+                thorns.transform.SetParent(go.transform, false);
+                var tsr = thorns.AddComponent<SpriteRenderer>();
+                tsr.sprite = RunnerArt.Get("spikes", new Vector2(0.5f, 0f));
+                tsr.drawMode = SpriteDrawMode.Tiled;
+                tsr.size = new Vector2(length, 104f / RunnerArt.Ppu);
+                tsr.color = new Color(0.62f, 0.38f, 0.62f);
+                tsr.sortingOrder = 2;
+                thorns.transform.localScale = new Vector3(1f, 1.05f, 1f);
+                for (float bx = -length / 2f + 0.3f; bx < length / 2f; bx += Random.Range(0.8f, 1.3f))
+                {
+                    var b = RunnerArt.PlaceProp(go.transform, "bush_3", bx, 0f, back: false, Random.Range(0.6f, 0.8f));
+                    if (b != null) { b.transform.localPosition = new Vector3(bx, -0.05f, 0f); b.GetComponent<SpriteRenderer>().sortingOrder = 1; }
+                }
+                var bcol = go.AddComponent<BoxCollider2D>();
+                bcol.isTrigger = true;
+                bcol.size = new Vector2(length, 0.7f);
+                bcol.offset = new Vector2(0f, 0.35f);
+                return go.AddComponent<Brambles>();
+            }
+
             // A dark tangle along the ground...
             Part(go.transform, PlaceholderVisuals.Square(Color.white), new Color(0.26f, 0.07f, 0.06f, 0.95f),
                 new Vector2(0f, 0.14f), new Vector2(length, 0.3f), 1);

@@ -526,7 +526,7 @@ namespace Platformer.Survival
                         if (Random.value < 0.55f) RunnerArt.Window(tower, new Vector3(-2.6f + i * 2.6f, wy - (b + t) / 2f, -0.01f));
                 for (float x = -TowerWidth / 2f; x <= TowerWidth / 2f + 0.01f; x += 0.95f)
                 {
-                    var c = RunnerArt.PlaceProp(tower, "crenel", x, t - (b + t) / 2f - 0.05f, back: true, 1.1f, new Color(0.85f, 0.78f, 0.8f));
+                    var c = RunnerArt.PlaceProp(tower, "crenel", x, t - (b + t) / 2f - 0.05f, back: true, 1.0f, new Color(0.85f, 0.78f, 0.8f));
                     if (c != null) c.transform.localPosition = new Vector3(x, t - (b + t) / 2f - 0.05f, -0.02f);
                 }
                 props.Add(tower.gameObject);

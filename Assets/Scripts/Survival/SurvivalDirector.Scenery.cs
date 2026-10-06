@@ -807,9 +807,9 @@ namespace Platformer.Survival
             float x = Mathf.Max(xStart + 0.9f, midFrontierX);
             while (x < end)
             {
-                var go = RunnerArt.PlaceProp(entityParent, back[Random.Range(0, back.Length)], x, topY - 0.06f, back: true, Random.Range(0.85f, 1.1f), haze);
+                var go = RunnerArt.PlaceProp(entityParent, back[Random.Range(0, back.Length)], x, topY - 0.06f, back: true, Random.Range(0.55f, 0.75f), haze);
                 if (go != null) scenery.Add(go);
-                x += Random.Range(3f, 7f);
+                x += Random.Range(2.4f, 5.5f);
             }
             midFrontierX = x;
 
@@ -834,7 +834,7 @@ namespace Platformer.Survival
                     graves.Add(new GraveTrigger { x = x, y = topY });
                     lastGraveX = x;
                 }
-                var go = RunnerArt.PlaceProp(entityParent, name, x, topY - 0.04f, back: false, Random.Range(0.85f, 1.1f));
+                var go = RunnerArt.PlaceProp(entityParent, name, x, topY - 0.04f, back: false, Random.Range(0.75f, 0.95f));
                 if (go != null) scenery.Add(go);
                 x += Random.Range(spaceMin, spaceMax) * 0.7f;
             }

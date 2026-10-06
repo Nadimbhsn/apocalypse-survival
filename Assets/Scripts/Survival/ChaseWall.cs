@@ -28,6 +28,7 @@ namespace Platformer.Survival
         SurvivalDirector director;
         PlayerController player;
         SpriteRenderer front;
+        bool paintedFront;
         ParticleSystem debris;
         float nextDamageTime;
         bool dissipating;
@@ -65,6 +66,17 @@ namespace Platformer.Survival
             wall.front.sprite = PlaceholderVisuals.Square(Color.white);
             wall.front.color = new Color(0.75f, 0.18f, 0.12f, 0.5f);
             wall.front.sortingOrder = 8;
+            var stormArt = RunnerArt.Available ? RunnerArt.Get("storm_front", new Vector2(0.8f, 0.5f)) : null;
+            if (stormArt != null)
+            {
+                // A painted wall of storm cloud, its billows lit red by the lightning inside.
+                frontGo.transform.localScale = Vector3.one;
+                wall.front.sprite = stormArt;
+                wall.front.drawMode = SpriteDrawMode.Tiled;
+                wall.front.size = new Vector2(stormArt.bounds.size.x, 90f);
+                wall.front.color = Color.white;
+                wall.paintedFront = true;
+            }
 
             wall.debris = wall.CreateDebris(go.transform);
             return wall;
