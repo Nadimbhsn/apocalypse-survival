@@ -84,7 +84,7 @@ namespace Platformer.Survival
             // painted body (the runner's shades), when the art is there
             public SpriteRenderer body;
             public Sprite[] frames;
-            public float anim;
+            public float anim, bodyScale, face = 1f, faceTarget = 1f, tilt;
         }
 
         class Tower
@@ -982,6 +982,7 @@ namespace Platformer.Survival
                 bodyGo.transform.SetParent(go.transform, false);
                 bodyGo.transform.localPosition = new Vector3(0f, -0.26f + lift, -0.05f);
                 bodyGo.transform.localScale = Vector3.one * (h / bodyH);
+                c.bodyScale = h / bodyH;
                 c.body = bodyGo.AddComponent<SpriteRenderer>();
                 c.body.sprite = frames[0];
                 c.body.color = tint;
@@ -1055,8 +1056,21 @@ namespace Platformer.Survival
                     c.body.sortingOrder = DepthOrder(c.pos.y);
                     if (c.flashUntil > 0f && clock >= c.flashUntil) { c.flashUntil = 0f; c.body.color = c.def.Armored ? new Color(0.85f, 0.9f, 1f) : c.def.Kind == CreepKind.Colossus ? new Color(1f, 0.75f, 0.7f) : Color.white; }
                 }
+                if (c.body != null)
+                {
+                    // Turns round smoothly instead of snapping, and leans into the climb or the
+                    // descent of the road (the side-on bodies have no front or back view).
+                    var step = c.pos - before;
+                    if (Mathf.Abs(step.x) > 0.002f * dt * 60f) c.faceTarget = step.x < 0f ? -1f : 1f;
+                    c.face = Mathf.MoveTowards(c.face, c.faceTarget, dt * 9f);
+                    float lean = step.sqrMagnitude > 0f ? Mathf.Atan2(step.y, Mathf.Abs(step.x) + 0.0001f) * Mathf.Rad2Deg : 0f;
+                    c.tilt = Mathf.LerpAngle(c.tilt, Mathf.Clamp(lean, -60f, 60f) * 0.3f, dt * 8f);
+                    var bt = c.body.transform;
+                    bt.localScale = new Vector3(c.bodyScale * c.face, c.bodyScale, 1f);
+                    bt.localRotation = Quaternion.Euler(0f, 0f, c.tilt * Mathf.Sign(c.face == 0f ? 1f : c.face));
+                }
                 // Face the way it walks.
-                if (Mathf.Abs(c.pos.x - before.x) > 0.0001f)
+                else if (Mathf.Abs(c.pos.x - before.x) > 0.0001f)
                 {
                     var s = c.go.transform.localScale;
                     s.x = Mathf.Abs(s.x) * (c.pos.x < before.x ? -1f : 1f);
