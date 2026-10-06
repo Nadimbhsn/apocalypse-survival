@@ -81,6 +81,10 @@ namespace Platformer.Survival
             public GameObject hpBar;
             public Renderer[] model;
             public float bob, flashUntil;
+            // painted body (the runner's shades), when the art is there
+            public SpriteRenderer body;
+            public Sprite[] frames;
+            public float anim;
         }
 
         class Tower
@@ -961,7 +965,31 @@ namespace Platformer.Survival
             float h = def.Height;
             float lift = def.Flies ? 0.55f : 0f;
             Transform rig = null;
-            if (KenneyProps.Available)
+            // The painted shades of the runner: Rôdeurs, shadow hounds, wisps, stone-plated colossi.
+            var (sheet, bodyH, tint) = kind switch
+            {
+                CreepKind.Runner => ("hound", 0.8f, Color.white),
+                CreepKind.Brute => ("brute", 1.85f, Color.white),
+                CreepKind.Armored => ("walker_b", 1.25f, new Color(0.85f, 0.9f, 1f)),
+                CreepKind.Specter => ("wisp", 1.3f, Color.white),
+                CreepKind.Colossus => ("brute", 1.85f, new Color(1f, 0.75f, 0.7f)),
+                _ => ("walker", 1.25f, Color.white),
+            };
+            var frames = EnemySprite.Frames(sheet, 0f);
+            if (frames != null)
+            {
+                var bodyGo = new GameObject("Body");
+                bodyGo.transform.SetParent(go.transform, false);
+                bodyGo.transform.localPosition = new Vector3(0f, -0.26f + lift, -0.05f);
+                bodyGo.transform.localScale = Vector3.one * (h / bodyH);
+                c.body = bodyGo.AddComponent<SpriteRenderer>();
+                c.body.sprite = frames[0];
+                c.body.color = tint;
+                c.frames = frames;
+                c.anim = Random.Range(0f, frames.Length);
+                rig = bodyGo.transform;
+            }
+            else if (KenneyProps.Available)
             {
                 var size = KenneyProps.Size(PropKit.Graveyard, def.Model);
                 rig = KenneyProps.Spawn(PropKit.Graveyard, def.Model, go.transform, new Vector3(0f, -0.25f + lift, 0f),
@@ -1018,7 +1046,15 @@ namespace Platformer.Survival
                 var before = c.pos;
                 c.pos = BastionCatalog.PointAt(path, c.dist);
                 c.bob += dt * 7f;
-                c.go.transform.position = W(c.pos + new Vector2(0f, Mathf.Abs(Mathf.Sin(c.bob)) * 0.04f), DepthZ(c.pos.y));
+                c.go.transform.position = W(c.pos + new Vector2(0f, c.body != null ? 0f : Mathf.Abs(Mathf.Sin(c.bob)) * 0.04f), DepthZ(c.pos.y));
+                if (c.body != null)
+                {
+                    // The walk cycle keeps pace with the ground covered; drawn in depth like everything else.
+                    c.anim += dt * 9f * (speedNow / Mathf.Max(0.1f, c.def.Speed)) * Mathf.Clamp(c.def.Speed, 0.6f, 1.6f);
+                    c.body.sprite = c.frames[(int)c.anim % c.frames.Length];
+                    c.body.sortingOrder = DepthOrder(c.pos.y);
+                    if (c.flashUntil > 0f && clock >= c.flashUntil) { c.flashUntil = 0f; c.body.color = c.def.Armored ? new Color(0.85f, 0.9f, 1f) : c.def.Kind == CreepKind.Colossus ? new Color(1f, 0.75f, 0.7f) : Color.white; }
+                }
                 // Face the way it walks.
                 if (Mathf.Abs(c.pos.x - before.x) > 0.0001f)
                 {
@@ -1044,6 +1080,11 @@ namespace Platformer.Survival
             if (c.model != null)
             {
                 KenneyProps.SetFlash(c.model, 0.7f);
+                c.flashUntil = clock + 0.08f;
+            }
+            else if (c.body != null)
+            {
+                c.body.color = new Color(1f, 0.45f, 0.35f);
                 c.flashUntil = clock + 0.08f;
             }
             if (c.hp > 0f)
