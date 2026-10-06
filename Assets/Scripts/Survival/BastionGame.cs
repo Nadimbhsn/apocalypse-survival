@@ -1064,7 +1064,7 @@ namespace Platformer.Survival
                     if (Mathf.Abs(step.x) > 0.002f * dt * 60f) c.faceTarget = step.x < 0f ? -1f : 1f;
                     c.face = Mathf.MoveTowards(c.face, c.faceTarget, dt * 9f);
                     float lean = step.sqrMagnitude > 0f ? Mathf.Atan2(step.y, Mathf.Abs(step.x) + 0.0001f) * Mathf.Rad2Deg : 0f;
-                    c.tilt = Mathf.LerpAngle(c.tilt, Mathf.Clamp(lean, -60f, 60f) * 0.3f, dt * 8f);
+                    c.tilt = Mathf.LerpAngle(c.tilt, c.def.Kind == CreepKind.Runner ? Mathf.Clamp(lean, -60f, 60f) * 0.3f : 0f, dt * 8f);   // only the hound leans
                     var bt = c.body.transform;
                     bt.localScale = new Vector3(c.bodyScale * c.face, c.bodyScale, 1f);
                     bt.localRotation = Quaternion.Euler(0f, 0f, c.tilt * Mathf.Sign(c.face == 0f ? 1f : c.face));
