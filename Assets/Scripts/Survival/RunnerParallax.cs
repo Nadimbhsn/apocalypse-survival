@@ -62,11 +62,22 @@ namespace Platformer.Survival
 
         public void SetStyle(ArtStyle s) => style = (int)s;
 
+        /// <summary>Only while a run is on: the mini-games borrow the same camera.</summary>
+        public System.Func<bool> isVisible;
+
         public void SetVisible(bool visible) => gameObject.SetActive(visible);
 
         void LateUpdate()
         {
             if (cam == null) return;
+            bool show = isVisible == null || isVisible();
+            if (!show)
+            {
+                for (int s = 0; s < 4; s++)
+                    for (int b = 0; b < 2; b++)
+                        if (bands[s, b].sr != null && bands[s, b].sr.enabled) bands[s, b].sr.enabled = false;
+                return;
+            }
             var c = cam.transform.position;
             for (int s = 0; s < 4; s++)
             {

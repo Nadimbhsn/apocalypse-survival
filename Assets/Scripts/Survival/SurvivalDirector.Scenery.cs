@@ -134,6 +134,7 @@ namespace Platformer.Survival
             if (UseArt)
             {
                 parallax = RunnerParallax.Create(mainCamera);
+                if (parallax != null) parallax.isVisible = () => running;
                 return;
             }
             if (!UseKenney) return;
