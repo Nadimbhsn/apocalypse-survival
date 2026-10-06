@@ -51,7 +51,10 @@ namespace Platformer.Survival
         Color bloodColor = PlaceholderVisuals.ZombieColor;
         Coroutine flashRoutine;
 
-        bool IsRising => motion != null && motion.IsRising;
+        // Painted body (see EnemySprite), used when the runner's painted art is present.
+        EnemySprite spriteBody;
+
+        bool IsRising => (motion != null && motion.IsRising) || (spriteBody != null && spriteBody.IsRising);
 
         public bool IsAlive => health != null && health.IsAlive;
 
@@ -79,10 +82,20 @@ namespace Platformer.Survival
             if (sr != null) sr.enabled = false;
         }
 
+        /// <summary>Gives this zombie a painted, animated body.</summary>
+        public void AttachSprite(EnemySprite body, Color blood)
+        {
+            spriteBody = body;
+            bloodColor = blood;
+            var sr = GetComponent<SpriteRenderer>();
+            if (sr != null) sr.enabled = false;
+        }
+
         /// <summary>Bursts out of the ground: frozen and harmless until the rise animation ends.</summary>
         public void RiseFromGround(float duration)
         {
             if (motion != null) motion.Rise(duration);
+            if (spriteBody != null) spriteBody.Rise(duration);
         }
 
         void Update()
@@ -198,7 +211,8 @@ namespace Platformer.Survival
             if (!IsAlive) return;
             health.Decrement(amount);
             var sr = GetComponent<SpriteRenderer>();
-            var tint = motion != null ? bloodColor
+            if (spriteBody != null) spriteBody.Flash();
+            var tint = motion != null || spriteBody != null ? bloodColor
                 : sr != null ? sr.color * PlaceholderVisuals.ZombieColor : PlaceholderVisuals.ZombieColor;
             tint.a = 1f;
             if (modelRenderers != null)

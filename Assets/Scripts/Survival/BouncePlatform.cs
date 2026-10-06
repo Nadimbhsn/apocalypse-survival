@@ -58,6 +58,19 @@ namespace Platformer.Survival
             col.size = new Vector2(1f, 3f);
             col.offset = new Vector2(0f, -0.8f);
 
+            if (RunnerArt.Available)
+            {
+                // Mossy stone pads; the special ones read by colour.
+                var tint = kind switch
+                {
+                    BounceKind.Fragile => new Color(0.95f, 0.72f, 0.6f, 0.95f),
+                    BounceKind.Spring => new Color(1.0f, 0.86f, 0.5f),
+                    BounceKind.Moving => new Color(0.75f, 0.85f, 1.0f),
+                    _ => Color.white,
+                };
+                RunnerArt.DressSlab(go, width, kind == BounceKind.Spring ? ArtStyle.Ember : kind == BounceKind.Moving ? ArtStyle.Moss : ArtStyle.Grass, tint);
+            }
+
             var platform = go.AddComponent<BouncePlatform>();
             platform.kind = kind;
             platform.minX = minX;
@@ -154,11 +167,11 @@ namespace Platformer.Survival
                 t += Time.deltaTime;
                 fallVelocity -= 25f * Time.deltaTime;
                 transform.position += new Vector3(Mathf.Sin(t * 70f) * 0.03f, fallVelocity * Time.deltaTime, 0f);
-                if (sr != null)
+                foreach (var part in GetComponentsInChildren<SpriteRenderer>())
                 {
-                    var c = sr.color;
-                    c.a = 1f - t / duration;
-                    sr.color = c;
+                    var c = part.color;
+                    c.a = Mathf.Min(c.a, 1f - t / duration);
+                    part.color = c;
                 }
                 yield return null;
             }

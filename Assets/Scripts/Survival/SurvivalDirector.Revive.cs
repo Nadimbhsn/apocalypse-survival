@@ -177,6 +177,7 @@ namespace Platformer.Survival
             const float thickness = 1.2f;
             float width = to - from;
             var slab = CreateSolidPlatform("ReviveGround", (from + to) / 2f, groundY - thickness / 2f, width, thickness, ZoneCatalog.Get(activeZone).Ground);
+            if (RunnerArt.Available) RunnerArt.DressGround(slab, width, 2.5f, RunnerArt.StyleOf(activeZone));
             props.Add(slab);
             segments.Add(new GroundSegment { xStart = from, xEnd = to, topY = groundY, isGap = false, go = slab });
         }

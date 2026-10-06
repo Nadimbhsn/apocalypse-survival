@@ -329,6 +329,7 @@ namespace Platformer.Survival
                     {
                         var go = CreateSolidPlatform($"Ledge_{x:0}", x, lastGroundTopY + cmd.B, cmd.A, 0.35f, genZone.Ground);
                         go.GetComponent<SpriteRenderer>().color = new Color(1.15f, 1.1f, 1.05f);
+                        if (RunnerArt.Available) RunnerArt.DressSlab(go, cmd.A, RunnerArt.StyleOf(genZone.Kind));
                         props.Add(go);
                         SpawnPickupAt(x, lastGroundTopY + cmd.B + 0.6f, PickupType.Coin);
                     });
@@ -680,6 +681,7 @@ namespace Platformer.Survival
 
             var ledge = CreateSolidPlatform($"SecretLedge_{ledgeCx:0}", ledgeCx, ledgeTop - 0.25f, ledgeEnd - ledgeStart, 0.5f,
                 new Color(0.30f, 0.24f, 0.21f));
+            if (RunnerArt.Available) RunnerArt.DressSlab(ledge, ledgeEnd - ledgeStart, ArtStyle.Stone);
             props.Add(ledge);
 
             var stash = SecretStash.Create(entityParent, padX + 7.6f, ledgeTop + 0.7f);

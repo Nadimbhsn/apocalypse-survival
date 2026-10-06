@@ -42,6 +42,7 @@ namespace Platformer.Survival
 
             var hazard = go.AddComponent<Hazard>();
             hazard.kind = HazardKind.Spikes;
+            if (RunnerArt.Available) RunnerArt.DressSpikes(go, width, height);
             return hazard;
         }
 
@@ -66,6 +67,7 @@ namespace Platformer.Survival
             hazard.kind = HazardKind.Toxic;
             hazard.hitInterval = 0.7f;
             hazard.knockUpVelocity = 0f;
+            if (RunnerArt.Available) RunnerArt.DressToxic(go, width, 0f);
             return hazard;
         }
 
@@ -89,11 +91,12 @@ namespace Platformer.Survival
             hazard.kind = HazardKind.Cable;
             hazard.hitInterval = 1f;
             hazard.knockUpVelocity = 0f;
+            if (RunnerArt.Available) RunnerArt.DressCable(go, width);
             return hazard;
         }
 
         /// <summary>A deep toxic lake under the Survol section: falling in ticks damage until you fly back out.</summary>
-        public static Hazard CreateToxicLake(Transform parent, float x, float surfaceY, float width, float depth)
+        public static Hazard CreateToxicLake(Transform parent, float x, float surfaceY, float width, float depth, bool surfaceOnTop = true)
         {
             var go = new GameObject($"Lake_{x:0}");
             go.transform.SetParent(parent, false);
@@ -111,6 +114,7 @@ namespace Platformer.Survival
             hazard.kind = HazardKind.Toxic;
             hazard.hitInterval = 0.8f;
             hazard.knockUpVelocity = 0f;
+            if (RunnerArt.Available) RunnerArt.DressToxic(go, width, depth, surfaceOnTop);
             return hazard;
         }
 

@@ -25,6 +25,8 @@ namespace Platformer.Survival
         PlayerController player;
         Collider2D col;
         SpriteRenderer sr;
+        SpriteRenderer[] parts;
+        Color[] partColors;
 
         public void Init(PlayerController target)
         {
@@ -36,6 +38,28 @@ namespace Platformer.Survival
             col = GetComponent<Collider2D>();
             sr = GetComponent<SpriteRenderer>();
             basePos = transform.position;
+        }
+
+        void Start()
+        {
+            // Painted art (RunnerArt) is added after Awake: pick it up here.
+            parts = GetComponentsInChildren<SpriteRenderer>();
+            partColors = new Color[parts.Length];
+            for (int i = 0; i < parts.Length; i++) partColors[i] = parts[i].color;
+        }
+
+        void TintParts(float flash, float alphaStep)
+        {
+            if (parts == null) return;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                var p = parts[i];
+                if (p == null || p == sr) continue;
+                var c = partColors[i];
+                if (alphaStep > 0f) { c = p.color; c.a = Mathf.MoveTowards(c.a, 0f, alphaStep); }
+                else c = new Color(c.r, c.g * flash, c.b * flash, c.a);
+                p.color = c;
+            }
         }
 
         void Update()
@@ -60,6 +84,7 @@ namespace Platformer.Survival
                         float flash = 0.5f + Mathf.Abs(Mathf.Sin(timer * 20f)) * 0.5f;
                         sr.color = new Color(1f, flash, flash);
                     }
+                    TintParts(0.5f + Mathf.Abs(Mathf.Sin(timer * 20f)) * 0.5f, 0f);
                     if (timer >= shakeDuration)
                     {
                         state = State.Falling;
@@ -80,6 +105,7 @@ namespace Platformer.Survival
                         c.a = Mathf.MoveTowards(c.a, 0f, dt * 1.2f);
                         sr.color = c;
                     }
+                    TintParts(1f, dt * 1.2f);
                     if (transform.position.y < basePos.y - 14f) Destroy(gameObject);
                     break;
             }

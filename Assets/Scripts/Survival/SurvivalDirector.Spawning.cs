@@ -196,7 +196,8 @@ namespace Platformer.Survival
             // The zombie sprite is 1 unit tall with a centered pivot, so half its scaled
             // height keeps the feet exactly on the ground line.
             zombie.groundOffset = go.transform.localScale.y * 0.5f;
-            if (KenneyProps.Available) GiveZombieBody(go, zombie, kind, col, cemetery);
+            if (!(RunnerArt.Available && GiveZombieSprite(go, zombie, kind, col, cemetery)) && KenneyProps.Available)
+                GiveZombieBody(go, zombie, kind, col, cemetery);
             go.transform.position = new Vector3(x, GetGroundHeightAt(x) + zombie.groundOffset, 0f);
             if (rising) zombie.RiseFromGround(0.55f);
             zombies.Add(zombie);
@@ -252,6 +253,41 @@ namespace Platformer.Survival
             motion.pitch = pitch;
             motion.floating = kind == ZombieKind.Spitter;
             zombie.AttachModel(rig, motion, blood);
+        }
+
+        /// <summary>
+        /// The painted dead (see EnemySprite): hooded Rôdeurs for walkers, shadow hounds for
+        /// the runners that leap the gaps, a floating Feu-follet for the spitter and a
+        /// stone-plated Colosse for the brute. Returns false if the art is missing.
+        /// </summary>
+        bool GiveZombieSprite(GameObject go, Zombie zombie, ZombieKind kind, BoxCollider2D col, bool cemetery)
+        {
+            string key; float height, width, fps; bool floating = false; Color blood;
+            switch (kind)
+            {
+                case ZombieKind.Runner:
+                    key = "hound"; height = 0.75f; width = 1.0f; fps = 13f; blood = new Color(0.45f, 0.2f, 0.55f);
+                    break;
+                case ZombieKind.Spitter:
+                    key = "wisp"; height = 1.25f; width = 0.7f; fps = 8f; floating = true; blood = new Color(0.6f, 0.95f, 0.4f);
+                    break;
+                case ZombieKind.Brute:
+                    key = "brute"; height = 1.85f; width = 1.0f; fps = 7f; blood = new Color(1f, 0.5f, 0.18f);
+                    break;
+                default:
+                    key = cemetery || UnityEngine.Random.value < 0.3f ? "walker_b" : "walker";
+                    height = 1.2f; width = 0.6f; fps = 9f; blood = new Color(0.4f, 0.16f, 0.3f);
+                    break;
+            }
+            float offset = height / 2f;
+            var body = EnemySprite.Attach(go, key, offset, fps, floating);
+            if (body == null) return false;
+            go.transform.localScale = Vector3.one;
+            col.size = new Vector2(width, height * 0.95f);
+            col.offset = Vector2.zero;
+            zombie.groundOffset = offset;
+            zombie.AttachSprite(body, blood);
+            return true;
         }
 
         // ---- pickups -------------------------------------------------------------------

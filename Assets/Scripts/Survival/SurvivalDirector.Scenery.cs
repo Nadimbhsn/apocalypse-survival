@@ -121,12 +121,21 @@ namespace Platformer.Survival
         const float GraveSpacing = 11f;
         float lastGraveX = float.MinValue;
 
-        bool UseKenney => KenneyProps.Available;
+        /// <summary>The painted world (RunnerArt) replaces the Kenney 3D scenery whenever it is present.</summary>
+        bool UseArt => RunnerArt.Available;
+        bool UseKenney => KenneyProps.Available && !UseArt;
+        RunnerParallax parallax;
+        Transform[] introGround;
 
         // ---- setup / lifecycle -----------------------------------------------------------
 
         void SetupScenery()
         {
+            if (UseArt)
+            {
+                parallax = RunnerParallax.Create(mainCamera);
+                return;
+            }
             if (!UseKenney) return;
             farRoot = new GameObject("FarScenery").transform;
             farRoot.SetParent(entityParent, false);
@@ -151,6 +160,7 @@ namespace Platformer.Survival
         void UpdateScenery()
         {
             if (mainCamera != null) KenneyProps.SetFogColor(mainCamera.backgroundColor);
+            if (UseArt) { UpdateGraves(); return; }
             if (!UseKenney) return;
             GenerateFarSkyline();
             UpdateGraves();
@@ -169,7 +179,7 @@ namespace Platformer.Survival
         /// <summary>Background decor entry point (replaces the flat ruins when the kits are present).</summary>
         void GenerateBackgroundDecorOrScenery()
         {
-            if (UseKenney) return; // segments decorate themselves as they are generated
+            if (UseKenney || UseArt) return; // segments decorate themselves as they are generated
             GenerateBackgroundDecor();
         }
 
@@ -191,6 +201,16 @@ namespace Platformer.Survival
         {
             bool castleZone = genZone.Kind == ZoneKind.Rooftops || genZone.Kind == ZoneKind.Descent || genZone.Kind == ZoneKind.Ascent;
             bool high = castleZone && topY > 1.5f;
+
+            if (UseArt)
+            {
+                var style = RunnerArt.StyleOf(genZone.Kind);
+                var target = segmentGo != null ? segmentGo : IntroGroundAt(xStart, width);
+                float depth = Mathf.Clamp(width * 0.45f, 1.6f, 6f) * Random.Range(0.85f, 1.15f);
+                if (target != null) RunnerArt.DressGround(target, width, high ? Mathf.Clamp(topY + 4f, 4f, 10f) : depth, style, castle: high);
+                PlaceArtProps(xStart, width, topY, style, high);
+                return;
+            }
 
             if (UseKenney && high) BuildRampart(xStart, width, topY);
             else AddEarth(segmentGo, xStart, width, topY);
@@ -260,6 +280,15 @@ namespace Platformer.Survival
         {
             const float thickness = 0.5f;
             var go = CreateSolidPlatform($"Islet_{centerX:0}", centerX, topY - thickness / 2f, width, thickness, genZone.Ground);
+            if (UseArt)
+            {
+                RunnerArt.DressGround(go, width, Mathf.Clamp(width * 0.9f, 1.2f, 3.2f), RunnerArt.StyleOf(genZone.Kind));
+                var islet = go.AddComponent<MovingIsland>();
+                islet.amplitude = amplitude;
+                islet.speed = speed;
+                islet.phase = Random.Range(0f, Mathf.PI * 2f);
+                return go;
+            }
             AddLip(go, GrassColor);
 
             var rock = CreateIslandSprite(width * 1.05f, Mathf.Clamp(width * 0.9f, 1.2f, 3.2f), IslandTint(genZone.Ground), -2);
@@ -524,6 +553,13 @@ namespace Platformer.Survival
         /// <summary>Drowned towers and dead trees sticking out of the Survol lake.</summary>
         void DecorateLakeStretch(float xStart, float step, float lakeSurface)
         {
+            if (UseArt)
+            {
+                if (Random.value > 0.5f) return;
+                var tree = RunnerArt.PlaceProp(entityParent, Random.value < 0.5f ? "burnt_0" : "deadtree_1", xStart + Random.Range(0.5f, step - 0.5f), lakeSurface - 0.6f, back: true, Random.Range(0.9f, 1.2f), new Color(0.7f, 0.6f, 0.75f));
+                if (tree != null) scenery.Add(tree);
+                return;
+            }
             if (!UseKenney || Random.value > 0.45f) return;
             float x = xStart + Random.Range(0.5f, step - 0.5f);
             float z = Random.Range(MidZMin, MidZMax);
@@ -730,6 +766,79 @@ namespace Platformer.Survival
                 Fx.Shake(0.12f, 0.15f);
                 Sfx.Drop();
             }
+        }
+
+        // ---- the painted world ---------------------------------------------------------------
+
+        /// <summary>The scene's hand-placed intro walkway under [xStart, xStart + width], if any.</summary>
+        GameObject IntroGroundAt(float xStart, float width)
+        {
+            if (introGround == null)
+            {
+                var found = new List<Transform>();
+                foreach (var name in new[] { "IntroGround_A", "IntroGround_B", "IntroGround_C", "IntroGround_D", "IntroGround_E" })
+                {
+                    var go = GameObject.Find(name);
+                    if (go != null) found.Add(go.transform);
+                }
+                introGround = found.ToArray();
+            }
+            float mid = xStart + width / 2f;
+            foreach (var t in introGround)
+            {
+                var s = t.localScale;
+                if (Mathf.Abs(t.position.x - mid) < 0.6f && Mathf.Abs(s.x - width) < 0.6f) return t.gameObject;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Painted props along a walkway: trees, ruins and banners standing behind it, bushes,
+        /// rocks, lanterns and graves on it (behind the player), crenels on the ramparts.
+        /// Cemetery graves keep spawning the dead (see UpdateGraves).
+        /// </summary>
+        void PlaceArtProps(float xStart, float width, float topY, ArtStyle style, bool castle)
+        {
+            var back = RunnerArt.BackProps(style, castle);
+            var near = RunnerArt.NearProps(style, castle);
+            float end = xStart + width - 0.7f;
+            var haze = new Color(0.86f, 0.8f, 0.84f);
+
+            float x = Mathf.Max(xStart + 0.9f, midFrontierX);
+            while (x < end)
+            {
+                var go = RunnerArt.PlaceProp(entityParent, back[Random.Range(0, back.Length)], x, topY - 0.06f, back: true, Random.Range(0.85f, 1.1f), haze);
+                if (go != null) scenery.Add(go);
+                x += Random.Range(3f, 7f);
+            }
+            midFrontierX = x;
+
+            if (castle)
+            {
+                for (float cx = xStart + 0.5f; cx < end; cx += 0.95f)
+                {
+                    var c = RunnerArt.PlaceProp(entityParent, "crenel", cx, topY - 0.04f, back: false, 1f, new Color(0.9f, 0.86f, 0.86f));
+                    if (c != null) { c.GetComponent<SpriteRenderer>().flipX = false; scenery.Add(c); }
+                }
+            }
+
+            var (spaceMin, spaceMax) = NearSpacing(genZone.Kind);
+            x = Mathf.Max(xStart + 0.5f, nearFrontierX);
+            while (true)
+            {
+                x += Random.Range(spaceMin, spaceMax) * 0.7f;
+                if (x > end) break;
+                string name = near[Random.Range(0, near.Length)];
+                if (genZone.Kind == ZoneKind.Infested && name.StartsWith("grave") && x - lastGraveX >= GraveSpacing)
+                {
+                    graves.Add(new GraveTrigger { x = x, y = topY });
+                    lastGraveX = x;
+                }
+                var go = RunnerArt.PlaceProp(entityParent, name, x, topY - 0.04f, back: false, Random.Range(0.85f, 1.1f));
+                if (go != null) scenery.Add(go);
+                x += Random.Range(spaceMin, spaceMax) * 0.7f;
+            }
+            nearFrontierX = x;
         }
 
         // ---- helpers -------------------------------------------------------------------------

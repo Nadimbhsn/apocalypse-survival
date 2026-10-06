@@ -542,6 +542,7 @@ namespace Platformer.Survival
             NoteZoneForRevive(kind);
             var def = ZoneCatalog.Get(kind);
             skyTarget = def.Sky;
+            parallax?.SetStyle(RunnerArt.StyleOf(kind));
             SkyBackdrop.Instance?.SetTint(def.Tint);
             bool ranked = IsSetPiece(kind) && !inCampaign;
             ui.ShowBanner(def.Title, ranked ? $"NIVEAU {TierOf(pieceLevel)}  ·  {def.Subtitle}" : def.Subtitle);

@@ -376,6 +376,7 @@ namespace Platformer.Survival
 
             float stoneX = gapStart + stoneStart + stoneWidth / 2f;
             var stone = CreateSolidPlatform($"Stone_{stoneX:0}", stoneX, lastTopY - thickness / 2f, stoneWidth, thickness, PlaceholderVisuals.StoneColor);
+            if (RunnerArt.Available) RunnerArt.DressSlab(stone, stoneWidth, RunnerArt.StyleOf(genZone.Kind));
             props.Add(stone);
 
             SpawnPickupAt(stoneX - 0.4f, lastTopY + 0.6f, PickupType.Coin);
@@ -512,6 +513,25 @@ namespace Platformer.Survival
         /// </summary>
         void CreateTowerBackdrop(float xStart, float baseY, float towerTop)
         {
+            if (RunnerArt.Available)
+            {
+                // A painted castle tower: stone from deep under the pit up to the roof, lit windows.
+                float b = baseY - 14f, t = towerTop + 0.2f, cx = xStart + TowerWidth / 2f;
+                var tower = new GameObject($"Tower_{xStart:0}").transform;
+                tower.SetParent(entityParent, false);
+                tower.position = new Vector3(cx, (b + t) / 2f, RunnerArt.ZWall);
+                RunnerArt.Wall(tower, Vector3.zero, new Vector2(TowerWidth + 1.2f, t - b), new Color(0.78f, 0.7f, 0.74f));
+                for (float wy = baseY + 1.5f; wy < towerTop - 1f; wy += 3.2f)
+                    for (int i = 0; i < 3; i++)
+                        if (Random.value < 0.55f) RunnerArt.Window(tower, new Vector3(-2.6f + i * 2.6f, wy - (b + t) / 2f, -0.01f));
+                for (float x = -TowerWidth / 2f; x <= TowerWidth / 2f + 0.01f; x += 0.95f)
+                {
+                    var c = RunnerArt.PlaceProp(tower, "crenel", x, t - (b + t) / 2f - 0.05f, back: true, 1.1f, new Color(0.85f, 0.78f, 0.8f));
+                    if (c != null) c.transform.localPosition = new Vector3(x, t - (b + t) / 2f - 0.05f, -0.02f);
+                }
+                props.Add(tower.gameObject);
+                return;
+            }
             if (BuildCastleTower(xStart, baseY, towerTop)) return;
 
             float bottom = baseY - 16f;
@@ -575,7 +595,17 @@ namespace Platformer.Survival
 
             // Backdrop (castle masonry, or a flat dark silhouette without the kits) + walls.
             float centerX = xStart + width / 2f;
-            if (!BuildShaftMasonry(xStart, width, top))
+            if (RunnerArt.Available)
+            {
+                var shaft = new GameObject($"Shaft_{xStart:0}").transform;
+                shaft.SetParent(entityParent, false);
+                shaft.position = new Vector3(centerX, top / 2f, RunnerArt.ZWall);
+                RunnerArt.Wall(shaft, Vector3.zero, new Vector2(width + 1.2f, top + 2f), new Color(0.55f, 0.48f, 0.56f));
+                for (float wy = 3f; wy < top - 2f; wy += 4.5f)
+                    if (Random.value < 0.6f) RunnerArt.Window(shaft, new Vector3(Random.Range(-width / 2f + 1f, width / 2f - 1f), wy - top / 2f, -0.01f));
+                props.Add(shaft.gameObject);
+            }
+            else if (!BuildShaftMasonry(xStart, width, top))
             {
                 var back = new GameObject($"ShaftBackdrop_{xStart:0}");
                 back.transform.SetParent(entityParent, false);
@@ -636,6 +666,15 @@ namespace Platformer.Survival
             wsr.sortingOrder = -2;
             wall.AddComponent<BoxCollider2D>();
             props.Add(wall);
+            if (RunnerArt.Available)
+            {
+                wsr.enabled = false;
+                var art = new GameObject("Art").transform;
+                art.SetParent(wall.transform, false);
+                art.localScale = new Vector3(1f / 0.6f, 1f / (topY - bottom), 1f);
+                art.localPosition = new Vector3(0f, 0f, 0.3f);
+                RunnerArt.Wall(art, Vector3.zero, new Vector2(0.7f, topY - bottom), new Color(0.95f, 0.88f, 0.86f), 2);
+            }
         }
 
         // ---- jetpack flight ---------------------------------------------------------------
@@ -661,7 +700,7 @@ namespace Platformer.Survival
             // StartJetpack): holding the thrust all the way up now grazes it and hurts.
             // Cables stay at least a metre under it, twice the player's height, so there is
             // always room to pass.
-            var ceiling = Hazard.CreateToxicLake(entityParent, xStart + step / 2f, JetpackToxicCeiling + 4f, step + 0.05f, 4f);
+            var ceiling = Hazard.CreateToxicLake(entityParent, xStart + step / 2f, JetpackToxicCeiling + 4f, step + 0.05f, 4f, surfaceOnTop: false);
             props.Add(ceiling.gameObject);
             DecorateLakeStretch(xStart, step, lakeSurface);
 
@@ -670,6 +709,7 @@ namespace Platformer.Survival
             float blockY = baselineY + Random.Range(1.0f, 6.5f);
             float blockX = xStart + step / 2f;
             var block = CreateSolidPlatform($"Debris_{blockX:0}", blockX, blockY, blockW, 0.6f, PlaceholderVisuals.StoneColor);
+            if (RunnerArt.Available) RunnerArt.DressSlab(block, blockW, ArtStyle.Stone);
             props.Add(block);
             if (Random.value < Mathf.Lerp(0.35f, 0.7f, lvl))
                 props.Add(Hazard.CreateSpikes(entityParent, blockX, blockY + 0.3f, Mathf.Min(blockW, 1.4f)).gameObject);
@@ -717,6 +757,14 @@ namespace Platformer.Survival
             }
 
             go.AddComponent<BoxCollider2D>();
+
+            if (unstable && RunnerArt.Available)
+            {
+                // A cracked, crumbling walkway: thin rock, a sickly tint.
+                RunnerArt.DressGround(go, width, 1.1f, RunnerArt.StyleOf(genZone.Kind));
+                foreach (var part in go.GetComponentsInChildren<SpriteRenderer>())
+                    if (part.enabled) part.color = new Color(1f, 0.8f, 0.72f);
+            }
 
             if (unstable)
             {
@@ -781,6 +829,7 @@ namespace Platformer.Survival
 
             var go = CreateSolidPlatform($"BonusPlatform_{platformX:0}", platformX + platformWidth / 2f, platformY, platformWidth, thickness, genZone.Ground);
             go.GetComponent<SpriteRenderer>().color = new Color(1.15f, 1.1f, 1.05f);
+            if (RunnerArt.Available) RunnerArt.DressSlab(go, platformWidth, RunnerArt.StyleOf(genZone.Kind));
             props.Add(go);
 
             float roll = Random.value;
