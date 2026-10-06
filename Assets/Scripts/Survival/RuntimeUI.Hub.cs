@@ -248,7 +248,9 @@ namespace Platformer.Survival
             if (tex != null)
             {
                 art.texture = tex;
-                artRt.gameObject.AddComponent<CoverImage>().focus = new Vector2(0.5f, 0.55f);
+                // What to keep when a wide card crops the square art: the runner's face, the barricade's planks.
+                float focusY = id switch { "runner" => 0.62f, "barricade" => 0.42f, _ => 0.52f };
+                artRt.gameObject.AddComponent<CoverImage>().focus = new Vector2(0.5f, focusY);
             }
             else art.texture = ApogeeTheme.Art("menu_bg");
 
@@ -442,30 +444,58 @@ namespace Platformer.Survival
                 logo.anchoredPosition = new Vector2(0f, -topH + 6f);
             }
 
-            float navH = landscape ? 150f : 190f;
-            nav.sizeDelta = new Vector2(0f, navH);
-            nav.anchoredPosition = new Vector2(0f, landscape ? 14f : 30f);
-            foreach (Transform t in nav)
-            {
-                var le = t.GetComponent<LayoutElement>();
-                if (le == null) continue;
-                le.preferredHeight = navH - 20f;
-                le.preferredWidth = landscape ? 210f : Mathf.Min(230f, (size.x - 40f - 3 * 18f) / 4f);
-            }
-
-            float navTop = (landscape ? 14f : 30f) + navH;
-            float playH = landscape ? 104f : 124f;
-            play.sizeDelta = new Vector2(landscape ? 400f : 470f, playH);
-            play.anchoredPosition = new Vector2(0f, navTop + 22f + playH * 0.5f);
-            float dotsY = navTop + 22f + playH + 30f;
-            dots.anchoredPosition = new Vector2(0f, dotsY);
-
             float carouselTop = topH + (landscape ? 0f : logoH) + 10f;
-            float carouselBottom = dotsY + 24f;
+            float carouselBottom;
+            if (landscape)
+            {
+                // Sideways the height is scarce: the tiles and JOUER share one low row
+                // (tiles on the left, JOUER on the right) and the cards get the rest.
+                const float navH = 128f, navY = 12f;
+                nav.anchorMin = new Vector2(0f, 0f);
+                nav.anchorMax = new Vector2(0.64f, 0f);
+                nav.sizeDelta = new Vector2(0f, navH);
+                nav.anchoredPosition = new Vector2(0f, navY);
+                SizeTiles(navH - 12f, 180f);
+                play.anchorMin = play.anchorMax = new Vector2(0.82f, 0f);
+                play.sizeDelta = new Vector2(Mathf.Min(420f, size.x * 0.3f), 104f);
+                play.anchoredPosition = new Vector2(0f, navY + navH * 0.5f);
+                float dotsY = navY + navH + 18f;
+                dots.anchoredPosition = new Vector2(0f, dotsY);
+                carouselBottom = dotsY + 16f;
+            }
+            else
+            {
+                const float navH = 190f, navY = 30f;
+                nav.anchorMin = new Vector2(0f, 0f);
+                nav.anchorMax = new Vector2(1f, 0f);
+                nav.sizeDelta = new Vector2(0f, navH);
+                nav.anchoredPosition = new Vector2(0f, navY);
+                SizeTiles(navH - 20f, Mathf.Min(230f, (size.x - 40f - 3 * 18f) / 4f));
+                const float playH = 124f;
+                play.anchorMin = play.anchorMax = new Vector2(0.5f, 0f);
+                play.sizeDelta = new Vector2(470f, playH);
+                float navTop = navY + navH;
+                play.anchoredPosition = new Vector2(0f, navTop + 22f + playH * 0.5f);
+                float dotsY = navTop + 22f + playH + 30f;
+                dots.anchoredPosition = new Vector2(0f, dotsY);
+                carouselBottom = dotsY + 24f;
+            }
+            carousel.GetComponent<HubCarousel>().landscape = landscape;
             carousel.anchorMin = Vector2.zero;
             carousel.anchorMax = Vector2.one;
             carousel.offsetMin = new Vector2(0f, carouselBottom);
             carousel.offsetMax = new Vector2(0f, -carouselTop);
+        }
+
+        void SizeTiles(float height, float width)
+        {
+            foreach (Transform t in nav)
+            {
+                var le = t.GetComponent<LayoutElement>();
+                if (le == null) continue;
+                le.preferredHeight = height;
+                le.preferredWidth = width;
+            }
         }
     }
 
@@ -476,7 +506,12 @@ namespace Platformer.Survival
     /// </summary>
     public class HubCarousel : MonoBehaviour, IInitializePotentialDragHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
     {
+        /// <summary>Cards are upright on a phone held upright, wide when the screen is sideways.</summary>
         public static readonly Vector2 CardSize = new Vector2(720f, 960f);
+        static readonly Vector2 WideCardSize = new Vector2(1000f, 640f);
+        public bool landscape;
+        bool shapedLandscape;
+        Vector2 Size => landscape ? WideCardSize : CardSize;
         const float SideScale = 0.84f;
         static int remembered;
 
@@ -553,9 +588,15 @@ namespace Platformer.Survival
             if (!dragging) pos = Mathf.SmoothDamp(pos, target, ref velocity, 0.16f, Mathf.Infinity, Time.unscaledDeltaTime);
 
             var area = self.rect.size;
-            float scale = Mathf.Min(area.y * 0.96f / CardSize.y, area.x * 0.72f / CardSize.x);
+            if (landscape != shapedLandscape)
+            {
+                shapedLandscape = landscape;
+                foreach (var card in cards) card.sizeDelta = Size;
+            }
+            var cs = Size;
+            float scale = Mathf.Min(area.y * 0.97f / cs.y, area.x * (landscape ? 0.6f : 0.72f) / cs.x);
             scale = Mathf.Max(scale, 0.05f);
-            spacing = CardSize.x * scale * 1.0f;
+            spacing = cs.x * scale * 1.0f;
 
             for (int i = 0; i < cards.Count; i++)
             {
@@ -563,7 +604,7 @@ namespace Platformer.Survival
                 float ad = Mathf.Abs(d);
                 float s = Mathf.Lerp(1f, SideScale, Mathf.Clamp01(ad));
                 var c = cards[i];
-                c.anchoredPosition = new Vector2(d * spacing, -CardSize.y * scale * (1f - s) * 0.12f);
+                c.anchoredPosition = new Vector2(d * spacing, -cs.y * scale * (1f - s) * 0.12f);
                 c.localScale = Vector3.one * (scale * s);
                 c.localRotation = Quaternion.Euler(0f, 0f, -Mathf.Clamp(d, -1.5f, 1.5f) * 2.5f);
                 var col = dims[i].color;
