@@ -53,9 +53,9 @@ namespace Platformer.Survival
             "barricade" => new GameGuide
             {
                 Title = "BARRICADE",
-                Goal = "Le mode Barricade permet de récolter des matériaux. Tiens la barricade face aux vagues de morts, et garde ta base debout.",
-                Controls = "Maintiens un couloir pour tirer dedans. Entre les vagues, construis et répare tes pièges avec tes débris.",
-                Tip = "Les pièges s'usent : saboteurs, démolisseurs et spectres s'en prennent à eux ou les ignorent. Un couloir complet (4 pièges au niveau 5) en bon état produit des matériaux. Siège toutes les 10 vagues !",
+                Goal = "Tiens la palissade face aux morts qui sortent du bois. Chaque vague tenue rapporte des débris, et tes défenses restent d'une partie à l'autre.",
+                Controls = "Maintiens un couloir pour tirer dedans. Entre les vagues, touche un couloir pour y bâtir UNE défense : Pieux, Brasier ou Arbalète, puis améliore-la.",
+                Tip = "Une défense au niveau 5 produit des matériaux, même jeu fermé : pense à RÉCOLTER. Le Feu-follet survole Pieux et Brasier (l'Arbalète le touche), le Colosse met la défense de son couloir hors service. Un Colosse mène la charge toutes les 5 vagues !",
                 Rewards = "[g]",
             },
             "invasion" => new GameGuide

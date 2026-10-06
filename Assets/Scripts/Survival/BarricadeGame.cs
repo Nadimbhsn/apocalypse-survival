@@ -9,33 +9,34 @@ using Random = UnityEngine.Random;
 namespace Platformer.Survival
 {
     /// <summary>
-    /// "BARRICADE": wave defense built for a portrait phone, around a base the player keeps.
+    /// "BARRICADE", renewed: hold the palisade at the foot of a few cobbled lanes that come
+    /// down out of a misty wood, at dusk, on a floating island.
     ///
-    /// Zombies come down vertical lanes toward a barricade near the bottom, behind which the
-    /// equipped character stands; hold a lane to shoot up it. Kills pay "débris", spent
-    /// between waves on per-lane traps (spikes, toxic pool, barbed wire, turret), on repairs,
-    /// and on widening the field from 3 lanes to 6 and then 9.
+    /// Made to be understood at a glance:
+    ///  - Hold a lane to shoot up it.
+    ///  - Each lane has ONE defence, built and upgraded between waves by tapping the lane:
+    ///    Pieux (stakes that wound whatever walks over them), Brasier (a fire pit that sets
+    ///    them alight) or Arbalète (a ballista that shoots up the lane on its own), level 1 to 5.
+    ///  - Four kinds of dead, each introduced the first time it shows up: the Rôdeur, the
+    ///    quick Furtif, the Feu-follet that floats over the ground defences and spits from
+    ///    afar, and the Colosse that wrecks the defence of its lane for the rest of the wave.
+    ///    Every fifth wave a Colosse leads the charge.
+    ///  - Kills pay débris, spent on defences, on repairing the palisade and on opening a
+    ///    fourth and a fifth lane. A defence at level 5 produces materials, in real time,
+    ///    whatever screen is open - that is what the mode pays: materials, never coins.
+    ///  - A fall only resets the wave and the palisade: the defences built stay.
     ///
-    /// The base persists: traps, débris and the number of lanes are saved, and a lost run
-    /// only resets the wave and the barricade's health. A lane with all four traps maxed is
-    /// "complete" and produces materials in real time for as long as the game is running,
-    /// whichever screen is open - more complete lanes, more materials. That is the mode's
-    /// reward: it pays materials only, never coins, so coins stay the business of the other
-    /// games.
+    /// Older saves (four traps per lane, up to nine lanes) are converted on load: each lane
+    /// keeps its best trap as the matching defence, at the same level.
     ///
-    /// Specials during a wave: a Molotov that sets the busiest lane on fire, reinforcements
-    /// that march up the busiest lanes, and a burst weapon unlocked for three waves by
-    /// watching an ad. From wave 10 a rare bomber lobs bombs that hit the barricade hard and
-    /// knock one trap in its lane down a level.
-    ///
-    /// The lanes live in world space far from the runner (around x = 3000, y = 1500) and
-    /// borrow the main camera while active.
+    /// The field lives far from the runner (around x = 3000, y = 1500), painted
+    /// (Resources/Barricade), and borrows the main camera while open.
     /// </summary>
     public class BarricadeGame : MiniGame
     {
         public override string Id => "barricade";
         public override string Title => "BARRICADE";
-        public override string Description => "Bâtis ta base, tiens les vagues, récolte des matériaux";
+        public override string Description => "Tiens la palissade, bâtis tes défenses, récolte des matériaux";
 
         public override string BestLine
         {
@@ -47,65 +48,41 @@ namespace Platformer.Survival
             }
         }
 
-        // ---- layout (world units, relative to Origin) ----
+        // ---- layout (world units, relative to Origin) ------------------------------------
         static readonly Vector2 Origin = new Vector2(3000f, 1500f);
-        const int MaxLanes = 9;
-        const float BaseSpawnY = 6.8f;
-        const float BarricadeY = -3.3f;
-        const float PlayerY = -4.5f;
-        const float TrapY = -0.6f;
-        const float TrapHalfHeight = 0.7f;
-        const float SpitterStopY = 1.8f;
-        const float BomberStopY = 2.7f;
-        const float CameraOrtho = 5.6f;
+        const int MinLanes = 3, MaxLanes = 5;
+        const float CamY = 0.9f, CameraOrtho = 5.6f;
+        const float DefY = -1.7f, ZoneUp = 0.75f, ZoneDown = 0.45f;
+        const float BarricadeY = -3.3f, PlayerY = -4.55f, FolletStopY = 1.4f;
+        const float Ppu = 1024f / 6f;
 
-        int laneCount = 3;
-        float laneWidth = 2.1f;
-        /// <summary>Where zombies appear: just above the top of the view, whatever the zoom.</summary>
-        float spawnY = BaseSpawnY;
-        /// <summary>Speed multiplier that keeps the walk to the barricade the same duration however far up they spawn.</summary>
-        float walkScale = 1f;
-        /// <summary>Shrinks bodies a little when nine lanes make each one narrow.</summary>
-        float modelScale = 1f;
+        int laneCount = MinLanes;
+        float spacing = 1.5f;
+        float spawnY = 5f;
+        float LaneX(int l) => Origin.x + (l - (laneCount - 1) * 0.5f) * spacing;
+        float FieldWidth => spacing * laneCount;
+        float LaneScale => Mathf.Min(1f, spacing / 1.5f);
+        static float SpacingFor(int lanes) => lanes >= 5 ? 1.22f : lanes == 4 ? 1.4f : 1.55f;
 
-        /// <summary>A wider field gets narrower lanes, so nine still fit a portrait phone.</summary>
-        static float WidthFor(int count) => count >= 9 ? 1.05f : count >= 6 ? 1.4f : 2.1f;
-        float LaneX(int lane) => Origin.x + (lane - (laneCount - 1) * 0.5f) * laneWidth;
-        float FieldWidth => laneWidth * laneCount;
-        /// <summary>Trap and prop offsets were tuned on 2.1-wide lanes; this scales them to the current width.</summary>
-        float LaneK => laneWidth / 2.1f;
-
-        enum Kind { Walker, Runner, Spitter, Brute, Bomber, Saboteur, Demolisher, Specter, Armored }
+        enum Foe { Rodeur, Furtif, Follet, Colosse }
+        enum Def { None, Pieux, Brasier, Arbalete }
         enum Phase { Build, Wave, Over }
-        enum TrapType { Spikes, Toxic, Wire, Turret }
 
         class Enemy
         {
-            public Renderer[] model;
-            public Color blood;
-            public Kind kind;
+            public Foe kind;
             public int lane;
-            public float y, speed, hp, maxHp;
-            public float attackDamage, attackInterval, attackTimer;
+            public float y, x, speed, hp, maxHp, dmg, interval, attackTimer;
+            public float burn, burnDps, burnTick, trapTick, anim, size;
             public int debris;
-            public float burnTimer, burnTick;
-            public float tickTimer;
+            public bool boss, smashed;
             public GameObject go;
             public SpriteRenderer sr;
-            public Color baseColor;
-            // bomber only
-            public bool brokeTrap;
-            public GameObject heldBomb;
-            public SpriteRenderer fuse;
-            public float bombHidden;
-            // saboteur: time to the next blow on a trap; demolisher: its one smash is spent
-            public float trapHitTimer;
-            public bool smashedTurret;
-
-            /// <summary>Flies over the ground traps (spikes, toxic, wire).</summary>
-            public bool Flies => kind == Kind.Specter;
-            /// <summary>Armour the spikes and the wire do nothing against.</summary>
-            public bool Armored => kind == Kind.Armored;
+            public Sprite[] frames;
+            public Transform hpFill;
+            public GameObject hpBar;
+            public float flash;
+            public bool Flies => kind == Foe.Follet;
         }
 
         class Shot
@@ -117,168 +94,117 @@ namespace Platformer.Survival
 
         class Lane
         {
-            public readonly int[] level = new int[4];
-            /// <summary>Each trap's solidity: 1 intact, 0 broken (it does nothing until repaired).</summary>
-            public readonly float[] solidity = { 1f, 1f, 1f, 1f };
-            public readonly GameObject[] visuals = new GameObject[4];
+            public Def def;
+            public int level;
+            public bool disabled;
             public float turretTimer;
-
-            public bool Complete
-            {
-                get { for (int t = 0; t < 4; t++) if (level[t] < MaxTrapLevel) return false; return true; }
-            }
-
-            /// <summary>Average solidity of the traps that are built.</summary>
-            public float Shape
-            {
-                get
-                {
-                    float sum = 0f; int n = 0;
-                    for (int t = 0; t < 4; t++) if (level[t] > 0) { sum += solidity[t]; n++; }
-                    return n > 0 ? sum / n : 1f;
-                }
-            }
-
-            /// <summary>A complete lane produces materials only while it is kept in good shape.</summary>
-            public bool Farming => Complete && Shape >= FarmSolidity;
-
-            /// <summary>What a trap does right now: its level, weakened as it wears, nothing once broken.</summary>
-            public float Power(TrapType type)
-            {
-                int i = (int)type;
-                if (level[i] <= 0 || solidity[i] <= 0f) return 0f;
-                return level[i] * Mathf.Lerp(0.5f, 1f, solidity[i]);
-            }
-
-            public int MaxedTraps
-            {
-                get { int n = 0; for (int t = 0; t < 4; t++) if (level[t] >= MaxTrapLevel) n++; return n; }
-            }
+            public GameObject visual;
+            public SpriteRenderer defSr, ringSr;
+            public readonly List<SpriteRenderer> pips = new();
+            public bool Farming => def != Def.None && level >= MaxLevel;
         }
 
-        class Ally
+        // ---- tuning --------------------------------------------------------------------
+        const int MaxLevel = 5;
+        static readonly string[] DefNames = { "", "Pieux", "Brasier", "Arbalète" };
+        static readonly string[] DefArt = { "", "pieux", "brasier", "arbalete" };
+        static readonly string[] DefBlurb =
         {
-            public int lane;
-            public float y, hp, hitTimer;
-            public GameObject go;
-        }
+            "",
+            "Blessent et ralentissent ce qui marche dessus",
+            "Enflamme les morts qui passent",
+            "Tire seule dans le couloir, touche les volants",
+        };
+        static readonly int[] DefBaseCost = { 0, 10, 14, 18 };
+        static readonly int[] LevelCostMultiplier = { 1, 2, 3, 6, 10 };
+        const float FireRate = 3.2f, BurstMultiplier = 3f, ShotSpeed = 16f;
+        const int BurstWaves = 3;
+        const float MolotovCooldown = 18f;
+        const int BossEvery = 5;
+        const int Expand4Cost = 300, Expand5Cost = 900;
+        /// <summary>One material every four minutes per level-5 defence, 15 an hour.</summary>
+        const float FarmPerLanePerMinute = 0.25f;
+        const float FarmCapMinutes = 240f;
+        const float PrestigeFarmBonus = 0.1f;
 
+        float ShotDamage => Mathf.Max(1f, UpgradeManager.FirePowerMultiplier);
+        float FarmRatePerLane => FarmPerLanePerMinute * (1f + SaveSystem.BarricadePrestige * PrestigeFarmBonus);
+
+        /// <summary>
+        /// Health multiplier on every one of the dead: it climbs with the best wave ever held,
+        /// and past wave 10 it compounds a little each wave, so no base stays comfortable for ever.
+        /// </summary>
+        float HealthScale => (1f + Mathf.Min(SaveSystem.BarricadeBestWave, 40) * 0.012f) * (wave > 10 ? Mathf.Pow(1.035f, wave - 10) : 1f);
+
+        // ---- state ---------------------------------------------------------------------
         Transform root;
         readonly List<Enemy> enemies = new();
         readonly List<Shot> shots = new();
         readonly List<GameObject> spits = new();
-        readonly List<Ally> allies = new();
         readonly Lane[] lanes = new Lane[MaxLanes];
         readonly float[] laneFireCooldown = new float[MaxLanes];
+        readonly HashSet<Foe> introduced = new();
         LaneTouchZone touchZone;
 
         Phase phase = Phase.Over;
-        int wave;
-        int spawnRemaining;
+        int wave, spawnRemaining, debris, kills, colossiKilled;
         float spawnTimer, spawnInterval;
-        float buildTimer;
         float barricadeHp, barricadeMax;
-        int debris, kills, brutesKilled, bombersKilled;
-        float molotovCooldown, reinforceCooldown;
+        float molotovCooldown;
         int burstWaves;
-        bool adPending;
+        bool adPending, bossWave;
         int selectedLane;
-        SpriteRenderer barricadeSr;
-        Color barricadeBaseColor;
-        SpriteRenderer playerSr;
+        SpriteRenderer palisadeSr, heroSr;
+        int palisadeState = -1;
         GameObject laneHighlight;
         Drone drone;
 
-        // materials farm, running whether or not this mode is open
-        float farmStock;
-        float farmSaveTimer;
-        int completedLanes;
-        /// <summary>Complete lanes in good enough shape to produce (see Lane.Farming).</summary>
+        float farmStock, farmSaveTimer;
         int farmingLanes;
-        float wearSaveTimer;
 
-        float FarmRatePerLane => FarmPerLanePerMinute * (1f + SaveSystem.BarricadePrestige * PrestigeFarmBonus);
-
-        Text waveText, buildText, molotovText, reinforceText, messageText, burstText;
-        IconText debrisText;
-        Image barricadeFill;
-        GameObject buildPanel, overPanel;
+        // ---- UI ----------------------------------------------------------------------------
+        Text waveText, messageText, hpLabel, sheetTitle, sheetInfo, molotovTimer;
+        IconText debrisChip, farmChip;
+        Image barricadeFill, molotovFill;
+        Button collectButton, launchButton, molotovButton, repairButton, expandButton, burstButton;
+        IconText repairLabel, expandLabel, burstLabel;
+        GameObject sheet, emptyCards, builtCard, overPanel, hintRoot;
         Text overTitle;
         IconText overBody;
-        Button molotovButton, reinforceButton, repairButton, expandButton, burstButton, collectButton;
-        IconText repairLabel, expandLabel, burstLabel, debrisChip, farmChip, laneCaption;
-        readonly Button[] laneChips = new Button[MaxLanes];
-        readonly TrapCard[] trapCards = new TrapCard[4];
-
-        /// <summary>One trap in the workshop: its picture, its level as pips, its price.</summary>
-        class TrapCard
-        {
-            public Button button;
-            public Image icon;
-            public readonly Image[] pips = new Image[MaxTrapLevel];
-            public IconText cost;
-            public Image wear;
-        }
-
-        Button laneRepairButton;
-        IconText laneRepairLabel;
-        bool prestigeArmed;
-
-        static readonly Color PipOn = new Color(1f, 0.78f, 0.30f);
-        static readonly Color PipOff = new Color(0.30f, 0.16f, 0.12f);
+        readonly (Button button, Text name, IconText cost)[] choice = new (Button, Text, IconText)[3];
+        Image builtIcon;
+        Text builtLevel, builtBlurb;
+        Button upgradeButton, sellButton;
+        IconText upgradeLabel, sellLabel;
         float farmTextTimer;
 
-        // ---- tuning --------------------------------------------------------------------
-        const float FireRate = 3.2f;
-        const float BurstMultiplier = 3f;
-        const int BurstWaves = 3;
-        const float ShotSpeed = 15f;
-        const float MolotovCooldown = 20f;
-        const float ReinforceCooldown = 35f;
-        const float BuildDuration = 14f;
-        static readonly string[] TrapNames = { "Pics", "Toxique", "Barbelés", "Tourelle" };
-        static readonly int[] TrapBaseCost = { 8, 10, 6, 14 };
-        /// <summary>Five levels; the last two cost far more - a complete lane is a long-term goal.</summary>
-        const int MaxTrapLevel = 5;
-        static readonly int[] LevelCostMultiplier = { 1, 2, 3, 6, 10 };
-        /// <summary>Below this average solidity a complete lane stops producing materials.</summary>
-        const float FarmSolidity = 0.6f;
-        /// <summary>An idle base wears by this much solidity an hour, never below the floor.</summary>
-        const float IdleWearPerHour = 0.02f, IdleWearFloor = 0.3f;
-        /// <summary>Repairing a trap costs this many débris per level, for a full repair.</summary>
-        const float RepairPerLevel = 6f;
-        const int SiegeEvery = 10;
-        /// <summary>Each prestige adds this much to the farm's output, for ever.</summary>
-        const float PrestigeFarmBonus = 0.1f;
-        const int RepairCost = 10;
-        const int RepairAmount = 35;
-        const int Expand6Cost = 500, Expand9Cost = 1500;
-        /// <summary>
-        /// One material every four minutes per complete lane, 15 an hour. Everything the
-        /// game sells for materials (armor, drone) adds up to about 655, so a single lane
-        /// is a steady trickle and a full nine-lane base clears it in an afternoon.
-        /// </summary>
-        const float FarmPerLanePerMinute = 0.25f;
-        /// <summary>The stock stops filling after four hours of production, so it asks to be collected.</summary>
-        const float FarmCapMinutes = 240f;
-        const float BombDamage = 25f;
-        const int AllySquad = 3;
-        const float AllyBaseHp = 20f, AllyDps = 3f, AllySpeed = 1.8f;
+        static readonly Dictionary<string, Sprite> art = new();
+        static readonly Dictionary<string, Sprite[]> sheets = new();
 
-        float ShotDamage => Mathf.Max(1f, 1f * UpgradeManager.FirePowerMultiplier);
+        static Sprite Art(string name, Vector2 pivot, float ppu = Ppu)
+        {
+            string key = $"{name}|{pivot}|{ppu}";
+            if (art.TryGetValue(key, out var s)) return s;
+            var tex = Resources.Load<Texture2D>("Barricade/" + name) ?? Resources.Load<Texture2D>("Runner/" + name) ?? Resources.Load<Texture2D>("Bastion/" + name);
+            if (tex != null) s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), pivot, ppu, 0, SpriteMeshType.FullRect);
+            art[key] = s;
+            return s;
+        }
 
-        readonly List<Kind> siegeQueue = new();
-        readonly HashSet<Kind> introduced = new();
-        bool siegeWave;
-
-        /// <summary>
-        /// Health multiplier on every zombie: it climbs with the best wave ever held (a
-        /// strong base meets a tougher horde from the first waves), and past wave 10 it
-        /// compounds a little each wave, so no base stays comfortable for ever.
-        /// </summary>
-        float HealthScale => (1f + Mathf.Min(SaveSystem.BarricadeBestWave, 40) * 0.012f) * (wave > 10 ? Mathf.Pow(1.035f, wave - 10) : 1f);
-
-        // ---- UI ------------------------------------------------------------------------
+        /// <summary>The eight walking frames of one of the dead, feet on the pivot.</summary>
+        static Sprite[] Frames(Foe kind)
+        {
+            string name = kind switch { Foe.Furtif => "foe_furtif", Foe.Follet => "foe_follet", Foe.Colosse => "foe_colosse", _ => "foe_rodeur" };
+            if (sheets.TryGetValue(name, out var f)) return f;
+            var tex = Resources.Load<Texture2D>("Barricade/" + name);
+            if (tex == null) { sheets[name] = null; return null; }
+            int fw = tex.width / 4, fh = tex.height / 2;
+            f = new Sprite[8];
+            for (int i = 0; i < 8; i++)
+                f[i] = Sprite.Create(tex, new Rect((i % 4) * fw, tex.height - (i / 4 + 1) * fh, fw, fh), new Vector2(0.5f, 0.04f), Ppu, 0, SpriteMeshType.Tight);
+            sheets[name] = f;
+            return f;
+        }
 
         protected override void BuildUi()
         {
@@ -287,154 +213,242 @@ namespace Platformer.Survival
             var rt = UiKit.CreateRect("BarricadePanel", ui.Canvas.transform, Vector2.zero, Vector2.one);
             panel = rt.gameObject;
 
-            // One touch zone for the whole field: the finger's x picks the lane, several
-            // fingers hold several lanes, and sliding a finger across switches lane.
-            var zone = UiKit.CreateRect("LaneTouchZone", rt, new Vector2(0f, 0.13f), new Vector2(1f, 0.86f));
+            // One touch zone over the field: during a wave the finger's lane shoots, between
+            // waves it picks the lane to build in.
+            var zone = UiKit.CreateRect("LaneTouchZone", rt, new Vector2(0f, 0.11f), new Vector2(1f, 0.86f));
             zone.gameObject.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0f);
             touchZone = zone.gameObject.AddComponent<LaneTouchZone>();
             touchZone.LaneAt = LaneFromScreen;
 
-            var topBar = UiKit.CreateRect("TopBar", rt, new Vector2(0f, 0.90f), new Vector2(1f, 1f));
-            var topImg = topBar.gameObject.AddComponent<Image>();
-            topImg.sprite = ApogeeTheme.Panel;
-            topImg.type = Image.Type.Sliced;
-            waveText = UiKit.CreateText("Wave", topBar, "", 38, TextAnchor.MiddleLeft, new Vector2(0.04f, 0.45f), new Vector2(0.6f, 1f), Color.white);
-            debrisText = IconText.Create("Debris", topBar, "", 26, TextAnchor.MiddleLeft, new Vector2(0.04f, 0.05f), new Vector2(0.6f, 0.45f), ApogeeTheme.Cream);
-            UiKit.CreateText("BarricadeLabel", topBar, "Barricade", 20, TextAnchor.MiddleLeft, new Vector2(0.62f, 0.62f), new Vector2(0.95f, 0.98f), UiKit.Parchment);
-            barricadeFill = UiKit.CreateBar("BarricadeHp", topBar, new Vector2(0.62f, 0.30f), new Vector2(0.95f, 0.6f), new Color(0.75f, 0.45f, 0.15f));
-            ui.CreatePauseButton(rt, new Vector2(0.74f, 0.855f), new Vector2(0.96f, 0.895f), () => { if (phase != Phase.Over) OpenPause(); });
+            BuildTop(rt);
+            BuildSheet(rt);
+            BuildWaveControls(rt);
+            BuildOver(rt);
 
-            messageText = UiKit.CreateText("Message", rt, "", 26, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.80f), new Vector2(0.95f, 0.85f), UiKit.Gold);
-            burstText = UiKit.Outlined(UiKit.CreateText("Burst", rt, "", 24, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.765f), new Vector2(0.95f, 0.80f), ApogeeTheme.Gold));
-
-            molotovButton = UiKit.CreateButton("Molotov", rt, "MOLOTOV", new Vector2(0.04f, 0.03f), new Vector2(0.48f, 0.115f), OnMolotov, 26, new Color(0.62f, 0.25f, 0.08f));
-            molotovText = UiKit.ButtonLabel(molotovButton);
-            reinforceButton = UiKit.CreateButton("Reinforce", rt, "RENFORTS", new Vector2(0.52f, 0.03f), new Vector2(0.96f, 0.115f), OnReinforce, 26, new Color(0.18f, 0.32f, 0.42f));
-            reinforceText = UiKit.ButtonLabel(reinforceButton);
-            UiKit.Outlined(UiKit.CreateText("Hint", rt, "Maintiens un couloir pour tirer", 20, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.115f), new Vector2(0.95f, 0.145f), ApogeeTheme.Cream));
-
-            BuildBuildPanel(rt);
-
-            var overRt = UiKit.CreatePanel("BarricadeOver", rt, UiKit.Overlay);
-            UiKit.CreateFrame("BarricadeOverFrame", overRt, new Vector2(0.08f, 0.24f), new Vector2(0.92f, 0.8f));
-            overPanel = overRt.gameObject;
-            overTitle = UiKit.Outlined(UiKit.CreateText("OverTitle", overRt, "LA BARRICADE EST TOMBÉE", 44, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.66f), new Vector2(0.95f, 0.78f), ApogeeTheme.Gold), 2.5f);
-            UiKit.FitLabel(overTitle, 44);
-            overBody = IconText.Create("OverBody", overRt, "", 28, TextAnchor.MiddleCenter, new Vector2(0.08f, 0.47f), new Vector2(0.92f, 0.65f), UiKit.Parchment);
-            UiKit.CreateButton("Retry", overRt, "REJOUER", new Vector2(0.25f, 0.36f), new Vector2(0.75f, 0.43f), ResetGame);
-            UiKit.CreateButton("Menu", overRt, "MENU", new Vector2(0.25f, 0.27f), new Vector2(0.75f, 0.34f), ReturnToHub);
-            overPanel.SetActive(false);
-
-            // The farm runs from the moment the game starts, not from the first visit here.
             farmStock = SaveSystem.BarricadeFarmStock;
-            LoadLaneLevels();
-            ApplyOfflineWear();
-            completedLanes = CountCompletedLanes();
-            farmingLanes = CountFarmingLanes();
+            LoadBase();
         }
 
-        /// <summary>
-        /// The workshop between waves, kept to what a thumb needs: what you have (débris,
-        /// materials waiting), which lane you are building, its four traps as picture cards
-        /// with their level shown as pips, three secondary actions, and one big button to
-        /// start the wave. Prices and stocks are icons, not words.
-        /// </summary>
-        void BuildBuildPanel(RectTransform rt)
+        void BuildTop(RectTransform rt)
         {
-            var bp = UiKit.CreateRect("BuildPanel", rt, new Vector2(0f, 0f), new Vector2(1f, 0.60f));
-            var bpImg = bp.gameObject.AddComponent<Image>();
-            bpImg.sprite = ApogeeTheme.Panel;
-            bpImg.type = Image.Type.Sliced;
-            buildPanel = bp.gameObject;
+            var top = UiKit.CreateRect("Top", rt, new Vector2(0f, 0.925f), new Vector2(1f, 1f));
+            var shade = UiKit.CreateImage("Shade", top, Vector2.zero, Vector2.one, ApogeeTheme.VerticalFade, new Color(0.1f, 0.03f, 0.04f, 0.85f), false);
+            shade.rectTransform.localScale = new Vector3(1f, -1f, 1f);
+            shade.raycastTarget = false;
+            waveText = UiKit.Outlined(UiKit.CreateText("Wave", top, "", 46, TextAnchor.MiddleLeft, new Vector2(0.04f, 0.1f), new Vector2(0.6f, 0.95f), ApogeeTheme.Gold), 2.5f);
+            ui.CreatePauseButton(top, new Vector2(0.74f, 0.2f), new Vector2(0.96f, 0.85f), () => { if (phase != Phase.Over) OpenPause(); });
 
-            // Header: the room's name, and how long before the next wave.
-            UiKit.Outlined(UiKit.CreateText("WorkshopTitle", bp, "ATELIER", 34, TextAnchor.MiddleLeft,
-                new Vector2(0.05f, 0.905f), new Vector2(0.45f, 0.985f), ApogeeTheme.Gold), 2f);
-            buildText = UiKit.CreateText("BuildTitle", bp, "", 24, TextAnchor.MiddleRight, new Vector2(0.42f, 0.905f), new Vector2(0.95f, 0.985f), ApogeeTheme.Cream);
-            UiKit.FitLabel(buildText, 24);
+            debrisChip = Pill(rt, "Debris", new Vector2(0.03f, 0.875f), new Vector2(0.33f, 0.92f), 28);
+            farmChip = Pill(rt, "Farm", new Vector2(0.35f, 0.875f), new Vector2(0.68f, 0.92f), 26);
+            collectButton = UiKit.CreateButton("Collect", rt, "RÉCOLTER", new Vector2(0.70f, 0.875f), new Vector2(0.97f, 0.92f), OnCollect, 22, new Color(0.22f, 0.40f, 0.24f));
 
-            // Resources: débris to spend, materials the farm has made, and the button to take them.
-            debrisChip = CreateChip(bp, "DebrisChip", new Vector2(0.04f, 0.80f), new Vector2(0.34f, 0.885f), 28);
-            farmChip = CreateChip(bp, "FarmChip", new Vector2(0.36f, 0.80f), new Vector2(0.71f, 0.885f), 26);
-            collectButton = UiKit.CreateButton("Collect", bp, "RÉCUPÉRER", new Vector2(0.73f, 0.80f), new Vector2(0.96f, 0.885f), OnCollect, 20, new Color(0.22f, 0.34f, 0.44f));
+            // The palisade's health, under the counters.
+            var bar = UiKit.CreateRect("PalisadeBar", rt, new Vector2(0.03f, 0.845f), new Vector2(0.97f, 0.868f));
+            var bg = bar.gameObject.AddComponent<Image>();
+            bg.sprite = HubArt.Get("ui_pill", 30f) ?? ApogeeTheme.Chip;
+            bg.type = Image.Type.Sliced;
+            bg.raycastTarget = false;
+            var fillRt = UiKit.CreateRect("Fill", bar, Vector2.zero, Vector2.one);
+            fillRt.offsetMin = new Vector2(6, 5);
+            fillRt.offsetMax = new Vector2(-6, -5);
+            barricadeFill = fillRt.gameObject.AddComponent<Image>();
+            barricadeFill.sprite = ApogeeTheme.FrameFill;
+            barricadeFill.type = Image.Type.Filled;
+            barricadeFill.fillMethod = Image.FillMethod.Horizontal;
+            barricadeFill.color = new Color(0.86f, 0.55f, 0.22f);
+            barricadeFill.raycastTarget = false;
+            hpLabel = UiKit.Outlined(UiKit.CreateText("Label", bar, "PALISSADE", 18, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream), 1.2f);
 
-            for (int i = 0; i < MaxLanes; i++)
-            {
-                int captured = i;
-                laneChips[i] = UiKit.CreateButton($"LaneChip_{i}", bp, (i + 1).ToString(), new Vector2(0f, 0.695f), new Vector2(0.1f, 0.785f),
-                    () => SelectLane(captured), 26, UiKit.CardColor);
-            }
-            laneCaption = IconText.Create("LaneCaption", bp, "", 20, TextAnchor.MiddleLeft, new Vector2(0.04f, 0.648f), new Vector2(0.66f, 0.692f), ApogeeTheme.Cream);
-            // Repairs the selected lane's traps back to full solidity.
-            laneRepairButton = UiKit.CreateButton("LaneRepair", bp, "", new Vector2(0.68f, 0.645f), new Vector2(0.96f, 0.695f), RepairLane, 18, new Color(0.25f, 0.35f, 0.18f));
-            laneRepairLabel = IconText.OnButton(laneRepairButton, 19);
-
-            // The four traps of the selected lane, side by side.
-            Sprite[] icons = { GameIcons.TrapSpikes, GameIcons.TrapToxic, GameIcons.TrapWire, GameIcons.TrapTurret };
-            const float cardsLeft = 0.04f, cardsRight = 0.96f, gap = 0.012f;
-            float cardW = (cardsRight - cardsLeft - gap * 3f) / 4f;
-            for (int t = 0; t < 4; t++)
-            {
-                float x0 = cardsLeft + t * (cardW + gap);
-                int capturedTrap = t;
-                var card = new TrapCard();
-                card.button = UiKit.CreateButton($"Trap_{t}", bp, "", new Vector2(x0, 0.325f), new Vector2(x0 + cardW, 0.64f),
-                    () => Buy(selectedLane, (TrapType)capturedTrap), 20, UiKit.CardColor);
-                card.icon = UiKit.CreateImage("Icon", card.button.transform, new Vector2(0.14f, 0.47f), new Vector2(0.86f, 0.95f), icons[t], Color.white);
-                card.icon.raycastTarget = false;
-                var name = UiKit.Outlined(UiKit.CreateText("Name", card.button.transform, TrapNames[t], 21, TextAnchor.MiddleCenter,
-                    new Vector2(0.03f, 0.345f), new Vector2(0.97f, 0.47f), ApogeeTheme.Cream), 1.5f);
-                UiKit.FitLabel(name, 21);
-                // Solidity: a thin bar, green when sound, red when about to give.
-                var wearBg = UiKit.CreateImage("WearBg", card.button.transform, new Vector2(0.12f, 0.305f), new Vector2(0.88f, 0.335f),
-                    PlaceholderVisuals.Square(Color.white), new Color(0.12f, 0.05f, 0.04f), false);
-                wearBg.raycastTarget = false;
-                card.wear = UiKit.CreateImage("Wear", wearBg.transform, Vector2.zero, Vector2.one, PlaceholderVisuals.Square(Color.white), new Color(0.4f, 0.85f, 0.35f), false);
-                card.wear.type = Image.Type.Filled;
-                card.wear.fillMethod = Image.FillMethod.Horizontal;
-                card.wear.raycastTarget = false;
-                for (int k = 0; k < MaxTrapLevel; k++)
-                {
-                    float px = 0.5f + (k - 2) * 0.165f;
-                    card.pips[k] = UiKit.CreateImage($"Pip_{k}", card.button.transform, new Vector2(px - 0.06f, 0.215f), new Vector2(px + 0.06f, 0.285f),
-                        PlaceholderVisuals.Circle(Color.white), PipOff);
-                    card.pips[k].raycastTarget = false;
-                }
-                card.cost = IconText.Create("Cost", card.button.transform, "", 24, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.03f), new Vector2(0.97f, 0.19f), ApogeeTheme.Gold, 1.5f);
-                trapCards[t] = card;
-            }
-
-            // Secondary actions, smaller and together.
-            float actW = (0.92f - 0.024f) / 3f;
-            repairButton = UiKit.CreateButton("Repair", bp, "", new Vector2(0.04f, 0.18f), new Vector2(0.04f + actW, 0.305f), Repair, 20, new Color(0.25f, 0.35f, 0.18f));
-            repairLabel = IconText.OnButton(repairButton, 21);
-            expandButton = UiKit.CreateButton("Expand", bp, "", new Vector2(0.04f + actW + 0.012f, 0.18f), new Vector2(0.04f + 2f * actW + 0.012f, 0.305f), OnExpand, 20, new Color(0.40f, 0.28f, 0.12f));
-            expandLabel = IconText.OnButton(expandButton, 21);
-            burstButton = UiKit.CreateButton("BurstAd", bp, "", new Vector2(0.96f - actW, 0.18f), new Vector2(0.96f, 0.305f), OnBurstAd, 20, new Color(0.55f, 0.36f, 0.08f));
-            burstLabel = IconText.OnButton(burstButton, 21);
-
-            // The one thing to do when you are ready.
-            UiKit.CreateButton("Launch", bp, "LANCER LA VAGUE", new Vector2(0.04f, 0.025f), new Vector2(0.96f, 0.155f), StartWave, 32);
+            messageText = UiKit.Outlined(UiKit.CreateText("Message", rt, "", 30, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.78f), new Vector2(0.96f, 0.835f), ApogeeTheme.Cream), 2f);
+            UiKit.FitLabel(messageText, 30);
         }
 
-        static IconText CreateChip(RectTransform parent, string name, Vector2 anchorMin, Vector2 anchorMax, int size)
+        static IconText Pill(RectTransform parent, string name, Vector2 min, Vector2 max, int size)
         {
-            var chip = UiKit.CreateRect(name, parent, anchorMin, anchorMax);
+            var chip = UiKit.CreateRect(name, parent, min, max);
             var img = chip.gameObject.AddComponent<Image>();
-            img.sprite = ApogeeTheme.Chip;
+            img.sprite = HubArt.Get("ui_pill", 30f) ?? ApogeeTheme.Chip;
             img.type = Image.Type.Sliced;
             img.raycastTarget = false;
-            var label = IconText.Create(name + "_Text", chip, "", size, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Gold);
+            var label = IconText.Create(name + "_Text", chip, "", size, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream, 1.2f);
             var lrt = (RectTransform)label.transform;
             lrt.offsetMin = new Vector2(12, 4);
             lrt.offsetMax = new Vector2(-12, -4);
             return label;
         }
 
+        /// <summary>
+        /// The workshop, between waves, over the empty top of the field: the chosen lane, its
+        /// three possible defences as picture cards (or its defence with upgrade and sell),
+        /// and the base's three other actions. The big button to start sits at the bottom.
+        /// </summary>
+        void BuildSheet(RectTransform rt)
+        {
+            var sh = UiKit.CreateRect("Workshop", rt, new Vector2(0.02f, 0.5f), new Vector2(0.98f, 0.835f));
+            sheet = sh.gameObject;
+            var img = sh.gameObject.AddComponent<Image>();
+            img.sprite = HubArt.Get("ui_tile", 32f) ?? ApogeeTheme.Panel;
+            img.type = Image.Type.Sliced;
+            img.color = new Color(1f, 1f, 1f, 0.96f);
+
+            sheetTitle = UiKit.Outlined(UiKit.CreateText("Title", sh, "", 34, TextAnchor.MiddleLeft, new Vector2(0.05f, 0.86f), new Vector2(0.95f, 0.97f), ApogeeTheme.Gold), 2f);
+            UiKit.FitLabel(sheetTitle, 34);
+            sheetInfo = UiKit.CreateText("Info", sh, "", 22, TextAnchor.MiddleLeft, new Vector2(0.05f, 0.78f), new Vector2(0.95f, 0.86f), ApogeeTheme.Cream);
+            UiKit.FitLabel(sheetInfo, 22);
+
+            // Empty lane: three choices.
+            var cards = UiKit.CreateRect("Choices", sh, new Vector2(0.03f, 0.27f), new Vector2(0.97f, 0.77f));
+            emptyCards = cards.gameObject;
+            for (int i = 0; i < 3; i++)
+            {
+                var kind = (Def)(i + 1);
+                float x0 = i / 3f + 0.01f, x1 = (i + 1) / 3f - 0.01f;
+                var b = UiKit.CreateButton($"Choice_{i}", cards, "", new Vector2(x0, 0f), new Vector2(x1, 1f), () => Build(selectedLane, kind), 20, UiKit.CardColor);
+                var icon = UiKit.CreateImage("Icon", b.transform, new Vector2(0.12f, 0.36f), new Vector2(0.88f, 0.97f), Art($"def_{DefArt[(int)kind]}_0", new Vector2(0.5f, 0.5f)), Color.white);
+                icon.raycastTarget = false;
+                var name = UiKit.Outlined(UiKit.CreateText("Name", b.transform, DefNames[(int)kind], 24, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.2f), new Vector2(0.97f, 0.38f), ApogeeTheme.Cream), 1.5f);
+                UiKit.FitLabel(name, 24);
+                var cost = IconText.Create("Cost", b.transform, "", 24, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.02f), new Vector2(0.97f, 0.2f), ApogeeTheme.Gold, 1.5f);
+                choice[i] = (b, name, cost);
+            }
+
+            // Built lane: what it is, what it does, upgrade / sell.
+            var built = UiKit.CreateRect("Built", sh, new Vector2(0.03f, 0.27f), new Vector2(0.97f, 0.77f));
+            builtCard = built.gameObject;
+            builtIcon = UiKit.CreateImage("Icon", built, new Vector2(0f, 0f), new Vector2(0.34f, 1f), null, Color.white);
+            builtIcon.raycastTarget = false;
+            builtLevel = UiKit.Outlined(UiKit.CreateText("Level", built, "", 30, TextAnchor.MiddleLeft, new Vector2(0.37f, 0.72f), new Vector2(1f, 1f), ApogeeTheme.Gold), 1.5f);
+            UiKit.FitLabel(builtLevel, 30);
+            builtBlurb = UiKit.CreateText("Blurb", built, "", 22, TextAnchor.UpperLeft, new Vector2(0.37f, 0.42f), new Vector2(1f, 0.72f), ApogeeTheme.Cream);
+            UiKit.FitLabel(builtBlurb, 22);
+            upgradeButton = UiKit.CreateButton("Upgrade", built, "", new Vector2(0.37f, 0.02f), new Vector2(0.74f, 0.38f), () => Upgrade(selectedLane), 22);
+            upgradeLabel = IconText.OnButton(upgradeButton, 24);
+            sellButton = UiKit.CreateButton("Sell", built, "", new Vector2(0.76f, 0.02f), new Vector2(1f, 0.38f), () => Sell(selectedLane), 20, new Color(0.3f, 0.16f, 0.12f));
+            sellLabel = IconText.OnButton(sellButton, 20);
+
+            // The base's other actions.
+            float w = 0.94f / 3f;
+            repairButton = UiKit.CreateButton("Repair", sh, "", new Vector2(0.03f, 0.04f), new Vector2(0.03f + w - 0.01f, 0.22f), Repair, 20, new Color(0.25f, 0.38f, 0.2f));
+            repairLabel = IconText.OnButton(repairButton, 20);
+            expandButton = UiKit.CreateButton("Expand", sh, "", new Vector2(0.03f + w, 0.04f), new Vector2(0.03f + 2f * w - 0.01f, 0.22f), Expand, 20, new Color(0.42f, 0.3f, 0.12f));
+            expandLabel = IconText.OnButton(expandButton, 20);
+            burstButton = UiKit.CreateButton("Burst", sh, "", new Vector2(0.03f + 2f * w, 0.04f), new Vector2(0.97f, 0.22f), OnBurstAd, 20, new Color(0.55f, 0.36f, 0.08f));
+            burstLabel = IconText.OnButton(burstButton, 20);
+
+            // Start.
+            var launchRt = UiKit.CreateRect("Launch", rt, new Vector2(0.1f, 0.025f), new Vector2(0.9f, 0.095f));
+            var limg = launchRt.gameObject.AddComponent<Image>();
+            limg.sprite = HubArt.Get("ui_play", 50f) ?? ApogeeTheme.Button;
+            limg.type = Image.Type.Sliced;
+            launchButton = launchRt.gameObject.AddComponent<Button>();
+            launchButton.targetGraphic = limg;
+            launchButton.onClick.AddListener(StartWave);
+            launchRt.gameObject.AddComponent<ButtonPop>();
+            var ll = UiKit.CreateText("Label", launchRt, "LANCER LA VAGUE", 40, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Color(0.3f, 0.09f, 0.02f));
+            ll.fontStyle = FontStyle.Bold;
+            UiKit.FitLabel(ll, 40);
+        }
+
+        void BuildWaveControls(RectTransform rt)
+        {
+            // The Molotov: a big round button, bottom right, with its cooldown sweeping round.
+            var m = UiKit.CreateRect("Molotov", rt, new Vector2(1f, 0f), new Vector2(1f, 0f));
+            m.pivot = new Vector2(1f, 0f);
+            m.sizeDelta = new Vector2(190f, 190f);
+            m.anchoredPosition = new Vector2(-30f, 40f);
+            var img = m.gameObject.AddComponent<Image>();
+            img.sprite = HubArt.Get("ui_disc") ?? ApogeeTheme.Round;
+            img.color = new Color(0.45f, 0.16f, 0.06f, 0.85f);
+            molotovButton = m.gameObject.AddComponent<Button>();
+            molotovButton.targetGraphic = img;
+            molotovButton.onClick.AddListener(OnMolotov);
+            m.gameObject.AddComponent<ButtonPop>();
+            var ring = HubArt.Get("ui_ring");
+            if (ring != null)
+            {
+                var r = UiKit.CreateImage("Ring", m, Vector2.zero, Vector2.one, ring, Color.white, false);
+                r.rectTransform.offsetMin = new Vector2(-6, -6);
+                r.rectTransform.offsetMax = new Vector2(6, 6);
+                r.raycastTarget = false;
+            }
+            var flame = UiKit.CreateImage("Flame", m, new Vector2(0.2f, 0.3f), new Vector2(0.8f, 0.9f), Art("def_brasier_1", new Vector2(0.5f, 0.5f)), Color.white);
+            flame.raycastTarget = false;
+            UiKit.Outlined(UiKit.CreateText("Label", m, "MOLOTOV", 22, TextAnchor.MiddleCenter, new Vector2(0f, 0.06f), new Vector2(1f, 0.32f), ApogeeTheme.Gold), 1.5f);
+            molotovFill = UiKit.CreateImage("Cooldown", m, new Vector2(0.04f, 0.04f), new Vector2(0.96f, 0.96f), HubArt.Get("ui_disc") ?? ApogeeTheme.Round, new Color(0.05f, 0.02f, 0.02f, 0.6f), false);
+            molotovFill.type = Image.Type.Filled;
+            molotovFill.fillMethod = Image.FillMethod.Radial360;
+            molotovFill.raycastTarget = false;
+            molotovTimer = UiKit.Outlined(UiKit.CreateText("Timer", m, "", 48, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream), 2f);
+
+            var hint = UiKit.CreateRect("Hint", rt, new Vector2(0.04f, 0.03f), new Vector2(0.75f, 0.1f));
+            hintRoot = hint.gameObject;
+            UiKit.Outlined(UiKit.CreateText("Text", hint, "Maintiens un couloir pour tirer dedans", 26, TextAnchor.MiddleLeft, Vector2.zero, Vector2.one, ApogeeTheme.Cream), 2f);
+        }
+
+        void BuildOver(RectTransform rt)
+        {
+            var overRt = UiKit.CreatePanel("BarricadeOver", rt, UiKit.Overlay);
+            overPanel = overRt.gameObject;
+            UiKit.CreateFrame("Frame", overRt, new Vector2(0.08f, 0.26f), new Vector2(0.92f, 0.76f));
+            overTitle = UiKit.Outlined(UiKit.CreateText("Title", overRt, "LA PALISSADE EST TOMBÉE", 44, TextAnchor.MiddleCenter, new Vector2(0.1f, 0.63f), new Vector2(0.9f, 0.74f), ApogeeTheme.Gold), 2.5f);
+            UiKit.FitLabel(overTitle, 44);
+            overBody = IconText.Create("Body", overRt, "", 30, TextAnchor.MiddleCenter, new Vector2(0.1f, 0.45f), new Vector2(0.9f, 0.62f), ApogeeTheme.Cream);
+            UiKit.CreateButton("Retry", overRt, "REJOUER", new Vector2(0.2f, 0.36f), new Vector2(0.8f, 0.43f), ResetGame, 34);
+            UiKit.CreateButton("Menu", overRt, "MENU", new Vector2(0.3f, 0.28f), new Vector2(0.7f, 0.34f), ReturnToHub, 26, new Color(0.22f, 0.10f, 0.08f));
+            overPanel.SetActive(false);
+        }
+
+        // ---- the base on disk --------------------------------------------------------------
+
+        /// <summary>
+        /// Reads the base, converting an old one on the way: lanes 6 and 9 become 4 and 5, and
+        /// each lane keeps its best trap as one defence - spikes and wire as Pieux, the toxic
+        /// pool as Brasier, the turret as Arbalète - at the same level.
+        /// </summary>
+        void LoadBase()
+        {
+            int saved = PlayerPrefs.GetInt("barricade_lanes_v2", 0);
+            laneCount = saved >= MinLanes ? Mathf.Clamp(saved, MinLanes, MaxLanes)
+                : SaveSystem.BarricadeLanes >= 9 ? 5 : SaveSystem.BarricadeLanes >= 6 ? 4 : 3;
+            PlayerPrefs.SetInt("barricade_lanes_v2", laneCount);
+            for (int l = 0; l < MaxLanes; l++)
+            {
+                int pieux = Mathf.Max(SaveSystem.GetBarricadeTrap(l, 0), SaveSystem.GetBarricadeTrap(l, 2));
+                int brasier = SaveSystem.GetBarricadeTrap(l, 1);
+                int arbalete = SaveSystem.GetBarricadeTrap(l, 3);
+                var lane = lanes[l];
+                lane.def = Def.None; lane.level = 0;
+                if (arbalete > 0 && arbalete >= brasier && arbalete >= pieux) { lane.def = Def.Arbalete; lane.level = arbalete; }
+                else if (brasier > 0 && brasier >= pieux) { lane.def = Def.Brasier; lane.level = brasier; }
+                else if (pieux > 0) { lane.def = Def.Pieux; lane.level = pieux; }
+                lane.level = Mathf.Clamp(lane.level, 0, MaxLevel);
+                if (l >= laneCount) { lane.def = Def.None; lane.level = 0; }
+                SaveLane(l);
+            }
+            SaveSystem.Flush();
+            farmingLanes = CountFarming();
+        }
+
+        void SaveLane(int l)
+        {
+            var lane = lanes[l];
+            for (int t = 0; t < 4; t++) SaveSystem.SetBarricadeTrap(l, t, 0);
+            int slot = lane.def switch { Def.Pieux => 0, Def.Brasier => 1, Def.Arbalete => 3, _ => -1 };
+            if (slot >= 0) SaveSystem.SetBarricadeTrap(l, slot, lane.level);
+        }
+
+        int CountFarming()
+        {
+            int n = 0;
+            for (int l = 0; l < laneCount; l++) if (lanes[l].Farming) n++;
+            return n;
+        }
+
         // ---- lifecycle -----------------------------------------------------------------
 
         protected override void OnEnter()
         {
+            LoadBase();
             ApplyLayout();
             ResetGame();
         }
@@ -448,206 +462,191 @@ namespace Platformer.Survival
             touchZone?.Clear();
             SaveSystem.BarricadeDebris = debris;
             SaveSystem.BarricadeFarmStock = farmStock;
-            SaveWear();
             SaveSystem.Flush();
         }
 
         void OnApplicationPause(bool paused)
         {
-            if (!paused)
-            {
-                // Back from the background: the time away counts as idle wear.
-                ApplyOfflineWear();
-                farmingLanes = CountFarmingLanes();
-                return;
-            }
-            SaveWear();
+            if (!paused) return;
             SaveSystem.BarricadeFarmStock = farmStock;
             SaveSystem.Flush();
         }
 
         void OnApplicationQuit()
         {
-            SaveWear();
             SaveSystem.BarricadeFarmStock = farmStock;
             SaveSystem.Flush();
         }
 
-        void LoadLaneLevels()
-        {
-            laneCount = SaveSystem.BarricadeLanes;
-            for (int l = 0; l < MaxLanes; l++)
-                for (int t = 0; t < 4; t++)
-                {
-                    lanes[l].level[t] = l < laneCount ? Mathf.Clamp(SaveSystem.GetBarricadeTrap(l, t), 0, MaxTrapLevel) : 0;
-                    lanes[l].solidity[t] = SaveSystem.GetBarricadeWear(l, t);
-                }
-        }
-
-        int CountCompletedLanes()
-        {
-            int n = 0;
-            for (int l = 0; l < laneCount; l++) if (lanes[l].Complete) n++;
-            return n;
-        }
-
-        int CountFarmingLanes()
-        {
-            int n = 0;
-            for (int l = 0; l < laneCount; l++) if (lanes[l].Farming) n++;
-            return n;
-        }
-
-        void SaveWear()
-        {
-            for (int l = 0; l < laneCount; l++)
-                for (int t = 0; t < 4; t++) SaveSystem.SetBarricadeWear(l, t, lanes[l].solidity[t]);
-            SaveSystem.BarricadeLastSeen = DateTime.UtcNow.Ticks;
-        }
-
-        /// <summary>The base wore down while the game was closed: a little per hour, never to ruin.</summary>
-        void ApplyOfflineWear()
-        {
-            long last = SaveSystem.BarricadeLastSeen;
-            long now = DateTime.UtcNow.Ticks;
-            if (last > 0 && now > last)
-                WearIdle((float)((now - last) / (double)TimeSpan.TicksPerHour));
-            SaveWear();
-            SaveSystem.Flush();
-        }
-
-        void WearIdle(float hours)
-        {
-            if (hours <= 0f) return;
-            float loss = IdleWearPerHour * hours;
-            for (int l = 0; l < laneCount; l++)
-                for (int t = 0; t < 4; t++)
-                {
-                    if (lanes[l].level[t] <= 0) continue;
-                    float s = lanes[l].solidity[t];
-                    if (s > IdleWearFloor) lanes[l].solidity[t] = Mathf.Max(IdleWearFloor, s - loss);
-                }
-        }
-
-        /// <summary>Wear on one trap from use or from an attack; refreshes its look and the farm.</summary>
-        void WearTrap(int laneIndex, TrapType type, float amount)
-        {
-            var lane = lanes[laneIndex];
-            int i = (int)type;
-            if (lane.level[i] <= 0 || lane.solidity[i] <= 0f) return;
-            float before = lane.solidity[i];
-            lane.solidity[i] = Mathf.Max(0f, before - amount);
-            if (before > 0f && lane.solidity[i] <= 0f)
-            {
-                Fx.Text(Origin + new Vector2(LaneX(laneIndex) - Origin.x, TrapY + 0.9f), $"{TrapNames[i]} cassé !", new Color(1f, 0.4f, 0.3f), 1.1f);
-                Fx.Burst(Origin + new Vector2(LaneX(laneIndex) - Origin.x, TrapY), new Color(0.55f, 0.5f, 0.45f), 16, 3f, 0.1f, 0.4f);
-                Sfx.Hit();
-            }
-            // Only the look changes at thresholds, not every scratch.
-            if (Mathf.FloorToInt(before * 4f) != Mathf.FloorToInt(lane.solidity[i] * 4f)) RefreshTrapVisual(laneIndex, type);
-        }
-
-        /// <summary>
-        /// (Re)builds the field for the current number of lanes: loads the saved base, frames
-        /// the camera so every lane is on screen, moves the spawn line just above the view,
-        /// and rebuilds the world with the traps already standing.
-        /// </summary>
+        /// <summary>Frames the camera on the lanes and paints the field for the current number of lanes.</summary>
         void ApplyLayout()
         {
             ClearUnits();
             if (root != null) Destroy(root.gameObject);
-            for (int l = 0; l < MaxLanes; l++)
-                for (int t = 0; t < 4; t++) lanes[l].visuals[t] = null;
-
-            LoadLaneLevels();
-            laneWidth = WidthFor(laneCount);
-            modelScale = Mathf.Min(1f, laneWidth / 1.4f);
-            completedLanes = CountCompletedLanes();
-            farmingLanes = CountFarmingLanes();
-
-            TakeOverCamera(new Vector3(Origin.x, Origin.y + 0.9f, -10f), CameraOrtho, ApogeeTheme.SkyAverage, FieldWidth + 0.7f);
-            float top = 0.9f + (cam != null ? cam.orthographicSize : CameraOrtho);
-            spawnY = Mathf.Max(BaseSpawnY, top + 0.6f);
-            walkScale = (spawnY - BarricadeY) / (BaseSpawnY - BarricadeY);
-
-            BuildWorld();
-            for (int l = 0; l < laneCount; l++)
-                for (int t = 0; t < 4; t++) RefreshTrapVisual(l, (TrapType)t);
-
+            for (int l = 0; l < MaxLanes; l++) { lanes[l].visual = null; lanes[l].pips.Clear(); }
+            spacing = SpacingFor(laneCount);
+            TakeOverCamera(new Vector3(Origin.x, Origin.y + CamY, -10f), CameraOrtho, new Color(0.3f, 0.12f, 0.16f), FieldWidth + 0.8f);
+            float ortho = cam != null ? cam.orthographicSize : CameraOrtho;
+            spawnY = CamY + ortho - 2.6f;
+            BuildWorld(ortho);
+            for (int l = 0; l < laneCount; l++) RefreshLaneVisual(l);
             selectedLane = Mathf.Clamp(selectedLane, 0, laneCount - 1);
             touchZone?.Clear();
         }
 
-        void BuildWorld()
+        SpriteRenderer Place(string name, Sprite sprite, Vector2 local, int order, Transform parent = null)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent != null ? parent : root, false);
+            go.transform.position = new Vector3(Origin.x + local.x, Origin.y + local.y, 0f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sortingOrder = order;
+            return sr;
+        }
+
+        static int DepthOrder(float y) => 20 + Mathf.RoundToInt((6f - y) * 4f);
+
+        void BuildWorld(float ortho)
         {
             root = new GameObject("BarricadeWorld").transform;
-            float ortho = cam != null ? cam.orthographicSize : CameraOrtho;
-            float viewTop = 0.9f + ortho, viewBottom = 0.9f - ortho;
+            float viewW = ortho * 2f * (cam != null ? cam.aspect : 0.5625f) + 2f;
+            float viewTop = CamY + ortho, viewBottom = CamY - ortho;
 
-            // Street and lane separators, tall enough to fill any zoom level.
-            float streetBottom = PlayerY - 0.7f, streetTop = viewTop + 1.5f;
-            CreateBox("Street", new Vector2(0f, (streetBottom + streetTop) * 0.5f), new Vector2(FieldWidth, streetTop - streetBottom), new Color(0.36f, 0.24f, 0.21f), -6);
-            for (int i = 1; i < laneCount; i++)
+            // Golden grass everywhere.
+            var grass = Place("Grass", Art("field_grass", new Vector2(0.5f, 0.5f)), new Vector2(0f, CamY), -30);
+            grass.drawMode = SpriteDrawMode.Tiled;
+            grass.size = new Vector2(viewW + 2f, ortho * 2f + 3f);
+
+            // The cobbled lanes, from the wood down to the palisade.
+            float laneTop = spawnY + 1.6f, laneBottom = BarricadeY + 0.2f;
+            for (int l = 0; l < laneCount; l++)
             {
-                float x = (i - laneCount * 0.5f) * laneWidth;
-                CreateBox($"LaneLine_{i}", new Vector2(x, (streetBottom + streetTop) * 0.5f), new Vector2(0.05f, streetTop - streetBottom), new Color(0.62f, 0.42f, 0.34f, 0.6f), -5);
+                var lane = Place($"Lane_{l}", Art("field_lane", new Vector2(0.5f, 0.5f)), new Vector2(LaneX(l) - Origin.x, (laneTop + laneBottom) / 2f), -25);
+                lane.drawMode = SpriteDrawMode.Tiled;
+                lane.size = new Vector2(1.5f, laneTop - laneBottom);
+                lane.transform.localScale = new Vector3(spacing * 0.86f / 1.5f, 1f, 1f);
             }
-            float curbTop = PlayerY - 0.65f, curbBottom = viewBottom - 1f;
-            CreateBox("Curb", new Vector2(0f, (curbTop + curbBottom) * 0.5f), new Vector2(FieldWidth + 2f, curbTop - curbBottom), PlaceholderVisuals.GroundColor, -4);
 
-            laneHighlight = CreateBox("LaneHighlight", new Vector2(0f, (BarricadeY + streetTop) * 0.5f), new Vector2(laneWidth, streetTop - BarricadeY),
-                new Color(1f, 0.85f, 0.4f, 0.10f), -5);
+            // The misty wood they come out of: its fog sits on the spawn line.
+            var forestTex = Resources.Load<Texture2D>("Barricade/field_forest");
+            if (forestTex != null)
+            {
+                float fw = Mathf.Max(viewW + 1f, 7f);
+                var forest = Place("Wood", Sprite.Create(forestTex, new Rect(0, 0, forestTex.width, forestTex.height), new Vector2(0.5f, 0.14f), forestTex.width / fw), new Vector2(0f, spawnY), 18);
+                forest.transform.position += Vector3.up * 0.0f;
+                // A band of shade over the top of the screen behind the wood.
+                var dusk = Place("Dusk", ApogeeTheme.VerticalFade, new Vector2(0f, viewTop - 0.6f), 17);
+                dusk.color = new Color(0.25f, 0.1f, 0.2f, 0.9f);
+                dusk.transform.localScale = new Vector3(viewW / Mathf.Max(0.01f, ApogeeTheme.VerticalFade.bounds.size.x), 2.5f / Mathf.Max(0.01f, ApogeeTheme.VerticalFade.bounds.size.y), 1f);
+                dusk.transform.localRotation = Quaternion.Euler(0f, 0f, 180f);
+            }
+
+            laneHighlight = Place("Highlight", PlaceholderVisuals.Square(Color.white), new Vector2(0f, (spawnY + BarricadeY) / 2f), -24).gameObject;
+            laneHighlight.transform.localScale = new Vector3(spacing * 0.9f, spawnY - BarricadeY + 1f, 1f);
+            laneHighlight.GetComponent<SpriteRenderer>().color = new Color(1f, 0.85f, 0.4f, 0.16f);
             laneHighlight.SetActive(false);
 
-            var barricade = CreateBox("Barricade", new Vector2(0f, BarricadeY), new Vector2(FieldWidth, 0.7f), new Color(0.50f, 0.30f, 0.14f), -1);
-            barricadeSr = barricade.GetComponent<SpriteRenderer>();
-            barricadeBaseColor = barricadeSr.color;
-            int planks = Mathf.Max(4, Mathf.RoundToInt(FieldWidth / 0.97f));
-            float pitch = FieldWidth / planks;
-            for (int i = 0; i < planks; i++)
-                CreateBox("Plank", new Vector2(-FieldWidth * 0.5f + pitch * (i + 0.5f), BarricadeY + 0.15f), new Vector2(0.25f, 1.1f), new Color(0.42f, 0.26f, 0.12f), 0);
+            // The terrace behind the palisade, and the palisade itself.
+            var floor = Place("Terrace", Art("wall_castle", new Vector2(0.5f, 1f)), new Vector2(0f, BarricadeY - 0.15f), 58);
+            floor.drawMode = SpriteDrawMode.Tiled;
+            floor.size = new Vector2(viewW + 2f, BarricadeY - 0.15f - (viewBottom - 1f));
+            floor.color = new Color(0.62f, 0.5f, 0.5f);
+            palisadeSr = Place("Palisade", Art("palisade_0", new Vector2(0.5f, 0.07f)), new Vector2(0f, BarricadeY - 0.35f), 60);
+            palisadeSr.drawMode = SpriteDrawMode.Tiled;
+            palisadeSr.size = new Vector2(viewW + 2f, 200f / Ppu);
+            palisadeState = -1;
+            RefreshPalisade();
 
-            // The equipped character behind the barricade.
+            // The defender, behind it.
+            heroSr = Place("Defender", ui.PlayerSprite, new Vector2(0f, PlayerY), 62);
             var skin = SkinCatalog.Find(SaveSystem.SelectedSkinId);
-            var player = new GameObject("Defender");
-            player.transform.SetParent(root, false);
-            player.transform.position = Origin + new Vector2(0f, PlayerY);
-            player.transform.localScale = Vector3.one * 1.2f;
-            playerSr = player.AddComponent<SpriteRenderer>();
             var portrait = SkinCatalog.LoadPortrait(skin, out bool custom);
-            playerSr.sprite = custom ? portrait : ui.PlayerSprite;
-            playerSr.color = custom ? Color.white : skin.Tint;
-            playerSr.sortingOrder = 2;
+            if (custom) { heroSr.sprite = portrait; heroSr.transform.localScale = Vector3.one * 1.1f; }
+            else { heroSr.color = skin.Tint; heroSr.transform.localScale = Vector3.one * 1.15f; }
+            SpawnDrone(heroSr.transform);
 
-            SpawnDrone(player.transform);
+            for (int l = 0; l < laneCount; l++) BuildLanePad(l);
         }
 
         /// <summary>
-        /// The shop's companion drone, hovering over the defender. It fires down whichever
-        /// lane holds the enemy nearest the barricade, once every couple of seconds for a
-        /// single point: enough to finish a crawler that got through, never enough to hold
-        /// a lane on its own. Parented to the world root, so it dies with the round.
+        /// The shop's companion drone over the defender: it fires up whichever lane holds the
+        /// dead nearest the palisade, once every couple of seconds for a single point.
         /// </summary>
         void SpawnDrone(Transform defender)
         {
             int level = UpgradeManager.DroneLevel;
             if (level <= 0) return;
-
             drone = Drone.Create(root, defender, level);
+            // Over the terrace and the palisade, not behind them.
+            foreach (var r in drone.GetComponentsInChildren<Renderer>()) r.sortingOrder += 70;
             drone.offset = new Vector3(-0.75f, 0.95f, 0f);
-            drone.mirrorWithTarget = false;   // the defender never turns around here
-            drone.range = 30f;                // a lane is its business all the way up
-
+            drone.mirrorWithTarget = false;
+            drone.range = 30f;
             drone.FindTarget = _ =>
             {
-                if (phase == Phase.Over) return null;
+                if (phase != Phase.Wave) return null;
                 Enemy best = null;
-                foreach (var e in enemies)
-                    if (e.hp > 0f && (best == null || e.y < best.y)) best = e;
-                return best == null ? (Vector2?)null : new Vector2(LaneX(best.lane), Origin.y + best.y);
+                foreach (var e in enemies) if (e.hp > 0f && (best == null || e.y < best.y)) best = e;
+                return best == null ? (Vector2?)null : new Vector2(LaneX(best.lane), Origin.y + best.y + 0.5f);
             };
-
             drone.Fire = (_, target) => FireShot(NearestLaneTo(target.x), PlayerY + 1.3f, 1f, false);
+        }
+
+        /// <summary>The stone pad of a lane's defence, its glowing ring and its five level pips.</summary>
+        void BuildLanePad(int l)
+        {
+            var lane = lanes[l];
+            float x = LaneX(l) - Origin.x;
+            var holder = new GameObject($"LanePad_{l}").transform;
+            holder.SetParent(root, false);
+            holder.position = new Vector3(Origin.x + x, Origin.y + DefY, 0f);
+            lane.visual = holder.gameObject;
+            int order = DepthOrder(DefY);
+            var pad = Place("Pad", Art("pad", new Vector2(0.5f, 0.5f), 256f / (spacing * 0.95f)), new Vector2(x, DefY - 0.25f), order - 2, holder);
+            pad.color = new Color(1f, 1f, 1f, 0.9f);
+            lane.ringSr = Place("Ring", Art("ring", new Vector2(0.5f, 0.5f), 256f / (spacing * 0.95f)), new Vector2(x, DefY - 0.25f), order - 1, holder);
+            lane.defSr = Place("Defence", null, new Vector2(x, DefY - 0.5f), order, holder);
+            lane.defSr.transform.localScale = Vector3.one * LaneScale;
+            for (int k = 0; k < MaxLevel; k++)
+            {
+                var pip = Place($"Pip_{k}", PlaceholderVisuals.Star(), new Vector2(x + (k - 2) * 0.2f * LaneScale, DefY - 0.72f), order + 1, holder);
+                pip.transform.localScale = Vector3.one * 0.17f * LaneScale;
+                lane.pips.Add(pip);
+            }
+        }
+
+        void RefreshLaneVisual(int l)
+        {
+            var lane = lanes[l];
+            if (lane.defSr == null) return;
+            if (lane.def == Def.None)
+            {
+                lane.defSr.sprite = null;
+            }
+            else
+            {
+                int tier = lane.level >= 5 ? 2 : lane.level >= 3 ? 1 : 0;
+                lane.defSr.sprite = Art($"def_{DefArt[(int)lane.def]}_{tier}", new Vector2(0.5f, 0.06f), 256f / 1.5f);
+            }
+            lane.defSr.color = lane.disabled ? new Color(0.35f, 0.32f, 0.36f, 0.9f) : Color.white;
+            for (int k = 0; k < lane.pips.Count; k++)
+            {
+                lane.pips[k].gameObject.SetActive(lane.def != Def.None);
+                lane.pips[k].color = k < lane.level ? (lane.Farming ? new Color(0.6f, 1f, 0.55f) : ApogeeTheme.Gold) : new Color(0.25f, 0.15f, 0.12f, 0.8f);
+            }
+        }
+
+        void RefreshPalisade()
+        {
+            if (palisadeSr == null) return;
+            float f = barricadeMax > 0f ? barricadeHp / barricadeMax : 1f;
+            int state = f > 0.66f ? 0 : f > 0.33f ? 1 : 2;
+            if (state == palisadeState) return;
+            palisadeState = state;
+            var size = palisadeSr.size;
+            palisadeSr.sprite = Art($"palisade_{state}", new Vector2(0.5f, 0.07f));
+            palisadeSr.size = size;
         }
 
         int NearestLaneTo(float worldX)
@@ -668,20 +667,8 @@ namespace Platformer.Survival
         {
             if (cam == null || laneCount <= 0) return -1;
             var world = cam.ScreenToWorldPoint(new Vector3(screen.x, screen.y, 10f));
+            if (Mathf.Abs(world.x - Origin.x) > FieldWidth / 2f + 0.4f) return -1;
             return NearestLaneTo(world.x);
-        }
-
-        GameObject CreateBox(string name, Vector2 localPos, Vector2 size, Color color, int order)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(root, false);
-            go.transform.position = Origin + localPos;
-            go.transform.localScale = new Vector3(size.x, size.y, 1f);
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = PlaceholderVisuals.Square(Color.white);
-            sr.color = color;
-            sr.sortingOrder = order;
-            return go;
         }
 
         void ClearUnits()
@@ -689,46 +676,31 @@ namespace Platformer.Survival
             foreach (var e in enemies) if (e.go != null) Destroy(e.go);
             foreach (var s in shots) if (s.go != null) Destroy(s.go);
             foreach (var s in spits) if (s != null) Destroy(s);
-            foreach (var a in allies) if (a.go != null) Destroy(a.go);
             enemies.Clear();
             shots.Clear();
             spits.Clear();
-            allies.Clear();
         }
 
-        /// <summary>A new run: wave 1 and a whole barricade, on the base built so far.</summary>
+        /// <summary>A new defence: wave 1 and a whole palisade, on the base built so far.</summary>
         void ResetGame()
         {
             StopAllCoroutines();
             ClearUnits();
-            for (int l = 0; l < MaxLanes; l++) { lanes[l].turretTimer = 0f; laneFireCooldown[l] = 0f; }
+            for (int l = 0; l < MaxLanes; l++) { lanes[l].turretTimer = 0f; lanes[l].disabled = false; laneFireCooldown[l] = 0f; }
+            for (int l = 0; l < laneCount; l++) RefreshLaneVisual(l);
             touchZone?.Clear();
-
-            // A new defence starts on a base put back in order: every trap at full solidity.
-            for (int l = 0; l < laneCount; l++)
-                for (int t = 0; t < 4; t++) lanes[l].solidity[t] = 1f;
-            for (int l = 0; l < laneCount; l++)
-                for (int t = 0; t < 4; t++) RefreshTrapVisual(l, (TrapType)t);
-            SaveWear();
-            completedLanes = CountCompletedLanes();
-            farmingLanes = CountFarmingLanes();
-
             wave = 1;
             debris = SaveSystem.BarricadeDebris;
             kills = 0;
-            brutesKilled = 0;
-            bombersKilled = 0;
+            colossiKilled = 0;
             molotovCooldown = 0f;
-            reinforceCooldown = 0f;
             burstWaves = 0;
             adPending = false;
             barricadeMax = 120f + SaveSystem.GetLevel(UpgradeStat.Armor) * 12f;
             barricadeHp = barricadeMax;
-            if (barricadeSr != null) barricadeSr.color = barricadeBaseColor;
+            RefreshPalisade();
             overPanel.SetActive(false);
-            messageText.text = "";
             EnterBuildPhase(first: true);
-            RefreshHud();
         }
 
         void SetDebris(int value)
@@ -742,52 +714,37 @@ namespace Platformer.Survival
         void EnterBuildPhase(bool first)
         {
             phase = Phase.Build;
-            buildTimer = BuildDuration;
-            buildPanel.SetActive(true);
+            sheet.SetActive(true);
+            launchButton.gameObject.SetActive(true);
             molotovButton.gameObject.SetActive(false);
-            reinforceButton.gameObject.SetActive(false);
+            hintRoot.SetActive(false);
             if (laneHighlight != null) laneHighlight.SetActive(true);
+            bool anything = false;
+            for (int l = 0; l < laneCount; l++) if (lanes[l].def != Def.None) anything = true;
             messageText.text = first
-                ? (completedLanes > 0 || HasAnyTrap() ? "Ta base est prête, renforce-la" : "Prépare tes défenses")
+                ? (anything ? "Ta base est prête : renforce-la ou lance la vague" : "Touche un couloir pour y bâtir une défense")
                 : $"Vague {wave - 1} repoussée !";
             SelectLane(selectedLane);
-        }
-
-        bool HasAnyTrap()
-        {
-            for (int l = 0; l < laneCount; l++)
-                for (int t = 0; t < 4; t++) if (lanes[l].level[t] > 0) return true;
-            return false;
+            RefreshHud();
         }
 
         void StartWave()
         {
             if (phase != Phase.Build || adPending) return;
             phase = Phase.Wave;
-            buildPanel.SetActive(false);
+            sheet.SetActive(false);
+            launchButton.gameObject.SetActive(false);
             molotovButton.gameObject.SetActive(true);
-            reinforceButton.gameObject.SetActive(true);
+            hintRoot.SetActive(wave <= 2);
             if (laneHighlight != null) laneHighlight.SetActive(false);
-            // A wider field is a longer front: the zombies scale with it, so each lane stays
-            // as threatened as before and widening is a real commitment, not a free win.
-            float frontScale = 1f + (laneCount - 3) / 6f;
-            spawnRemaining = Mathf.RoundToInt((4 + wave * 2) * frontScale);
-
-            // Every tenth wave is a siege: more of them, led by demolishers and saboteurs.
-            siegeWave = wave % SiegeEvery == 0;
-            siegeQueue.Clear();
-            if (siegeWave)
-            {
-                spawnRemaining = Mathf.RoundToInt(spawnRemaining * 1.3f);
-                int demolishers = 1 + wave / 20 + (laneCount >= 6 ? 1 : 0);
-                for (int i = 0; i < demolishers; i++) siegeQueue.Add(Kind.Demolisher);
-                for (int i = 0; i < 3; i++) siegeQueue.Add(Kind.Saboteur);
-            }
-            spawnInterval = Mathf.Max(0.55f, 1.5f - wave * 0.08f) / frontScale;
+            float front = 1f + (laneCount - 3) / 4f;
+            spawnRemaining = Mathf.RoundToInt((4 + wave * 2) * front);
+            spawnInterval = Mathf.Max(0.55f, 1.5f - wave * 0.08f) / front;
             spawnTimer = 0.6f;
-            messageText.text = siegeWave ? $"Vague {wave} : SIÈGE" : $"Vague {wave}";
-            if (siegeWave) ui.ShowBanner("SIÈGE !", $"Vague {wave} : {spawnRemaining} assaillants, démolisseurs en tête", 2.2f);
-            else ui.ShowBanner($"VAGUE {wave}", spawnRemaining + " zombies", 1.6f);
+            bossWave = wave % BossEvery == 0;
+            messageText.text = "";
+            if (bossWave) ui.ShowBanner("UN COLOSSE !", $"Vague {wave} : il mène la charge", 2f);
+            else ui.ShowBanner($"VAGUE {wave}", $"{spawnRemaining} morts sortent du bois", 1.5f);
             RefreshHud();
         }
 
@@ -795,85 +752,99 @@ namespace Platformer.Survival
         {
             int bonus = 5 + wave;
             SetDebris(debris + bonus);
-            if (siegeWave)
+            // The palisade is patched up a little between waves.
+            barricadeHp = Mathf.Min(barricadeMax, barricadeHp + barricadeMax * 0.2f);
+            RefreshPalisade();
+            if (bossWave)
             {
-                // A siege held pays in materials on the spot.
-                int mats = 5 + wave / 2;
+                int mats = 4 + wave / 2;
                 SaveSystem.AddMaterials(mats);
-                ui.ShowBanner("SIÈGE REPOUSSÉ !", $"{mats} [g]   ·   {bonus} [d]", 2.4f);
-                siegeWave = false;
+                ui.ShowBanner("COLOSSE ABATTU !", $"{mats} [g]   ·   {bonus} [d]", 2.2f);
             }
             if (wave > SaveSystem.BarricadeBestWave) SaveSystem.BarricadeBestWave = wave;
             wave++;
             if (burstWaves > 0) burstWaves--;
+            // Defences knocked out by a Colosse are back in order.
+            for (int l = 0; l < laneCount; l++)
+                if (lanes[l].disabled) { lanes[l].disabled = false; RefreshLaneVisual(l); }
             SaveSystem.Flush();
             Sfx.Milestone();
-            RewardPopup.Show(Origin + new Vector2(0f, 1f), 0, 0, bonus);
-            foreach (var a in allies) if (a.go != null) Destroy(a.go);
-            allies.Clear();
+            RewardPopup.Show(new Vector3(Origin.x, Origin.y + 1f, 0f), 0, 0, bonus);
             EnterBuildPhase(first: false);
-            RefreshHud();
         }
 
         void GameOver()
         {
             phase = Phase.Over;
-            buildPanel.SetActive(false);
+            sheet.SetActive(false);
+            launchButton.gameObject.SetActive(false);
             molotovButton.gameObject.SetActive(false);
-            reinforceButton.gameObject.SetActive(false);
+            hintRoot.SetActive(false);
             touchZone?.Clear();
-            int wavesHeld = wave - 1;
-            // Materials only, never coins: the barricade is where materials come from, and
-            // coins stay the reward of the other games.
-            int materials = brutesKilled + wavesHeld + bombersKilled * 2;
+            int held = wave - 1;
+            int materials = held + colossiKilled * 2;
             if (materials > 0) SaveSystem.AddMaterials(materials);
             SaveSystem.BarricadeDebris = debris;
             SaveSystem.Flush();
-            overBody.text = $"Vagues tenues : {wavesHeld}      Abattus : {kills}\n+{materials} [g]\nTa base est conservée   ·   {debris} [d]";
+            overBody.text = $"Vagues tenues : {held}      Abattus : {kills}\n+{materials} [g]\nTes défenses restent debout   ·   {debris} [d]";
             overPanel.SetActive(true);
+            overPanel.transform.SetAsLastSibling();
             Sfx.Death();
             Fx.Shake(0.5f, 0.4f);
             AdService.OnPlayerDeath();
         }
 
-        // ---- per-frame -----------------------------------------------------------------
+        // ---- per frame -------------------------------------------------------------------
 
         void Update()
         {
-            // The farm works whatever screen is open, as long as the game is running. Real
-            // time, clamped so a stalled frame cannot pay out a burst.
+            // The materials keep coming whatever screen is open, as long as the game runs.
             FarmTick(Mathf.Min(Time.unscaledDeltaTime, 1f));
-
-            if (!IsActive || phase == Phase.Over) return;
+            if (!IsActive || phase == Phase.Over || root == null) return;
             float dt = Time.deltaTime;
+            AnimateWorld();
 
             if (phase == Phase.Build)
             {
-                if (!adPending) buildTimer -= dt;
-                buildText.text = adPending
-                    ? "En pause pendant la pub"
-                    : $"Vague {wave} dans {Mathf.CeilToInt(Mathf.Max(0f, buildTimer))} s";
+                for (int l = 0; l < laneCount; l++)
+                    if (touchZone != null && touchZone.IsHeld(l) && l != selectedLane) { SelectLane(l); Sfx.Drop(); }
                 farmTextTimer -= dt;
-                if (farmTextTimer <= 0f) { farmTextTimer = 0.5f; RefreshFarmLine(); }
-                if (buildTimer <= 0f && !adPending) StartWave();
+                if (farmTextTimer <= 0f) { farmTextTimer = 0.5f; RefreshHud(); }
                 return;
             }
 
             UpdateSpawning(dt);
             UpdateEnemies(dt);
-            UpdateAllies(dt);
-            UpdateTraps(dt);
+            UpdateDefences(dt);
             UpdateShots(dt);
             UpdatePlayerFire(dt);
             molotovCooldown = Mathf.Max(0f, molotovCooldown - dt);
-            reinforceCooldown = Mathf.Max(0f, reinforceCooldown - dt);
-            molotovText.text = molotovCooldown > 0f ? $"MOLOTOV ({Mathf.CeilToInt(molotovCooldown)})" : "MOLOTOV";
-            reinforceText.text = reinforceCooldown > 0f ? $"RENFORTS ({Mathf.CeilToInt(reinforceCooldown)})" : "RENFORTS";
-            molotovButton.interactable = molotovCooldown <= 0f;
-            reinforceButton.interactable = reinforceCooldown <= 0f;
+            molotovFill.fillAmount = molotovCooldown / MolotovCooldown;
+            molotovTimer.text = molotovCooldown > 0f ? Mathf.CeilToInt(molotovCooldown).ToString() : "";
 
             if (barricadeHp <= 0f) { GameOver(); return; }
             if (spawnRemaining == 0 && enemies.Count == 0) EndWave();
+        }
+
+        void AnimateWorld()
+        {
+            float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * 4f);
+            for (int l = 0; l < laneCount; l++)
+            {
+                var lane = lanes[l];
+                if (lane.ringSr == null) continue;
+                bool build = phase == Phase.Build;
+                lane.ringSr.enabled = build || lane.def == Def.None;
+                lane.ringSr.color = l == selectedLane && build
+                    ? new Color(1f, 0.85f, 0.4f, 0.6f + 0.4f * pulse)
+                    : new Color(1f, 1f, 1f, lane.def == Def.None ? 0.25f + 0.25f * pulse : 0.3f);
+            }
+            if (laneHighlight != null && laneHighlight.activeSelf)
+            {
+                var p = laneHighlight.transform.position;
+                p.x = Mathf.Lerp(p.x, LaneX(selectedLane), Time.deltaTime * 14f);
+                laneHighlight.transform.position = p;
+            }
         }
 
         void UpdateSpawning(float dt)
@@ -883,232 +854,95 @@ namespace Platformer.Survival
             if (spawnTimer > 0f) return;
             spawnTimer = spawnInterval;
             spawnRemaining--;
-            SpawnEnemy(Random.Range(0, laneCount), RollKind());
+            bool boss = bossWave && spawnRemaining == Mathf.RoundToInt((4 + wave * 2) * (1f + (laneCount - 3) / 4f)) - 1;
+            SpawnEnemy(Random.Range(0, laneCount), boss ? Foe.Colosse : RollKind(), boss);
         }
 
-        Kind RollKind()
+        Foe RollKind()
         {
-            // A siege sends its heavy hitters first.
-            if (siegeQueue.Count > 0)
-            {
-                var k = siegeQueue[0];
-                siegeQueue.RemoveAt(0);
-                return k;
-            }
-            // The bomber: rare, from wave 10, never two at once.
-            if (wave >= 10 && Random.value < 0.05f && !BomberAlive()) return Kind.Bomber;
-            // The base-breakers arrive one by one as the waves go on.
-            if (wave >= 8 && Random.value < 0.06f) return Kind.Demolisher;
-            if (wave >= 5 && Random.value < 0.12f) return Kind.Saboteur;
-            if (wave >= 6 && Random.value < 0.12f) return Kind.Specter;
-            if (wave >= 12 && Random.value < 0.14f) return Kind.Armored;
             float r = Random.value;
-            if (wave >= 4 && r < 0.08f + wave * 0.012f) return Kind.Brute;
-            if (wave >= 3 && r < 0.26f) return Kind.Spitter;
-            if (wave >= 2 && r < 0.52f) return Kind.Runner;
-            return Kind.Walker;
+            if (wave >= 6 && r < 0.06f + wave * 0.006f) return Foe.Colosse;
+            if (wave >= 4 && r < 0.3f) return Foe.Follet;
+            if (wave >= 2 && r < 0.55f) return Foe.Furtif;
+            return Foe.Rodeur;
         }
 
-        bool BomberAlive()
+        void SpawnEnemy(int lane, Foe kind, bool boss)
         {
-            foreach (var e in enemies) if (e.kind == Kind.Bomber) return true;
-            return false;
-        }
-
-        void SpawnEnemy(int lane, Kind kind)
-        {
-            var e = new Enemy { kind = kind, lane = lane, y = spawnY + Random.Range(0f, 0.8f) };
-            var go = new GameObject($"Z_{kind}");
-            go.transform.SetParent(root, false);
-            e.sr = go.AddComponent<SpriteRenderer>();
-            e.sr.sprite = PlaceholderVisuals.Zombie();
-            e.sr.sortingOrder = 3;
+            var e = new Enemy { kind = kind, lane = lane, boss = boss, y = spawnY + Random.Range(0f, 0.4f), x = Random.Range(-0.18f, 0.18f) * spacing };
             switch (kind)
             {
-                case Kind.Runner:
-                    go.transform.localScale = new Vector3(0.7f, 1.1f, 1f) * modelScale;
-                    e.sr.color = new Color(1.3f, 1.15f, 0.6f);
-                    e.hp = 1f + wave * 0.35f; e.speed = 2.6f; e.attackDamage = 4f; e.attackInterval = 0.8f; e.debris = 2;
+                case Foe.Furtif:
+                    e.hp = 1f + wave * 0.32f; e.speed = 2.4f; e.dmg = 4f; e.interval = 0.8f; e.debris = 2; e.size = 0.8f;
                     break;
-                case Kind.Spitter:
-                    go.transform.localScale = new Vector3(0.85f, 1.25f, 1f) * modelScale;
-                    e.sr.color = new Color(0.7f, 1.25f, 0.65f);
-                    e.hp = 3f + wave * 0.5f; e.speed = 1.1f; e.attackDamage = 5f; e.attackInterval = 3f; e.debris = 3;
+                case Foe.Follet:
+                    e.hp = 2.5f + wave * 0.45f; e.speed = 1.0f; e.dmg = 5f; e.interval = 3f; e.debris = 3; e.size = 0.95f;
                     break;
-                case Kind.Brute:
-                    go.transform.localScale = new Vector3(1.25f, 1.75f, 1f) * modelScale;
-                    e.sr.color = new Color(1.5f, 0.95f, 1.1f);
-                    e.hp = 9f + wave * 1.2f; e.speed = 0.8f; e.attackDamage = 15f; e.attackInterval = 1.5f; e.debris = 6;
-                    break;
-                case Kind.Bomber:
-                    go.transform.localScale = new Vector3(0.85f, 1.2f, 1f) * modelScale;
-                    e.sr.color = new Color(1.4f, 0.8f, 0.55f);
-                    // Killable before it throws: it stops far up the lane and winds up first.
-                    e.hp = 5f + wave * 0.6f; e.speed = 1.0f; e.attackDamage = BombDamage; e.attackInterval = 4.5f; e.debris = 5;
-                    break;
-                case Kind.Saboteur:
-                    // Small, quick, and after your traps, not your barricade.
-                    go.transform.localScale = new Vector3(0.62f, 0.95f, 1f) * modelScale;
-                    e.sr.color = new Color(1.4f, 1.1f, 0.6f);
-                    e.hp = 1.5f + wave * 0.4f; e.speed = 2.2f; e.attackDamage = 3f; e.attackInterval = 1f; e.debris = 4;
-                    break;
-                case Kind.Demolisher:
-                    go.transform.localScale = new Vector3(1.35f, 1.9f, 1f) * modelScale;
-                    e.sr.color = new Color(1.5f, 0.7f, 0.6f);
-                    e.hp = 14f + wave * 1.6f; e.speed = 0.7f; e.attackDamage = 20f; e.attackInterval = 1.8f; e.debris = 10;
-                    break;
-                case Kind.Specter:
-                    go.transform.localScale = new Vector3(0.8f, 1.2f, 1f) * modelScale;
-                    e.sr.color = new Color(0.7f, 1.1f, 1.5f, 0.85f);
-                    e.hp = 2f + wave * 0.45f; e.speed = 1.5f; e.attackDamage = 6f; e.attackInterval = 1.2f; e.debris = 4;
-                    break;
-                case Kind.Armored:
-                    go.transform.localScale = new Vector3(1.0f, 1.35f, 1f) * modelScale;
-                    e.sr.color = new Color(0.8f, 0.85f, 1.0f);
-                    e.hp = 6f + wave * 0.9f; e.speed = 0.9f; e.attackDamage = 8f; e.attackInterval = 1.3f; e.debris = 6;
+                case Foe.Colosse:
+                    e.hp = 10f + wave * 1.4f; e.speed = 0.7f; e.dmg = 16f; e.interval = 1.6f; e.debris = 8; e.size = 1.0f;
+                    if (boss) { e.hp *= 2.2f; e.size = 1.25f; e.debris = 20; }
                     break;
                 default:
-                    go.transform.localScale = new Vector3(0.8f, 1.2f, 1f) * modelScale;
-                    e.sr.color = Color.white;
-                    e.hp = 2f + wave * 0.5f; e.speed = 1.3f; e.attackDamage = 6f; e.attackInterval = 1.2f; e.debris = 2;
+                    e.hp = 2f + wave * 0.5f; e.speed = 1.2f; e.dmg = 6f; e.interval = 1.2f; e.debris = 2; e.size = 1f;
                     break;
             }
             e.hp *= HealthScale;
-            e.speed *= walkScale;
             e.maxHp = e.hp;
-            e.baseColor = e.sr.color;
-            e.blood = e.sr.color * PlaceholderVisuals.ZombieColor;
+            e.attackTimer = e.interval * 0.5f;
+            e.frames = Frames(kind);
+
+            var go = new GameObject($"Foe_{kind}");
+            go.transform.SetParent(root, false);
             e.go = go;
-            // The bomber takes its time before the first throw, the others hit on arrival.
-            e.attackTimer = kind == Kind.Bomber ? 1.4f : e.attackInterval * 0.5f;
-            if (KenneyProps.Available) GiveBody(e, go, kind);
-            if (kind == Kind.Bomber) GiveHeldBomb(e);
-            GiveBadge(e);
-            // z = -1: in front of the street sprite, so no part of a 3D body is hidden behind it.
-            go.transform.position = new Vector3(LaneX(lane) + Random.Range(-0.4f, 0.4f) * LaneK, Origin.y + e.y, -1f);
+            e.sr = go.AddComponent<SpriteRenderer>();
+            e.sr.sprite = e.frames != null ? e.frames[0] : PlaceholderVisuals.Zombie();
+            e.anim = Random.Range(0f, 8f);
+
+            e.hpBar = new GameObject("HpBar");
+            e.hpBar.transform.SetParent(go.transform, false);
+            var bg = e.hpBar.AddComponent<SpriteRenderer>();
+            bg.sprite = PlaceholderVisuals.Square(Color.white);
+            bg.color = new Color(0.12f, 0.04f, 0.03f, 0.9f);
+            e.hpBar.transform.localScale = new Vector3(0.62f, 0.08f, 1f);
+            var fill = new GameObject("Fill");
+            fill.transform.SetParent(e.hpBar.transform, false);
+            var fsr = fill.AddComponent<SpriteRenderer>();
+            fsr.sprite = PlaceholderVisuals.Square(Color.white);
+            fsr.color = kind == Foe.Colosse ? new Color(1f, 0.5f, 0.15f) : new Color(0.95f, 0.3f, 0.2f);
+            fill.transform.localScale = new Vector3(0.94f, 0.6f, 1f);
+            e.hpFill = fill.transform;
+            e.hpBar.SetActive(false);
+
+            PlaceEnemy(e);
             enemies.Add(e);
 
-            if (kind == Kind.Bomber)
-            {
-                ui.ShowBanner("BOMBARDIER !", "Abats-le avant qu'il lance sa bombe", 1.8f);
-                messageText.text = "Un bombardier approche";
-            }
-            // The first of each base-breaker is introduced, so the player learns what to do.
-            if (kind >= Kind.Saboteur && !introduced.Contains(kind))
+            if (!introduced.Contains(kind) && kind != Foe.Rodeur && !boss)
             {
                 introduced.Add(kind);
                 var (title, line) = kind switch
                 {
-                    Kind.Saboteur => ("SABOTEUR !", "Il démonte tes pièges : abats-le vite"),
-                    Kind.Demolisher => ("DÉMOLISSEUR !", "Il détruit la tourelle de son couloir"),
-                    Kind.Specter => ("SPECTRE !", "Il vole au-dessus des pièges au sol"),
-                    _ => ("CUIRASSÉ !", "Les pics et les barbelés ne lui font rien"),
+                    Foe.Furtif => ("FURTIF !", "Rapide et fragile : tire vite"),
+                    Foe.Follet => ("FEU-FOLLET !", "Il flotte au-dessus des Pieux et du Brasier, et crache de loin"),
+                    _ => ("COLOSSE !", "Il met hors service la défense de son couloir"),
                 };
-                ui.ShowBanner(title, line, 2f);
+                ui.ShowBanner(title, line, 2.2f);
             }
         }
 
-        /// <summary>Kenney 3D body (same cast as the runner), walking straight at the camera.</summary>
-        void GiveBody(Enemy e, GameObject go, Kind kind)
+        /// <summary>Puts a body where its numbers say: nearer is bigger and drawn in front.</summary>
+        void PlaceEnemy(Enemy e)
         {
-            string model; float height;
-            switch (kind)
+            float near = Mathf.InverseLerp(spawnY, BarricadeY, e.y);
+            float scale = Mathf.Lerp(0.72f, 1f, near) * e.size * LaneScale;
+            float hover = e.Flies ? 0.45f + Mathf.Sin(Time.time * 2.3f + e.lane) * 0.08f : 0f;
+            e.go.transform.position = new Vector3(LaneX(e.lane) + e.x * near, Origin.y + e.y + hover, 0f);
+            e.go.transform.localScale = Vector3.one * scale;
+            e.sr.sortingOrder = DepthOrder(e.y);
+            if (e.hpBar != null)
             {
-                case Kind.Runner: model = "character-skeleton"; height = 1.1f; e.blood = new Color(0.85f, 0.78f, 0.6f); break;
-                case Kind.Spitter: model = "character-ghost"; height = 1.15f; e.blood = new Color(0.55f, 0.9f, 0.35f); break;
-                case Kind.Brute: model = "character-keeper"; height = 1.8f; e.blood = new Color(0.55f, 0.18f, 0.12f); break;
-                case Kind.Bomber: model = "character-zombie"; height = 1.2f; e.blood = new Color(0.7f, 0.35f, 0.15f); break;
-                case Kind.Saboteur: model = "character-skeleton"; height = 0.85f; e.blood = new Color(0.9f, 0.8f, 0.55f); break;
-                case Kind.Demolisher: model = "character-keeper"; height = 2.1f; e.blood = new Color(0.6f, 0.12f, 0.1f); break;
-                case Kind.Specter: model = "character-vampire"; height = 1.15f; e.blood = new Color(0.6f, 0.85f, 1f); break;
-                case Kind.Armored: model = "character-zombie"; height = 1.35f; e.blood = new Color(0.55f, 0.6f, 0.7f); break;
-                default:
-                    bool vampire = Random.value < 0.3f;
-                    model = vampire ? "character-vampire" : "character-zombie"; height = 1.2f;
-                    e.blood = vampire ? new Color(0.55f, 0.1f, 0.12f) : new Color(0.35f, 0.55f, 0.22f);
-                    break;
+                e.hpBar.transform.localPosition = new Vector3(0f, (e.kind == Foe.Colosse ? 2.1f : 1.55f), 0f);
+                foreach (var r in e.hpBar.GetComponentsInChildren<SpriteRenderer>()) r.sortingOrder = DepthOrder(e.y) + 1;
             }
-            height *= modelScale;
-            var size = KenneyProps.Size(PropKit.Graveyard, model);
-            const float pitch = -16f;
-            var rig = KenneyProps.Spawn(PropKit.Graveyard, model, go.transform, new Vector3(0f, -height / 2f, 0f), height / Mathf.Max(0.01f, size.y), PropLayer.Character, 0f, pitch);
-            if (rig == null) return;
-            go.transform.localScale = Vector3.one;
-            e.sr.enabled = false;
-            e.model = rig.GetComponentsInChildren<Renderer>();
-            var motion = rig.gameObject.AddComponent<ModelMotion>();
-            motion.height = height;
-            motion.pitch = pitch;
-            motion.floating = kind == Kind.Spitter || kind == Kind.Specter;
-        }
-
-        /// <summary>
-        /// A small sign over each base-breaker's head, so it reads at a glance in a crowd:
-        /// a gear for the saboteur, a red ring for the demolisher, a pale halo for the
-        /// spectre, a steel shield for the armoured one.
-        /// </summary>
-        void GiveBadge(Enemy e)
-        {
-            Sprite sprite;
-            Color color = Color.white;
-            float size = 0.42f;
-            switch (e.kind)
-            {
-                case Kind.Saboteur: sprite = GameIcons.Gear; color = new Color(1f, 0.7f, 0.3f); break;
-                case Kind.Demolisher: sprite = PlaceholderVisuals.RimCircle(new Color(0.9f, 0.15f, 0.12f)); size = 0.5f; break;
-                case Kind.Specter: sprite = PlaceholderVisuals.Circle(Color.white); color = new Color(0.6f, 0.9f, 1f, 0.45f); size = 0.95f; break;
-                case Kind.Armored: sprite = GameIcons.PowerUp(PowerUpKind.Shield); break;
-                default: return;
-            }
-            var badge = new GameObject("Badge");
-            badge.transform.SetParent(e.go.transform, false);
-            float top = e.kind == Kind.Demolisher ? 1.25f : e.kind == Kind.Saboteur ? 0.7f : 0.95f;
-            if (e.kind == Kind.Specter) top = 0.2f;   // a halo around it rather than a sign above
-            badge.transform.localPosition = new Vector3(0f, top * modelScale, -0.2f);
-            float parentScale = Mathf.Max(0.01f, e.go.transform.localScale.x);
-            badge.transform.localScale = Vector3.one * size * modelScale / parentScale;
-            var sr = badge.AddComponent<SpriteRenderer>();
-            sr.sprite = sprite;
-            sr.color = color;
-            sr.sortingOrder = e.kind == Kind.Specter ? 2 : 7;
-        }
-
-        /// <summary>
-        /// The bomber carries its bomb over its head with a lit fuse, so it reads as
-        /// different from a walker at a glance - the whole point of a rare threat is that
-        /// the player spots it and changes target.
-        /// </summary>
-        void GiveHeldBomb(Enemy e)
-        {
-            var bomb = new GameObject("HeldBomb");
-            bomb.transform.SetParent(e.go.transform, false);
-            bomb.transform.localPosition = new Vector3(0f, 0.95f * modelScale, -0.1f);
-            bomb.transform.localScale = Vector3.one * 0.42f * modelScale / Mathf.Max(0.01f, e.go.transform.localScale.x);
-            var sr = bomb.AddComponent<SpriteRenderer>();
-            sr.sprite = PlaceholderVisuals.RimCircle(new Color(0.12f, 0.1f, 0.1f));
-            sr.sortingOrder = 6;
-
-            var fuse = new GameObject("Fuse");
-            fuse.transform.SetParent(bomb.transform, false);
-            fuse.transform.localPosition = new Vector3(0.3f, 0.45f, -0.05f);
-            fuse.transform.localScale = Vector3.one * 0.38f;
-            e.fuse = fuse.AddComponent<SpriteRenderer>();
-            e.fuse.sprite = PlaceholderVisuals.Circle(new Color(1f, 0.62f, 0.18f));
-            e.fuse.sortingOrder = 7;
-            e.heldBomb = bomb;
-        }
-
-        System.Collections.IEnumerator FlashModel(Renderer[] renderers)
-        {
-            const float duration = 0.12f;
-            float t = 0f;
-            while (t < duration && renderers != null && renderers.Length > 0 && renderers[0] != null)
-            {
-                t += Time.deltaTime;
-                KenneyProps.SetFlash(renderers, 0.85f * (1f - t / duration));
-                yield return null;
-            }
-            if (renderers != null && renderers.Length > 0 && renderers[0] != null) KenneyProps.SetFlash(renderers, 0f);
         }
 
         void UpdateEnemies(float dt)
@@ -1118,113 +952,79 @@ namespace Platformer.Survival
                 var e = enemies[i];
                 var lane = lanes[e.lane];
 
-                // Burn from a Molotov.
-                if (e.burnTimer > 0f)
+                if (e.burn > 0f)
                 {
-                    e.burnTimer -= dt;
+                    e.burn -= dt;
                     e.burnTick -= dt;
-                    if (e.burnTick <= 0f) { e.burnTick = 0.6f; Damage(e, 1f, silent: true); if (e.hp <= 0f) continue; }
+                    if (e.burnTick <= 0f)
+                    {
+                        e.burnTick = 0.5f;
+                        Fx.Burst(e.go.transform.position + Vector3.up * 0.5f, new Color(1f, 0.55f, 0.15f), 3, 1.5f, 0.07f, -0.5f);
+                        Damage(e, e.burnDps * 0.5f, true);
+                        if (e.hp <= 0f) continue;
+                    }
                 }
 
-                if (e.kind == Kind.Bomber) AnimateHeldBomb(e, dt);
-
-                bool inTrapStrip = Mathf.Abs(e.y - TrapY) < TrapHalfHeight;
+                // The defence of the lane.
+                bool inZone = e.y < DefY + ZoneUp && e.y > DefY - ZoneDown;
                 float slow = 0f;
-                // A spectre flies over the ground traps; armour shrugs off spikes and wire.
-                if (inTrapStrip && !e.Flies)
+                if (inZone && lane.def != Def.None)
                 {
-                    float wire = e.Armored ? 0f : lane.Power(TrapType.Wire);
-                    float toxic = lane.Power(TrapType.Toxic);
-                    float spikes = e.Armored ? 0f : lane.Power(TrapType.Spikes);
-                    slow += wire * 0.12f;
-                    slow += toxic > 0f ? 0.3f : 0f;
-                    e.tickTimer -= dt;
-                    if (e.tickTimer <= 0f)
+                    if (e.kind == Foe.Colosse && !e.smashed && !lane.disabled)
                     {
-                        e.tickTimer = 0.8f;
-                        // Every bite wears the trap that gave it a little.
-                        if (spikes > 0f) WearTrap(e.lane, TrapType.Spikes, 0.006f);
-                        if (toxic > 0f) WearTrap(e.lane, TrapType.Toxic, 0.004f);
-                        if (wire > 0f) WearTrap(e.lane, TrapType.Wire, 0.003f);
-                        float trapDamage = spikes * 1f + toxic * 0.8f;
-                        if (e.kind == Kind.Demolisher) trapDamage *= 0.5f;   // too big to care much
-                        if (trapDamage > 0f) { Damage(e, trapDamage, silent: true); if (e.hp <= 0f) continue; }
+                        e.smashed = true;
+                        lane.disabled = true;
+                        RefreshLaneVisual(e.lane);
+                        var at = new Vector3(LaneX(e.lane), Origin.y + DefY, 0f);
+                        Fx.Burst(at, new Color(0.5f, 0.45f, 0.45f), 26, 4.5f, 0.12f, 0.4f);
+                        Fx.Shake(0.35f, 0.3f);
+                        Fx.Text(at + Vector3.up * 1f, $"{DefNames[(int)lane.def]} hors service !", new Color(1f, 0.45f, 0.3f), 1.2f);
+                        Sfx.Kill();
                     }
-
-                    // The saboteur stops on the traps and takes them apart, the best first.
-                    if (e.kind == Kind.Saboteur && SabotageTarget(lane) >= 0)
+                    if (!lane.disabled && !e.Flies)
                     {
-                        e.trapHitTimer -= dt;
-                        if (e.trapHitTimer <= 0f)
+                        if (lane.def == Def.Pieux)
                         {
-                            e.trapHitTimer = 1.0f;
-                            int target = SabotageTarget(lane);
-                            WearTrap(e.lane, (TrapType)target, 0.2f);
-                            Fx.Burst(e.go.transform.position + Vector3.down * 0.3f, new Color(1f, 0.7f, 0.3f), 8, 2.5f, 0.06f, 0.3f);
-                            Sfx.Attack();
+                            slow = 0.2f;
+                            e.trapTick -= dt;
+                            if (e.trapTick <= 0f)
+                            {
+                                e.trapTick = 0.7f;
+                                Damage(e, 0.9f * lane.level * (e.kind == Foe.Colosse ? 0.5f : 1f), true);
+                                if (e.hp <= 0f) continue;
+                            }
                         }
-                        continue;
+                        else if (lane.def == Def.Brasier && e.burn <= 0.5f)
+                        {
+                            e.burn = 3f;
+                            e.burnDps = 0.55f * lane.level * (e.kind == Foe.Colosse ? 0.5f : 1f);
+                            e.burnTick = 0f;
+                        }
                     }
                 }
 
-                // An ally standing in the way stops the zombie, which turns on it instead.
-                var blocker = AllyBlocking(e);
-                if (blocker != null)
-                {
-                    e.attackTimer -= dt;
-                    if (e.attackTimer <= 0f)
-                    {
-                        e.attackTimer = e.attackInterval;
-                        // A bomber does not waste its bomb on a soldier: it shoves them.
-                        blocker.hp -= e.kind == Kind.Bomber ? 6f : e.attackDamage;
-                        Fx.Burst(blocker.go.transform.position, new Color(0.6f, 0.75f, 1f), 5, 2f, 0.07f);
-                    }
-                    continue;
-                }
-
-                float stopY = e.kind == Kind.Spitter ? SpitterStopY
-                    : e.kind == Kind.Bomber ? BomberStopY
-                    : BarricadeY + 0.75f;
+                float stopY = e.kind == Foe.Follet ? FolletStopY : BarricadeY + 0.55f;
                 if (e.y > stopY)
                 {
-                    e.y = Mathf.Max(stopY, e.y - e.speed * (1f - Mathf.Clamp(slow, 0f, 0.7f)) * dt);
-                    var p = e.go.transform.position;
-                    p.y = Origin.y + e.y;
-                    p.y += Mathf.Sin(Time.time * 9f + e.lane) * 0.02f; // shamble
-                    e.go.transform.position = p;
+                    e.y = Mathf.Max(stopY, e.y - e.speed * (1f - slow) * dt);
+                    e.anim += dt * (e.kind == Foe.Furtif ? 13f : 8f);
                 }
                 else
                 {
-                    // The demolisher's first act at the barricade: wreck the lane's turret.
-                    if (e.kind == Kind.Demolisher && !e.smashedTurret && lane.level[(int)TrapType.Turret] > 0)
-                    {
-                        e.smashedTurret = true;
-                        SmashTurret(e.lane);
-                    }
+                    e.anim += dt * 4f;
                     e.attackTimer -= dt;
                     if (e.attackTimer <= 0f)
                     {
-                        e.attackTimer = e.attackInterval;
-                        if (e.kind == Kind.Spitter) Spit(e);
-                        else if (e.kind == Kind.Bomber) ThrowBomb(e);
-                        else HitBarricade(e.attackDamage, e.go.transform.position);
+                        e.attackTimer = e.interval;
+                        if (e.kind == Foe.Follet) Spit(e);
+                        else HitPalisade(e.dmg, e.go.transform.position + Vector3.up * 0.4f);
                     }
                 }
-            }
-        }
-
-        void AnimateHeldBomb(Enemy e, float dt)
-        {
-            if (e.heldBomb == null) return;
-            if (e.bombHidden > 0f)
-            {
-                e.bombHidden -= dt;
-                e.heldBomb.SetActive(e.bombHidden <= 0f);
-            }
-            if (e.fuse != null)
-            {
-                float flicker = 0.6f + Mathf.Abs(Mathf.Sin(Time.time * 22f + e.lane)) * 0.4f;
-                e.fuse.color = new Color(1f, 0.45f + flicker * 0.4f, 0.12f, flicker);
+                if (e.frames != null) e.sr.sprite = e.frames[(int)e.anim % e.frames.Length];
+                e.flash = Mathf.Max(0f, e.flash - dt);
+                var tint = e.burn > 0f ? new Color(1f, 0.72f, 0.55f) : Color.white;
+                e.sr.color = e.flash > 0f ? new Color(1f, 0.45f, 0.35f) : tint;
+                PlaceEnemy(e);
             }
         }
 
@@ -1232,173 +1032,58 @@ namespace Platformer.Survival
         {
             var go = new GameObject("Spit");
             go.transform.SetParent(root, false);
-            go.transform.position = e.go.transform.position + Vector3.down * 0.4f;
-            go.transform.localScale = Vector3.one * 0.35f;
+            go.transform.position = e.go.transform.position + Vector3.up * 0.6f;
+            go.transform.localScale = Vector3.one * 0.32f;
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = PlaceholderVisuals.Circle(PlaceholderVisuals.SpitColor);
-            sr.sortingOrder = 4;
+            sr.sprite = PlaceholderVisuals.Circle(new Color(0.7f, 1f, 0.4f));
+            sr.sortingOrder = 70;
             spits.Add(go);
-            StartCoroutine(SpitFlight(go, e.attackDamage));
+            StartCoroutine(SpitFlight(go, e.dmg));
         }
 
         System.Collections.IEnumerator SpitFlight(GameObject spit, float damage)
         {
-            float targetY = Origin.y + BarricadeY + 0.4f;
+            float targetY = Origin.y + BarricadeY + 0.5f;
             while (spit != null && spit.transform.position.y > targetY && phase == Phase.Wave)
             {
                 spit.transform.position += Vector3.down * (7f * Time.deltaTime);
                 yield return null;
             }
             if (spit == null) yield break;
-            if (phase == Phase.Wave) HitBarricade(damage, spit.transform.position);
+            if (phase == Phase.Wave) HitPalisade(damage, spit.transform.position);
             spits.Remove(spit);
             Destroy(spit);
         }
 
-        /// <summary>
-        /// A lobbed bomb: a visible arc down to the barricade, heavy damage on landing, and
-        /// the first bomb from a given bomber also knocks one trap in its lane down a level.
-        /// Only the first - so the harm a bomber can do to the base is bounded, and killing
-        /// it fast is always worth it but never an emergency every wave.
-        /// </summary>
-        void ThrowBomb(Enemy e)
-        {
-            bool breaksTrap = !e.brokeTrap;
-            e.brokeTrap = true;
-            e.bombHidden = 1.6f;
-            if (e.heldBomb != null) e.heldBomb.SetActive(false);
-
-            var go = new GameObject("Bomb");
-            go.transform.SetParent(root, false);
-            go.transform.position = e.go.transform.position + Vector3.up * 0.8f;
-            go.transform.localScale = Vector3.one * 0.42f * modelScale;
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = PlaceholderVisuals.RimCircle(new Color(0.12f, 0.1f, 0.1f));
-            sr.sortingOrder = 6;
-            spits.Add(go);
-            Sfx.Drop();
-            StartCoroutine(BombFlight(go, e.lane, breaksTrap));
-        }
-
-        System.Collections.IEnumerator BombFlight(GameObject bomb, int lane, bool breaksTrap)
-        {
-            Vector3 from = bomb.transform.position;
-            Vector3 to = new Vector3(LaneX(lane), Origin.y + BarricadeY + 0.3f, from.z);
-            const float duration = 1.05f;
-            float t = 0f;
-            while (bomb != null && t < duration && phase == Phase.Wave)
-            {
-                t += Time.deltaTime;
-                float p = Mathf.Clamp01(t / duration);
-                var pos = Vector3.Lerp(from, to, p);
-                pos.y += Mathf.Sin(p * Mathf.PI) * 1.6f;
-                bomb.transform.position = pos;
-                bomb.transform.Rotate(0f, 0f, 540f * Time.deltaTime);
-                yield return null;
-            }
-            if (bomb == null) yield break;
-            spits.Remove(bomb);
-            Destroy(bomb);
-            if (phase != Phase.Wave) yield break;
-
-            Fx.Burst(to, new Color(1f, 0.55f, 0.15f), 34, 5.5f, 0.15f, 0.4f);
-            Fx.Burst(to, new Color(0.2f, 0.18f, 0.16f), 18, 3f, 0.18f, 0.2f);
-            Fx.Shake(0.45f, 0.35f);
-            HitBarricade(BombDamage, to);
-            if (breaksTrap) BreakTrap(lane);
-        }
-
-        /// <summary>The trap a saboteur goes for: the strongest one still standing, or -1.</summary>
-        static int SabotageTarget(Lane lane)
-        {
-            int best = -1;
-            float bestPower = 0f;
-            for (int t = 0; t < 3; t++)   // the turret stands behind, out of its reach
-            {
-                float p = lane.Power((TrapType)t);
-                if (p > bestPower) { bestPower = p; best = t; }
-            }
-            return best;
-        }
-
-        /// <summary>A demolisher reaches the barricade: the lane's turret loses a level and is broken.</summary>
-        void SmashTurret(int laneIndex)
-        {
-            var lane = lanes[laneIndex];
-            int i = (int)TrapType.Turret;
-            lane.level[i] = Mathf.Max(0, lane.level[i] - 1);
-            lane.solidity[i] = 0f;
-            SaveSystem.SetBarricadeTrap(laneIndex, i, lane.level[i]);
-            SaveSystem.SetBarricadeWear(laneIndex, i, 0f);
-            SaveSystem.Flush();
-            RefreshTrapVisual(laneIndex, TrapType.Turret);
-            completedLanes = CountCompletedLanes();
-            farmingLanes = CountFarmingLanes();
-            Vector3 at = Origin + new Vector2(LaneX(laneIndex) - Origin.x, BarricadeY + 0.7f);
-            Fx.Burst(at, new Color(0.45f, 0.45f, 0.5f), 30, 5f, 0.13f, 0.5f);
-            Fx.Shake(0.4f, 0.3f);
-            Fx.Text(at + Vector3.up * 0.6f, "TOURELLE DÉTRUITE !", new Color(1f, 0.4f, 0.3f), 1.2f);
-            Sfx.Kill();
-        }
-
-        /// <summary>The bomb's toll on the base: the strongest trap in the lane loses a level.</summary>
-        void BreakTrap(int laneIndex)
-        {
-            var lane = lanes[laneIndex];
-            int best = -1;
-            for (int t = 0; t < 4; t++)
-                if (lane.level[t] > 0 && (best < 0 || lane.level[t] > lane.level[best])) best = t;
-            if (best < 0) return;
-
-            lane.level[best]--;
-            SaveSystem.SetBarricadeTrap(laneIndex, best, lane.level[best]);
-            SaveSystem.Flush();
-            RefreshTrapVisual(laneIndex, (TrapType)best);
-            completedLanes = CountCompletedLanes();
-            farmingLanes = CountFarmingLanes();
-            Fx.Text(Origin + new Vector2(LaneX(laneIndex) - Origin.x, TrapY + 0.8f), $"{TrapNames[best]} endommagé !", new Color(1f, 0.4f, 0.3f), 1.1f);
-        }
-
-        void HitBarricade(float damage, Vector3 at)
+        void HitPalisade(float damage, Vector3 at)
         {
             barricadeHp = Mathf.Max(0f, barricadeHp - damage);
             Fx.Burst(at, new Color(0.6f, 0.4f, 0.2f), 6, 2f, 0.07f);
             Sfx.Hit();
             Fx.Shake(0.12f, 0.15f);
-            StartCoroutine(BarricadeFlash());
+            RefreshPalisade();
             RefreshHud();
         }
 
-        System.Collections.IEnumerator BarricadeFlash()
-        {
-            if (barricadeSr == null) yield break;
-            barricadeSr.color = new Color(1f, 0.5f, 0.4f);
-            yield return new WaitForSeconds(0.08f);
-            if (barricadeSr != null) barricadeSr.color = barricadeBaseColor;
-        }
-
-        void UpdateTraps(float dt)
+        void UpdateDefences(float dt)
         {
             for (int l = 0; l < laneCount; l++)
             {
                 var lane = lanes[l];
-                float power = lane.Power(TrapType.Turret);
-                if (power <= 0f) continue;
+                if (lane.def != Def.Arbalete || lane.disabled) continue;
                 lane.turretTimer -= dt;
                 if (lane.turretTimer > 0f) continue;
-                if (Nearest(l) == null) continue;
-                // Level 1 fires every 1.3 s, level 5 about every 0.45 s; wear slows it down.
-                lane.turretTimer = 1.3f / (1f + 0.45f * (power - 1f));
-                FireShot(l, BarricadeY + 0.6f, 1f, false);
-                WearTrap(l, TrapType.Turret, 0.004f);
+                if (FirstInLane(l, DefY) == null) continue;
+                lane.turretTimer = 1.25f / (1f + 0.4f * (lane.level - 1));
+                FireShot(l, DefY + 0.9f, 1f + 0.6f * (lane.level - 1), false, true);
             }
         }
 
-        Enemy Nearest(int lane)
+        Enemy FirstInLane(int lane, float above)
         {
             Enemy best = null;
             foreach (var e in enemies)
-                if (e.lane == lane && (best == null || e.y < best.y)) best = e;
+                if (e.lane == lane && e.y > above - 0.2f && (best == null || e.y < best.y)) best = e;
             return best;
         }
 
@@ -1413,30 +1098,30 @@ namespace Platformer.Survival
                 bool held = touchZone != null && touchZone.IsHeld(l);
                 if (kb != null)
                 {
-                    // 1..9 pick a lane directly; the arrows cover the edges and the middle.
-                    if (l < 9 && kb[(Key)((int)Key.Digit1 + l)].isPressed) held = true;
+                    if (kb[(Key)((int)Key.Digit1 + l)].isPressed) held = true;
                     if (l == 0 && (kb.leftArrowKey.isPressed || kb.aKey.isPressed)) held = true;
                     if (l == laneCount - 1 && (kb.rightArrowKey.isPressed || kb.dKey.isPressed)) held = true;
-                    if (l == laneCount / 2 && (kb.downArrowKey.isPressed || kb.upArrowKey.isPressed || kb.sKey.isPressed)) held = true;
+                    if (l == laneCount / 2 && (kb.upArrowKey.isPressed || kb.wKey.isPressed || kb.sKey.isPressed)) held = true;
                 }
                 if (!held || laneFireCooldown[l] > 0f) continue;
                 laneFireCooldown[l] = 1f / rate;
-                FireShot(l, PlayerY + 0.5f, ShotDamage, burst);
+                FireShot(l, PlayerY + 1.2f, ShotDamage, burst);
                 Sfx.Shoot();
-                if (playerSr != null) playerSr.flipX = LaneX(l) < Origin.x;
+                if (heroSr != null) heroSr.flipX = LaneX(l) < heroSr.transform.position.x - 0.1f;
+                if (hintRoot.activeSelf && wave > 1) hintRoot.SetActive(false);
             }
         }
 
-        void FireShot(int lane, float fromY, float damage, bool burst)
+        void FireShot(int lane, float fromY, float damage, bool burst, bool bolt = false)
         {
-            var go = new GameObject("Shot");
+            var go = new GameObject(bolt ? "Bolt" : "Shot");
             go.transform.SetParent(root, false);
-            go.transform.position = Origin + new Vector2(LaneX(lane) - Origin.x, fromY);
-            go.transform.localScale = burst ? new Vector3(0.16f, 0.5f, 1f) : new Vector3(0.12f, 0.4f, 1f);
+            go.transform.position = new Vector3(LaneX(lane), Origin.y + fromY, 0f);
+            go.transform.localScale = bolt ? new Vector3(0.09f, 0.5f, 1f) : burst ? new Vector3(0.15f, 0.5f, 1f) : new Vector3(0.11f, 0.42f, 1f);
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = PlaceholderVisuals.Square(Color.white);
-            sr.color = burst ? new Color(1f, 0.78f, 0.25f) : PlaceholderVisuals.ProjectileColor;
-            sr.sortingOrder = 5;
+            sr.color = bolt ? new Color(0.92f, 0.86f, 0.72f) : burst ? new Color(1f, 0.78f, 0.25f) : new Color(1f, 0.9f, 0.55f);
+            sr.sortingOrder = 72;
             shots.Add(new Shot { lane = lane, y = fromY, speed = ShotSpeed, damage = damage, go = go });
         }
 
@@ -1449,18 +1134,19 @@ namespace Platformer.Survival
                 var p = s.go.transform.position;
                 p.y = Origin.y + s.y;
                 s.go.transform.position = p;
-
                 Enemy hit = null;
                 foreach (var e in enemies)
-                    if (e.lane == s.lane && Mathf.Abs(e.y - s.y) < 0.55f) { hit = e; break; }
-
+                {
+                    float body = e.y + (e.Flies ? 0.9f : 0.6f);
+                    if (e.lane == s.lane && Mathf.Abs(body - s.y) < 0.6f) { hit = e; break; }
+                }
                 if (hit != null)
                 {
-                    Damage(hit, s.damage, silent: false);
+                    Damage(hit, s.damage, false);
                     Destroy(s.go);
                     shots.RemoveAt(i);
                 }
-                else if (s.y > spawnY + 1f)
+                else if (s.y > spawnY + 2f)
                 {
                     Destroy(s.go);
                     shots.RemoveAt(i);
@@ -1472,21 +1158,20 @@ namespace Platformer.Survival
         {
             if (e.hp <= 0f) return;
             e.hp -= amount;
-            var pos = e.go.transform.position;
-            if (!silent) Fx.Burst(pos, e.blood, 4, 2f, 0.07f);
-            if (e.model != null) StartCoroutine(FlashModel(e.model));
+            var pos = e.go.transform.position + Vector3.up * 0.6f;
+            if (!silent) { Fx.Burst(pos, new Color(0.45f, 0.18f, 0.35f), 4, 2f, 0.07f); e.flash = 0.08f; }
             if (e.hp > 0f)
             {
-                float t = e.hp / e.maxHp;
-                e.sr.color = Color.Lerp(new Color(0.6f, 0.2f, 0.2f), e.baseColor, t);
+                e.hpBar.SetActive(true);
+                float t = Mathf.Clamp01(e.hp / e.maxHp);
+                e.hpFill.localScale = new Vector3(0.94f * t, 0.6f, 1f);
+                e.hpFill.localPosition = new Vector3(-0.47f * (1f - t), 0f, 0f);
                 return;
             }
-
             kills++;
+            if (e.kind == Foe.Colosse) colossiKilled++;
             SetDebris(debris + e.debris);
-            if (e.kind == Kind.Brute) brutesKilled++;
-            if (e.kind == Kind.Bomber) bombersKilled++;
-            Fx.Burst(pos, e.blood, e.kind == Kind.Brute ? 24 : 12, 3.5f, 0.11f);
+            Fx.Burst(pos, new Color(0.45f, 0.18f, 0.35f), e.kind == Foe.Colosse ? 26 : 12, 3.5f, 0.11f);
             RewardPopup.Show(pos, 0, 0, e.debris);
             Sfx.Kill();
             enemies.Remove(e);
@@ -1494,494 +1179,259 @@ namespace Platformer.Survival
             RefreshHud();
         }
 
-        // ---- specials ------------------------------------------------------------------
+        // ---- the Molotov ----------------------------------------------------------------
 
+        /// <summary>A bottle of fire on the busiest lane: everything in it burns.</summary>
         void OnMolotov()
         {
             if (phase != Phase.Wave || molotovCooldown > 0f) return;
-            int bestLane = BusiestLanes(1)[0];
+            int best = -1, bestCount = 0;
+            for (int l = 0; l < laneCount; l++)
+            {
+                int n = 0;
+                foreach (var e in enemies) if (e.lane == l) n++;
+                if (n > bestCount) { bestCount = n; best = l; }
+            }
+            if (best < 0) return;
             molotovCooldown = MolotovCooldown;
-            Vector3 center = Origin + new Vector2(LaneX(bestLane) - Origin.x, 2f);
-            Fx.Burst(center, new Color(1f, 0.55f, 0.15f), 40, 5f, 0.16f, 0.3f);
-            Fx.Shake(0.3f, 0.3f);
-            Sfx.Spring();
-            for (int i = enemies.Count - 1; i >= 0; i--)
+            foreach (var e in enemies)
             {
-                var e = enemies[i];
-                if (e.lane != bestLane) continue;
-                e.burnTimer = 3f;
-                e.burnTick = 0.3f;
-                Damage(e, 5f, silent: false);
+                if (e.lane != best) continue;
+                e.burn = 4f;
+                e.burnDps = 1.6f + wave * 0.15f;
+                e.burnTick = 0f;
             }
+            for (float y = BarricadeY + 1f; y < spawnY; y += 0.8f)
+                Fx.Burst(new Vector3(LaneX(best), Origin.y + y, 0f), new Color(1f, 0.55f, 0.15f), 6, 2.5f, 0.12f, -0.6f);
+            Fx.Shake(0.25f, 0.2f);
+            Sfx.Attack();
         }
 
-        /// <summary>Lane indices sorted by how many zombies are in them, busiest first.</summary>
-        List<int> BusiestLanes(int take)
+        // ---- the workshop ---------------------------------------------------------------
+
+        static int CostOf(Def def, int toLevel) => DefBaseCost[(int)def] * LevelCostMultiplier[Mathf.Clamp(toLevel - 1, 0, MaxLevel - 1)];
+
+        static int InvestedIn(Def def, int level)
         {
-            var counts = new int[laneCount];
-            foreach (var e in enemies) if (e.lane < laneCount) counts[e.lane]++;
-            var order = new List<int>();
-            for (int l = 0; l < laneCount; l++) order.Add(l);
-            order.Sort((a, b) => counts[b].CompareTo(counts[a]));
-            if (order.Count > take) order.RemoveRange(take, order.Count - take);
-            return order;
+            int sum = 0;
+            for (int l = 1; l <= level; l++) sum += CostOf(def, l);
+            return sum;
         }
 
-        /// <summary>
-        /// Reinforcements: a squad of survivors marches up the busiest lanes, one each, and
-        /// holds whatever it meets. They stop zombies dead while they last, which buys the
-        /// barricade time as much as their own blows kill anything.
-        /// </summary>
-        void OnReinforce()
+        void SelectLane(int l)
         {
-            if (phase != Phase.Wave || reinforceCooldown > 0f) return;
-            reinforceCooldown = ReinforceCooldown;
-            foreach (int lane in BusiestLanes(Mathf.Min(AllySquad, laneCount))) SpawnAlly(lane);
-            Sfx.Milestone();
-            messageText.text = "Renforts envoyés !";
+            selectedLane = Mathf.Clamp(l, 0, laneCount - 1);
+            RefreshSheet();
         }
 
-        void SpawnAlly(int lane)
+        void Build(int l, Def def)
         {
-            var go = new GameObject("Ally");
-            go.transform.SetParent(root, false);
-            go.transform.localScale = Vector3.one * 0.85f * modelScale;
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = ui.PlayerSprite;
-            sr.color = new Color(0.72f, 0.88f, 1.15f);
-            sr.sortingOrder = 3;
-            var a = new Ally { lane = lane, y = BarricadeY + 0.9f, hp = AllyBaseHp + wave, go = go };
-            go.transform.position = new Vector3(LaneX(lane), Origin.y + a.y, -0.5f);
-            Fx.Burst(go.transform.position, new Color(0.6f, 0.8f, 1f), 10, 2.5f, 0.09f);
-            allies.Add(a);
+            if (phase != Phase.Build) return;
+            var lane = lanes[l];
+            if (lane.def != Def.None) return;
+            int cost = CostOf(def, 1);
+            if (debris < cost) { Deny(); return; }
+            SetDebris(debris - cost);
+            lane.def = def;
+            lane.level = 1;
+            AfterChange(l, $"{DefNames[(int)def]} bâti !");
         }
 
-        Ally AllyBlocking(Enemy e)
+        void Upgrade(int l)
         {
-            foreach (var a in allies)
-                if (a.lane == e.lane && a.y <= e.y && e.y - a.y < 0.8f) return a;
-            return null;
+            if (phase != Phase.Build) return;
+            var lane = lanes[l];
+            if (lane.def == Def.None || lane.level >= MaxLevel) return;
+            int cost = CostOf(lane.def, lane.level + 1);
+            if (debris < cost) { Deny(); return; }
+            SetDebris(debris - cost);
+            lane.level++;
+            AfterChange(l, lane.level >= MaxLevel ? "Niveau 5 : produit des matériaux !" : $"Niveau {lane.level} !");
         }
 
-        void UpdateAllies(float dt)
+        void Sell(int l)
         {
-            for (int i = allies.Count - 1; i >= 0; i--)
-            {
-                var a = allies[i];
-                if (a.hp <= 0f || a.y > spawnY)
-                {
-                    if (a.go != null)
-                    {
-                        if (a.hp <= 0f) Fx.Burst(a.go.transform.position, new Color(0.6f, 0.75f, 1f), 12, 3f, 0.1f);
-                        Destroy(a.go);
-                    }
-                    allies.RemoveAt(i);
-                    continue;
-                }
-
-                Enemy foe = null;
-                foreach (var e in enemies)
-                    if (e.lane == a.lane && e.y >= a.y && (foe == null || e.y < foe.y)) foe = e;
-
-                if (foe != null && foe.y - a.y < 0.8f)
-                {
-                    a.hitTimer -= dt;
-                    if (a.hitTimer <= 0f)
-                    {
-                        a.hitTimer = 0.4f;
-                        Damage(foe, AllyDps * 0.4f, silent: false);
-                    }
-                }
-                else
-                {
-                    a.y += AllySpeed * walkScale * dt;
-                }
-
-                var p = a.go.transform.position;
-                p.y = Origin.y + a.y + Mathf.Abs(Mathf.Sin(Time.time * 10f + i)) * 0.05f;
-                a.go.transform.position = p;
-            }
+            if (phase != Phase.Build) return;
+            var lane = lanes[l];
+            if (lane.def == Def.None) return;
+            SetDebris(debris + InvestedIn(lane.def, lane.level) / 2);
+            lane.def = Def.None;
+            lane.level = 0;
+            AfterChange(l, "Défense vendue");
         }
 
-        /// <summary>
-        /// The ad-only burst weapon: triple fire rate for three waves. The build countdown
-        /// is frozen while the ad plays, so watching one never costs preparation time.
-        /// </summary>
+        void AfterChange(int l, string cheer)
+        {
+            SaveLane(l);
+            SaveSystem.Flush();
+            farmingLanes = CountFarming();
+            RefreshLaneVisual(l);
+            var at = new Vector3(LaneX(l), Origin.y + DefY, 0f);
+            Fx.Burst(at, ApogeeTheme.Gold, 20, 3.5f, 0.1f, 0.3f);
+            Fx.Text(at + Vector3.up * 1.2f, cheer, ApogeeTheme.Gold, 1f);
+            Sfx.Material();
+            RefreshSheet();
+            RefreshHud();
+        }
+
+        void Deny()
+        {
+            messageText.text = "Pas assez de débris : abats plus de morts !";
+            Sfx.Hit();
+        }
+
+        void Repair()
+        {
+            if (phase != Phase.Build || barricadeHp >= barricadeMax) return;
+            int cost = RepairCost;
+            if (debris < cost) { Deny(); return; }
+            SetDebris(debris - cost);
+            barricadeHp = barricadeMax;
+            RefreshPalisade();
+            Fx.Burst(new Vector3(Origin.x, Origin.y + BarricadeY + 0.5f, 0f), new Color(0.75f, 0.55f, 0.3f), 24, 3f, 0.1f, 0.4f);
+            Sfx.Material();
+            RefreshSheet();
+            RefreshHud();
+        }
+
+        int RepairCost => 8 + wave * 2;
+
+        int ExpandCost => laneCount == 3 ? Expand4Cost : Expand5Cost;
+
+        void Expand()
+        {
+            if (phase != Phase.Build || laneCount >= MaxLanes) return;
+            if (debris < ExpandCost) { Deny(); return; }
+            SetDebris(debris - ExpandCost);
+            laneCount++;
+            PlayerPrefs.SetInt("barricade_lanes_v2", laneCount);
+            lanes[laneCount - 1].def = Def.None;
+            lanes[laneCount - 1].level = 0;
+            SaveLane(laneCount - 1);
+            SaveSystem.Flush();
+            ApplyLayout();
+            for (int l = 0; l < laneCount; l++) RefreshLaneVisual(l);
+            ui.ShowBanner("NOUVEAU COULOIR !", $"{laneCount} couloirs : plus de morts, plus de débris", 2f);
+            selectedLane = laneCount - 1;
+            EnterBuildPhase(first: false);
+        }
+
         void OnBurstAd()
         {
             if (phase != Phase.Build || burstWaves > 0 || adPending) return;
             adPending = true;
             ui.ShowAdOverlay(true, "Publicité en cours...");
-            RefreshBuildPanel();
+            RefreshSheet();
             AdService.ShowRewardedAd(() =>
             {
                 adPending = false;
                 ui.ShowAdOverlay(false);
                 burstWaves = BurstWaves;
                 Sfx.Milestone();
-                ui.ShowBanner("RAFALE DÉBLOQUÉE", $"Cadence x3 pendant {BurstWaves} vagues", 2f);
-                RefreshBuildPanel();
+                ui.ShowBanner("TIR RAPIDE !", $"Cadence x3 pendant {BurstWaves} vagues", 2f);
+                RefreshSheet();
                 RefreshHud();
             }, () =>
             {
                 adPending = false;
                 ui.ShowAdOverlay(false);
                 messageText.text = "Publicité indisponible, réessaie plus tard";
-                RefreshBuildPanel();
+                RefreshSheet();
             });
         }
 
-        // ---- materials farm ------------------------------------------------------------
+        void RefreshSheet()
+        {
+            if (sheet == null) return;
+            var lane = lanes[selectedLane];
+            sheetTitle.text = $"COULOIR {selectedLane + 1}";
+            bool empty = lane.def == Def.None;
+            emptyCards.SetActive(empty);
+            builtCard.SetActive(!empty);
+            if (empty)
+            {
+                sheetInfo.text = "Choisis une défense pour ce couloir";
+                for (int i = 0; i < 3; i++)
+                {
+                    var def = (Def)(i + 1);
+                    int cost = CostOf(def, 1);
+                    choice[i].cost.text = $"{cost} [d]";
+                    choice[i].button.interactable = debris >= cost;
+                }
+            }
+            else
+            {
+                sheetInfo.text = lane.Farming ? "Au niveau 5, elle produit des matériaux" : "Améliore-la jusqu'au niveau 5 : elle produira des matériaux";
+                int tier = lane.level >= 5 ? 2 : lane.level >= 3 ? 1 : 0;
+                builtIcon.sprite = Art($"def_{DefArt[(int)lane.def]}_{tier}", new Vector2(0.5f, 0.5f));
+                builtIcon.preserveAspect = true;
+                builtLevel.text = $"{DefNames[(int)lane.def].ToUpperInvariant()}   niv. {lane.level}/{MaxLevel}";
+                builtBlurb.text = DefBlurb[(int)lane.def];
+                bool maxed = lane.level >= MaxLevel;
+                int cost = maxed ? 0 : CostOf(lane.def, lane.level + 1);
+                upgradeLabel.text = maxed ? "MAXIMUM" : $"AMÉLIORER  {cost} [d]";
+                upgradeButton.interactable = !maxed && debris >= cost;
+                sellLabel.text = $"VENDRE  +{InvestedIn(lane.def, lane.level) / 2} [d]";
+            }
+            bool hurt = barricadeHp < barricadeMax - 0.5f;
+            repairLabel.text = hurt ? $"RÉPARER  {RepairCost} [d]" : "PALISSADE OK";
+            repairButton.interactable = hurt && debris >= RepairCost;
+            expandLabel.text = laneCount < MaxLanes ? $"+ COULOIR  {ExpandCost} [d]" : "5 COULOIRS";
+            expandButton.interactable = laneCount < MaxLanes && debris >= ExpandCost;
+            burstLabel.text = adPending ? "PUB..." : burstWaves > 0 ? $"TIR RAPIDE ({burstWaves})" : "TIR RAPIDE  (pub)";
+            burstButton.interactable = !adPending && burstWaves <= 0;
+            if (launchButton != null) launchButton.interactable = !adPending;
+        }
+
+        // ---- the farm ------------------------------------------------------------------
 
         void FarmTick(float dt)
         {
-            if (dt <= 0f) return;
-            // Away from the barricade (another game, a menu), the base slowly wears down.
-            if (!IsActive)
-            {
-                WearIdle(dt / 3600f);
-                wearSaveTimer += dt;
-                if (wearSaveTimer >= 60f)
-                {
-                    wearSaveTimer = 0f;
-                    farmingLanes = CountFarmingLanes();
-                    SaveWear();
-                }
-            }
             if (farmingLanes <= 0) return;
-            float cap = farmingLanes * FarmRatePerLane * FarmCapMinutes;
-            if (farmStock >= cap) return;
-            farmStock = Mathf.Min(cap, farmStock + farmingLanes * FarmRatePerLane / 60f * dt);
-            farmSaveTimer += dt;
-            if (farmSaveTimer < 15f) return;
-            farmSaveTimer = 0f;
-            SaveSystem.BarricadeFarmStock = farmStock;
-            SaveSystem.Flush();
+            float cap = FarmRatePerLane * farmingLanes * FarmCapMinutes;
+            farmStock = Mathf.Min(cap, farmStock + FarmRatePerLane * farmingLanes * dt / 60f);
+            farmSaveTimer -= dt;
+            if (farmSaveTimer <= 0f)
+            {
+                farmSaveTimer = 10f;
+                SaveSystem.BarricadeFarmStock = farmStock;
+            }
         }
 
         void OnCollect()
         {
-            int whole = Mathf.FloorToInt(farmStock);
-            if (whole <= 0) return;
-            farmStock -= whole;
+            int n = Mathf.FloorToInt(farmStock);
+            if (n <= 0) return;
+            farmStock -= n;
+            SaveSystem.AddMaterials(n);
             SaveSystem.BarricadeFarmStock = farmStock;
-            SaveSystem.AddMaterials(whole);
+            SaveSystem.Flush();
+            RewardPopup.Show(new Vector3(Origin.x, Origin.y + 2f, 0f), 0, n, 0);
             Sfx.Material();
-            RewardPopup.Show(Origin + new Vector2(0f, BarricadeY + 1.2f), 0, whole);
-            messageText.text = "Matériaux récupérés !";
-            RefreshBuildPanel();
-        }
-
-        // ---- shop ----------------------------------------------------------------------
-
-        int CostFor(TrapType type, int level) => TrapBaseCost[(int)type] * LevelCostMultiplier[Mathf.Clamp(level, 0, MaxTrapLevel - 1)];
-
-        void SelectLane(int lane)
-        {
-            selectedLane = Mathf.Clamp(lane, 0, laneCount - 1);
-            if (laneHighlight != null)
-            {
-                var p = laneHighlight.transform.position;
-                p.x = LaneX(selectedLane);
-                laneHighlight.transform.position = p;
-            }
-            RefreshBuildPanel();
-        }
-
-        void Buy(int laneIndex, TrapType type)
-        {
-            if (phase != Phase.Build || laneIndex < 0 || laneIndex >= laneCount) return;
-            var lane = lanes[laneIndex];
-            int level = lane.level[(int)type];
-            if (level >= MaxTrapLevel) return;
-            int cost = CostFor(type, level);
-            if (debris < cost) return;
-            SetDebris(debris - cost);
-            lane.level[(int)type] = level + 1;
-            SaveSystem.SetBarricadeTrap(laneIndex, (int)type, level + 1);
-            SaveSystem.Flush();
-            RefreshTrapVisual(laneIndex, type);
-            Sfx.Material();
-
-            int before = completedLanes;
-            completedLanes = CountCompletedLanes();
-            farmingLanes = CountFarmingLanes();
-            if (completedLanes > before)
-                ui.ShowBanner("COULOIR COMPLET", "Il produit maintenant des [g]", 2f);
-
-            RefreshHud();
-            RefreshBuildPanel();
-        }
-
-        void Repair()
-        {
-            if (phase != Phase.Build || debris < RepairCost || barricadeHp >= barricadeMax) return;
-            SetDebris(debris - RepairCost);
-            barricadeHp = Mathf.Min(barricadeMax, barricadeHp + RepairAmount);
-            Sfx.Medkit();
-            RefreshHud();
-            RefreshBuildPanel();
-        }
-
-        int NextLaneCount => laneCount >= 9 ? 0 : laneCount >= 6 ? 9 : 6;
-        int ExpandCost => NextLaneCount == 9 ? Expand9Cost : Expand6Cost;
-
-        void OnExpand()
-        {
-            if (phase != Phase.Build || adPending) return;
-            int next = NextLaneCount;
-            if (next == 0) { OnPrestige(); return; }
-            if (debris < ExpandCost) return;
-            SetDebris(debris - ExpandCost);
-            SaveSystem.BarricadeLanes = next;
-
-            ApplyLayout();
-            if (laneHighlight != null) laneHighlight.SetActive(true);
-            Sfx.Milestone();
-            ui.ShowBanner("TERRAIN AGRANDI", $"{next} couloirs à défendre", 2.2f);
-            SelectLane(selectedLane);
             RefreshHud();
         }
 
-        void RefreshTrapVisual(int laneIndex, TrapType type)
-        {
-            var lane = lanes[laneIndex];
-            int slot = (int)type;
-            if (lane.visuals[slot] != null) Destroy(lane.visuals[slot]);
-            lane.visuals[slot] = null;
-            int level = lane.level[slot];
-            if (level <= 0 || root == null) return;
-            float x = LaneX(laneIndex) - Origin.x;
-            float k = LaneK;
-            GameObject go = null;
-            switch (type)
-            {
-                case TrapType.Spikes:
-                    go = CreateBox("Spikes", new Vector2(x - 0.55f * k, TrapY + 0.3f), new Vector2(0.9f * k, 0.5f + level * 0.15f), Color.white, 1);
-                    go.GetComponent<SpriteRenderer>().sprite = PlaceholderVisuals.Spikes();
-                    break;
-                case TrapType.Toxic:
-                    go = CreateBox("Toxic", new Vector2(x + 0.5f * k, TrapY - 0.2f), new Vector2(0.9f * k, 0.5f), PlaceholderVisuals.ToxicColor, 1);
-                    break;
-                case TrapType.Wire:
-                    go = CreateBox("Wire", new Vector2(x, TrapY - 0.55f), new Vector2(1.9f * k, 0.08f + level * 0.05f), new Color(0.55f, 0.5f, 0.45f), 1);
-                    break;
-                case TrapType.Turret:
-                    go = CreateBox("Turret", new Vector2(x + 0.6f * k, BarricadeY + 0.65f), new Vector2((0.35f + level * 0.08f) * k, 0.5f), new Color(0.35f, 0.38f, 0.42f), 1);
-                    break;
-            }
-            lane.visuals[slot] = go;
-            // A worn trap darkens, a broken one turns grey and sags.
-            if (go != null)
-            {
-                var sr = go.GetComponent<SpriteRenderer>();
-                float sol = lane.solidity[slot];
-                if (sol <= 0f)
-                {
-                    sr.color = new Color(0.35f, 0.33f, 0.32f, 0.8f);
-                    go.transform.localScale = new Vector3(go.transform.localScale.x, go.transform.localScale.y * 0.6f, 1f);
-                }
-                else sr.color = Color.Lerp(sr.color * 0.55f, sr.color, sol);
-            }
-        }
-
-        // ---- upkeep and prestige -------------------------------------------------------
-
-        /// <summary>What it costs to bring every trap of a lane back to full solidity.</summary>
-        int LaneRepairCost(int laneIndex)
-        {
-            var lane = lanes[laneIndex];
-            float cost = 0f;
-            for (int t = 0; t < 4; t++)
-                if (lane.level[t] > 0) cost += (1f - lane.solidity[t]) * lane.level[t] * RepairPerLevel;
-            return Mathf.CeilToInt(cost - 0.01f);
-        }
-
-        void RepairLane()
-        {
-            if (phase != Phase.Build || adPending) return;
-            int cost = LaneRepairCost(selectedLane);
-            if (cost <= 0 || debris < cost) return;
-            SetDebris(debris - cost);
-            var lane = lanes[selectedLane];
-            for (int t = 0; t < 4; t++)
-            {
-                lane.solidity[t] = 1f;
-                RefreshTrapVisual(selectedLane, (TrapType)t);
-            }
-            SaveWear();
-            SaveSystem.Flush();
-            farmingLanes = CountFarmingLanes();
-            Sfx.Medkit();
-            Fx.Burst(Origin + new Vector2(LaneX(selectedLane) - Origin.x, TrapY), new Color(0.5f, 1f, 0.6f), 16, 3f, 0.09f, 0f);
-            RefreshBuildPanel();
-        }
-
-        /// <summary>Complete lanes a nine-lane base needs before it can be given up for good.</summary>
-        const int PrestigeLanes = 6;
-
-        /// <summary>
-        /// Prestige: the whole base is given up - every trap, the extra lanes, the débris -
-        /// for a permanent bonus to the farm and a pile of materials. Asks twice.
-        /// </summary>
-        void OnPrestige()
-        {
-            if (completedLanes < PrestigeLanes) return;
-            if (!prestigeArmed)
-            {
-                prestigeArmed = true;
-                messageText.text = "Touche encore PRESTIGE pour tout recommencer";
-                RefreshBuildPanel();
-                return;
-            }
-            prestigeArmed = false;
-            int level = SaveSystem.BarricadePrestige + 1;
-            SaveSystem.BarricadePrestige = level;
-            int reward = 50 * level;
-            SaveSystem.AddMaterials(reward);
-            for (int l = 0; l < MaxLanes; l++)
-                for (int t = 0; t < 4; t++)
-                {
-                    SaveSystem.SetBarricadeTrap(l, t, 0);
-                    SaveSystem.SetBarricadeWear(l, t, 1f);
-                }
-            SaveSystem.BarricadeLanes = 3;
-            SetDebris(12);
-            SaveSystem.Flush();
-
-            ApplyLayout();
-            if (laneHighlight != null) laneHighlight.SetActive(true);
-            Sfx.Milestone();
-            Fx.Shake(0.4f, 0.4f);
-            ui.ShowBanner($"PRESTIGE {level}", $"Récolte +{Mathf.RoundToInt(level * PrestigeFarmBonus * 100f)} % pour toujours   ·   {reward} [g]", 3f);
-            SelectLane(0);
-            RefreshHud();
-        }
-
-        void RefreshBuildPanel()
-        {
-            if (buildPanel == null) return;
-
-            debrisChip.text = $"[d]  {debris}";
-
-            // Lane chips: one per lane, gold when complete, crimson when selected.
-            float w = 0.92f / Mathf.Max(1, laneCount);
-            for (int i = 0; i < MaxLanes; i++)
-            {
-                var chip = laneChips[i];
-                bool shown = i < laneCount;
-                chip.gameObject.SetActive(shown);
-                if (!shown) continue;
-                var rt = (RectTransform)chip.transform;
-                rt.anchorMin = new Vector2(0.04f + i * w + 0.005f, 0.695f);
-                rt.anchorMax = new Vector2(0.04f + (i + 1) * w - 0.005f, 0.785f);
-                var img = chip.GetComponent<Image>();
-                img.color = i == selectedLane ? new Color(0.78f, 0.20f, 0.12f)
-                    : lanes[i].Farming ? new Color(0.62f, 0.46f, 0.15f)
-                    : lanes[i].Complete ? new Color(0.45f, 0.30f, 0.14f)
-                    : UiKit.CardColor;
-            }
-
-            var lane = lanes[selectedLane];
-            laneCaption.text = lane.Farming ? $"Couloir {selectedLane + 1}  ·  complet, il produit des [g]"
-                : lane.Complete ? $"Couloir {selectedLane + 1}  ·  trop abîmé pour produire"
-                : $"Couloir {selectedLane + 1}  ·  {lane.MaxedTraps}/4 pièges au max";
-            int laneRepair = LaneRepairCost(selectedLane);
-            laneRepairLabel.text = laneRepair > 0 ? $"RÉPARER  {laneRepair} [d]" : "INTACT";
-            laneRepairButton.interactable = laneRepair > 0 && debris >= laneRepair && !adPending;
-
-            for (int t = 0; t < 4; t++)
-            {
-                int level = lane.level[t];
-                var card = trapCards[t];
-                for (int k = 0; k < MaxTrapLevel; k++) card.pips[k].color = k < level ? PipOn : PipOff;
-                float sol = level > 0 ? lane.solidity[t] : 1f;
-                card.wear.fillAmount = sol;
-                card.wear.color = Color.Lerp(new Color(0.85f, 0.2f, 0.15f), new Color(0.4f, 0.85f, 0.35f), sol);
-                card.wear.transform.parent.gameObject.SetActive(level > 0);
-                if (level > 0 && sol <= 0f)
-                {
-                    // Broken: it does nothing until the lane is repaired.
-                    card.cost.text = "CASSÉ";
-                    card.button.interactable = false;
-                    card.icon.color = new Color(1f, 0.45f, 0.4f, 0.6f);
-                }
-                else if (level >= MaxTrapLevel)
-                {
-                    card.cost.text = "MAX";
-                    card.button.interactable = false;
-                    card.icon.color = Color.white;
-                }
-                else
-                {
-                    int cost = CostFor((TrapType)t, level);
-                    bool affordable = debris >= cost && !adPending;
-                    card.cost.text = $"{cost} [d]";
-                    card.button.interactable = affordable;
-                    // A trap you cannot pay for yet looks it, instead of only refusing the tap.
-                    card.icon.color = affordable ? Color.white : new Color(1f, 1f, 1f, 0.45f);
-                }
-            }
-
-            RefreshFarmLine();
-
-            int next = NextLaneCount;
-            if (next == 0)
-            {
-                // Nine lanes: the button becomes the prestige, once six lanes are complete.
-                bool ready = completedLanes >= PrestigeLanes;
-                expandLabel.text = !ready ? $"PRESTIGE\n{completedLanes}/{PrestigeLanes} complets"
-                    : prestigeArmed ? "CONFIRMER ?\ntout recommencer" : $"PRESTIGE\n+{Mathf.RoundToInt(PrestigeFarmBonus * 100f)} % récolte";
-                expandButton.interactable = ready && !adPending;
-            }
-            else
-            {
-                expandLabel.text = $"{next} COULOIRS\n{ExpandCost} [d]";
-                expandButton.interactable = debris >= ExpandCost && !adPending;
-            }
-
-            if (burstWaves > 0)
-            {
-                burstLabel.text = $"RAFALE x3\nencore {burstWaves} vague{(burstWaves > 1 ? "s" : "")}";
-                burstButton.interactable = false;
-            }
-            else
-            {
-                burstLabel.text = "RAFALE x3\nune pub";
-                burstButton.interactable = !adPending;
-            }
-
-            repairLabel.text = $"BARRICADE\n{RepairCost} [d]";
-            repairButton.interactable = debris >= RepairCost && barricadeHp < barricadeMax && !adPending;
-        }
-
-        void RefreshFarmLine()
-        {
-            if (farmChip == null) return;
-            int stock = Mathf.FloorToInt(farmStock);
-            float perHour = farmingLanes * FarmRatePerLane * 60f;
-            farmChip.text = farmingLanes > 0 ? $"[g]  {stock}   +{perHour:0}/h" : $"[g]  {stock}";
-            collectButton.interactable = stock >= 1;
-        }
+        // ---- HUD --------------------------------------------------------------------------
 
         void RefreshHud()
         {
-            waveText.text = $"Vague {wave}";
-            debrisText.text = $"[d]  {debris}      Abattus : {kills}";
-            burstText.text = burstWaves > 0 ? $"RAFALE x3 · encore {burstWaves} vague{(burstWaves > 1 ? "s" : "")}" : "";
-            if (barricadeFill != null)
-            {
-                float t = barricadeMax > 0f ? barricadeHp / barricadeMax : 0f;
-                barricadeFill.fillAmount = t;
-                barricadeFill.color = t > 0.5f ? new Color(0.75f, 0.45f, 0.15f) : t > 0.25f ? new Color(0.9f, 0.6f, 0.2f) : new Color(0.8f, 0.15f, 0.15f);
-            }
+            if (waveText == null) return;
+            waveText.text = phase == Phase.Wave ? $"VAGUE {wave}" : phase == Phase.Build ? $"AVANT LA VAGUE {wave}" : $"VAGUE {wave}";
+            debrisChip.text = $"{debris} [d]";
+            int stock = Mathf.FloorToInt(farmStock);
+            farmChip.text = farmingLanes > 0 ? $"{stock} [g]  ·  {farmingLanes} en prod." : "niv. 5 = [g]";
+            collectButton.interactable = stock > 0;
+            float f = barricadeMax > 0f ? barricadeHp / barricadeMax : 0f;
+            barricadeFill.fillAmount = f;
+            barricadeFill.color = f > 0.5f ? new Color(0.86f, 0.55f, 0.22f) : f > 0.25f ? new Color(0.95f, 0.4f, 0.15f) : new Color(0.9f, 0.18f, 0.12f);
+            hpLabel.text = $"PALISSADE  {Mathf.CeilToInt(barricadeHp)} / {Mathf.CeilToInt(barricadeMax)}";
+            if (phase == Phase.Build) RefreshSheet();
         }
     }
 
     /// <summary>
-    /// One touch surface over the whole Barricade field. Each finger holds the lane under
-    /// it, several fingers hold several lanes at once, and dragging a finger sideways moves
-    /// it to the next lane - which a fixed button per lane could not do with nine of them.
+    /// Multi-touch lanes for the Barricade: a finger's x picks the lane, several fingers
+    /// hold several lanes, and sliding a finger across switches lane.
     /// </summary>
     public class LaneTouchZone : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
     {
