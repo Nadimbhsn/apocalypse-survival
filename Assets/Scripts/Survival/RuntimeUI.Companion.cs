@@ -140,7 +140,7 @@ namespace Platformer.Survival
             if (CompanionCatalog.IsUnlocked(c.Id)) { EquipCompanion(c.Id); return; }
             if (c.UnlockType == SkinUnlockType.Coins)
             {
-                if (SaveSystem.TrySpendCoins(c.CoinCost)) { CompanionCatalog.Unlock(c.Id); EquipCompanion(c.Id); }
+                if (SaveSystem.TrySpendCoins(c.CoinCost)) { CompanionCatalog.Unlock(c.Id); BuildCompanion(c.Id); }
                 return;
             }
             ShowAdOverlay(true, "Publicité en cours...");
@@ -148,12 +148,19 @@ namespace Platformer.Survival
             {
                 ShowAdOverlay(false);
                 CompanionCatalog.Unlock(c.Id);
-                EquipCompanion(c.Id);
+                BuildCompanion(c.Id);
             }, () =>
             {
                 ShowAdOverlay(false);
                 companionDetailText.text = $"{c.Name}\nPublicité indisponible ou interrompue, réessaie.";
             });
+        }
+
+        /// <summary>A new finish bought: Elron builds it in his workshop, then it is equipped.</summary>
+        void BuildCompanion(string id)
+        {
+            RefreshCompanions();
+            EtienneWorkshop.Open(this, id, false, () => EquipCompanion(id));
         }
 
         void EquipCompanion(string id)

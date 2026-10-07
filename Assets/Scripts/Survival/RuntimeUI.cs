@@ -1072,7 +1072,13 @@ namespace Platformer.Survival
 
             // Rows tightened when the drone was added, so the seventh still clears the
             // frame's bottom edge and the RETOUR button under it.
-            BuildUpgradeRows(rt, shopRows, 0.725f, 0.088f, 28, 0.08f, 0.94f, _ => RefreshShop());
+            BuildUpgradeRows(rt, shopRows, 0.725f, 0.088f, 28, 0.08f, 0.94f, stat =>
+            {
+                RefreshShop();
+                // Arming Étienne for the first time: Elron fits the cannon in his workshop.
+                if (stat == UpgradeStat.Drone && UpgradeManager.DroneLevel == 1)
+                    EtienneWorkshop.Open(this, CompanionCatalog.SelectedId, true, RefreshShop);
+            });
 
             UiKit.CreateButton("ShopBackButton", rt, "RETOUR", new Vector2(0.32f, 0.02f), new Vector2(0.68f, 0.095f), ShowHub);
         }
