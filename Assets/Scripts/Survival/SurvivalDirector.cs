@@ -433,7 +433,8 @@ namespace Platformer.Survival
         {
             if (drone != null) { Destroy(drone.gameObject); drone = null; }
             int level = UpgradeManager.DroneLevel;
-            if (level <= 0) return;
+            // Étienne always comes along; the shop's upgrade arms him.
+            if (level <= 0 && CompanionCatalog.Frames(CompanionCatalog.SelectedId) == null) return;
 
             drone = Drone.Create(entityParent, player.transform, level);
             drone.FindTarget = from => running ? NearestLivingZombie(from) : null;

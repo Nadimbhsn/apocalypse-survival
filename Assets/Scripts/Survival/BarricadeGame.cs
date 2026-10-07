@@ -538,7 +538,8 @@ namespace Platformer.Survival
         void SpawnDrone(Transform defender)
         {
             int level = UpgradeManager.DroneLevel;
-            if (level <= 0) return;
+            // Étienne always comes along; the shop's upgrade arms him.
+            if (level <= 0 && CompanionCatalog.Frames(CompanionCatalog.SelectedId) == null) return;
             drone = Drone.Create(root, defender, level);
             foreach (var r in drone.GetComponentsInChildren<Renderer>()) r.sortingOrder += 70;
             drone.offset = new Vector3(-0.75f, 0.95f, 0f);

@@ -112,6 +112,7 @@ namespace Platformer.Survival
             BuildVignette();
             BuildHubPanel();
             BuildCharactersPanel();
+            BuildCompanionPanel();
             BuildRunnerModesPanel();
             BuildExpeditionPanel();
             BuildArmoryPanel();
@@ -288,7 +289,7 @@ namespace Platformer.Survival
             UpgradeStat.Armor => "Armure",
             UpgradeStat.DoubleJump => "Double saut",
             UpgradeStat.Magnet => "Aimant à pièces",
-            UpgradeStat.Drone => "Drone compagnon",
+            UpgradeStat.Drone => "Étienne : tir d'appui",
             _ => stat.ToString()
         };
 
@@ -308,11 +309,12 @@ namespace Platformer.Survival
 
             CreateTitle(rt, "PERSONNAGES", 0.905f, 0.965f);
             charactersWalletText = CreateIconChip("Wallet", rt, new Vector2(0.30f, 0.855f), new Vector2(0.70f, 0.893f), 26);
+            CreateSectionTabs(rt, false);
 
             var skins = SkinCatalog.All;
             const int columns = 3;
             int rows = Mathf.CeilToInt(skins.Length / (float)columns);
-            const float gridTop = 0.845f, gridBottom = 0.275f;
+            const float gridTop = 0.785f, gridBottom = 0.275f;
             float rowH = (gridTop - gridBottom) / rows;
             const float gap = 0.008f;
 
@@ -1337,6 +1339,7 @@ namespace Platformer.Survival
         {
             UiKit.SetPanel(hubPanel, false);
             UiKit.SetPanel(charactersPanel, false);
+            UiKit.SetPanel(companionPanel, false);
             UiKit.SetPanel(hudPanel, false);
             UiKit.SetPanel(gameOverPanel, false);
             UiKit.SetPanel(revivePanel, false);

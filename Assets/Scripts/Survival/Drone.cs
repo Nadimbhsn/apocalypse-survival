@@ -41,6 +41,12 @@ namespace Platformer.Survival
 
         Transform hull, eye, rotor;
         SpriteRenderer eyeSr;
+        // Étienne, painted (see CompanionCatalog): when present he replaces the flat parts.
+        SpriteRenderer body;
+        Sprite[] frames;
+        float anim;
+        /// <summary>Unarmed: Étienne only keeps the hero company (the shop's upgrade arms him).</summary>
+        public bool armed = true;
         SpriteRenderer followSr;
         float cooldown;
         float bobPhase;
@@ -61,10 +67,34 @@ namespace Platformer.Survival
             drone.range = RangeForLevel(level);
             drone.followSr = follow != null ? follow.GetComponent<SpriteRenderer>() : null;
             drone.bobPhase = UnityEngine.Random.Range(0f, 6.28f);
-            drone.Build(level);
+            drone.armed = level > 0;
+            if (!drone.BuildPainted()) drone.Build(level);
 
             if (follow != null) go.transform.position = follow.position + drone.offset;
             return drone;
+        }
+
+        /// <summary>Étienne in the chosen finish; false if the art is missing.</summary>
+        bool BuildPainted()
+        {
+            frames = CompanionCatalog.Frames(CompanionCatalog.SelectedId);
+            if (frames == null) return false;
+            var go = new GameObject("Etienne");
+            go.transform.SetParent(transform, false);
+            body = go.AddComponent<SpriteRenderer>();
+            body.sprite = frames[0];
+            body.sortingOrder = 7;
+            hull = go.transform;
+            anim = UnityEngine.Random.Range(0f, 8f);
+            return true;
+        }
+
+        /// <summary>A different finish chosen in the shop: repaint at once.</summary>
+        public void Repaint()
+        {
+            if (body == null) return;
+            var f = CompanionCatalog.Frames(CompanionCatalog.SelectedId);
+            if (f != null) frames = f;
         }
 
         void Build(int level)
@@ -133,6 +163,11 @@ namespace Platformer.Survival
                 hull.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(bobPhase * 0.8f) * 5f - recoil * 14f);
             }
             if (rotor != null) rotor.localRotation = Quaternion.Euler(0f, 0f, Time.time * 900f);
+            if (body != null && frames != null)
+            {
+                anim += dt * 12f;
+                body.sprite = recoil > 0.6f ? frames[8] : frames[(int)anim % 8];
+            }
             if (eyeSr != null)
             {
                 float pulse = 0.75f + Mathf.Abs(Mathf.Sin(bobPhase * 1.4f)) * 0.25f;
@@ -140,7 +175,7 @@ namespace Platformer.Survival
                 eyeSr.color = new Color(c.r, c.g, c.b, pulse);
             }
 
-            if (FindTarget == null || Fire == null) return;
+            if (!armed || FindTarget == null || Fire == null) return;
             cooldown -= dt;
             if (cooldown > 0f) return;
 
