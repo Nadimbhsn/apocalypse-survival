@@ -199,6 +199,8 @@ namespace Platformer.Survival
                     source = go.AddComponent<AudioSource>();
                     source.spatialBlend = 0f;
                     source.playOnAwake = false;
+                    // Menus click and chime even while the game (and its music) is paused.
+                    source.ignoreListenerPause = true;
                 }
                 return source;
             }

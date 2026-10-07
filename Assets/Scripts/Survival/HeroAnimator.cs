@@ -63,6 +63,37 @@ namespace Platformer.Survival
         }
 
         public static int Count(string anim) => Anims.TryGetValue(anim, out var a) ? a.count : 1;
+
+        /// <summary>Index of a frame across both sheets (0..31).</summary>
+        public static int Index(string anim, int index) =>
+            Anims.TryGetValue(anim, out var a) ? a.start + Mathf.Clamp(index, 0, a.count - 1) : -1;
+
+        /// <summary>Where the near fist is in a frame (pixels from the frame's top left) and how a gun held there leans (degrees, up is positive).</summary>
+        static readonly (float x, float y, float angle)[] Hand =
+        {
+            (265, 268, -30), (270, 262, -30), (262, 264, -30), (262, 265, -30), (260, 258, -30), (260, 258, -30),   // idle
+            (230, 275, -35), (245, 272, -30), (263, 265, -25), (290, 265, -20), (310, 275, -15), (300, 260, -12),   // run
+            (260, 260, -28), (235, 275, -38),
+            (325, 250, -10), (345, 225, 0),     // jump
+            (350, 208, 0), (350, 192, 4),       // fall
+            (290, 298, -30), (275, 268, -28),   // land
+            (360, 180, 2), (355, 170, 3),       // shoot
+            (195, 255, -50), (215, 265, -45),   // hurt
+        };
+
+        /// <summary>
+        /// The near fist in the player's local space (facing right) and the gun's lean for a
+        /// frame; false when he holds nothing (death, victory).
+        /// </summary>
+        public static bool HandAt(int frame, out Vector2 local, out float angle)
+        {
+            local = Vector2.zero; angle = 0f;
+            if (frame < 0 || frame >= Hand.Length) return false;
+            var h = Hand[frame];
+            local = new Vector2((h.x - Pivot.x * Frame) / PixelsPerUnit, ((Frame - h.y) - Pivot.y * Frame) / PixelsPerUnit);
+            angle = h.angle;
+            return true;
+        }
     }
 
     /// <summary>
@@ -82,6 +113,9 @@ namespace Platformer.Survival
         float time, landUntil, hurtUntil;
         int lastHp = -1;
         bool wasGrounded = true;
+
+        /// <summary>The frame on screen (0..31), for the gun in his hand; -1 before the first.</summary>
+        public int Frame { get; private set; } = -1;
 
         static readonly Dictionary<string, float> Fps = new()
         {
@@ -112,7 +146,7 @@ namespace Platformer.Survival
             int index = Mathf.FloorToInt(time * fps);
             index = Once.Contains(current) ? Mathf.Min(index, count - 1) : index % count;
             var sprite = HeroSprites.Get(current, index);
-            if (sprite != null) sr.sprite = sprite;
+            if (sprite != null) { sr.sprite = sprite; Frame = HeroSprites.Index(current, index); }
         }
 
         string PickState()

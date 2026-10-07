@@ -12,7 +12,7 @@ namespace Platformer.Survival
     {
         public string Id;
         public string Name;
-        /// <summary>Sprite in Resources/Weapons, cut from the design sheet.</summary>
+        /// <summary>Painted gun in Resources/Arms (see WeaponCatalog.Art for its grip and muzzle).</summary>
         public string Sprite;
         public string Blurb;
 
@@ -39,8 +39,8 @@ namespace Platformer.Survival
         public int CostCoins;
         public int CostMaterials;
 
-        /// <summary>Length of the gun in the character's hands, in world units.</summary>
-        public float HeldLength = 0.55f;
+        /// <summary>Length of the gun in the character's hands, in world units (he is about 1.2 tall).</summary>
+        public float HeldLength = 0.25f;
 
         public bool Free => CostCoins == 0 && CostMaterials == 0;
     }
@@ -61,7 +61,7 @@ namespace Platformer.Survival
                 Blurb = "L'arme de base. Lente mais économe.",
                 Damage = 1, FireInterval = 0.5f, BulletSpeed = 14f, Range = 7f,
                 StartAmmo = 30, MaxAmmo = 60, AmmoPerPickup = 10,
-                HeldLength = 0.5f,
+                HeldLength = 0.22f,
             },
             new WeaponDef
             {
@@ -69,7 +69,7 @@ namespace Platformer.Survival
                 Blurb = "Trois fois plus puissant, aussi lent.",
                 Damage = 3, FireInterval = 0.85f, BulletSpeed = 16f, Range = 8f, BulletSize = 0.28f,
                 StartAmmo = 18, MaxAmmo = 36, AmmoPerPickup = 6,
-                CostCoins = 80, HeldLength = 0.5f,
+                CostCoins = 80, HeldLength = 0.27f,
             },
             new WeaponDef
             {
@@ -77,7 +77,7 @@ namespace Platformer.Survival
                 Blurb = "Tire en rafales de trois balles.",
                 Damage = 1, FireInterval = 0.6f, Burst = 3, BurstGap = 0.07f, BulletSpeed = 15f, Range = 6f, BulletSize = 0.18f,
                 StartAmmo = 60, MaxAmmo = 120, AmmoPerPickup = 18,
-                CostCoins = 150, HeldLength = 0.55f,
+                CostCoins = 150, HeldLength = 0.32f,
             },
             new WeaponDef
             {
@@ -85,7 +85,7 @@ namespace Platformer.Survival
                 Blurb = "Aussi puissante que le revolver, en semi-automatique.",
                 Damage = 3, FireInterval = 0.3f, BulletSpeed = 18f, Range = 9f, BulletSize = 0.24f,
                 StartAmmo = 40, MaxAmmo = 90, AmmoPerPickup = 12,
-                CostCoins = 250, HeldLength = 0.95f,
+                CostCoins = 250, HeldLength = 0.62f,
             },
             new WeaponDef
             {
@@ -95,7 +95,7 @@ namespace Platformer.Survival
                 BulletColor = new Color(0.36f, 0.52f, 0.22f),
                 ExplosionRadius = 2f, ExplosionDamage = 4,
                 StartAmmo = 6, MaxAmmo = 15, AmmoPerPickup = 2,
-                CostMaterials = 40, HeldLength = 1.0f,
+                CostMaterials = 40, HeldLength = 0.62f,
             },
         };
 
@@ -119,24 +119,50 @@ namespace Platformer.Survival
             }
         }
 
+        /// <summary>
+        /// Each painted gun's picture: the painted area (pixels, at the bottom left of the
+        /// texture), and where the fist closes on it and where the barrel ends, as fractions
+        /// of that area.
+        /// </summary>
+        static readonly Dictionary<string, (int w, int h, Vector2 grip, Vector2 muzzle)> Art = new()
+        {
+            ["pistol"] = (198, 109, new Vector2(0.1911f, 0.3059f), new Vector2(0.98f, 0.7873f)),
+            ["revolver"] = (243, 118, new Vector2(0.1125f, 0.3051f), new Vector2(0.9854f, 0.7313f)),
+            ["uzi"] = (288, 135, new Vector2(0.4245f, 0.4773f), new Vector2(0.9871f, 0.7644f)),
+            ["rifle"] = (558, 133, new Vector2(0.3316f, 0.4221f), new Vector2(0.9932f, 0.6861f)),
+            ["launcher"] = (558, 132, new Vector2(0.3065f, 0.2515f), new Vector2(0.9919f, 0.67f)),
+        };
+
         static readonly Dictionary<string, Sprite> sprites = new();
 
-        /// <summary>
-        /// The gun's picture. Loaded as a sprite when Unity imported it as one, otherwise
-        /// built from the texture, so a fresh import setting can never leave a gun invisible.
-        /// </summary>
-        public static Sprite SpriteFor(WeaponDef w)
+        static Sprite Make(WeaponDef w, bool held)
         {
-            if (w == null) return null;
-            if (sprites.TryGetValue(w.Sprite, out var s) && s != null) return s;
-            s = Resources.Load<Sprite>($"Weapons/{w.Sprite}");
-            if (s == null)
-            {
-                var tex = Resources.Load<Texture2D>($"Weapons/{w.Sprite}");
-                if (tex != null) s = UnityEngine.Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
-            }
-            sprites[w.Sprite] = s;
+            if (w == null || !Art.TryGetValue(w.Sprite, out var a)) return null;
+            string key = w.Sprite + (held ? "|held" : "|ui");
+            if (sprites.TryGetValue(key, out var s) && s != null) return s;
+            var tex = Resources.Load<Texture2D>($"Arms/{w.Sprite}");
+            if (tex == null) return null;
+            var rect = new Rect(0, 0, Mathf.Min(a.w, tex.width), Mathf.Min(a.h, tex.height));
+            // In the hands: pivot on the grip and sized to the gun's length. On a page: centred.
+            s = held
+                ? Sprite.Create(tex, rect, a.grip, a.w / Mathf.Max(0.05f, w.HeldLength), 0, SpriteMeshType.FullRect)
+                : Sprite.Create(tex, rect, new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+            sprites[key] = s;
             return s;
+        }
+
+        /// <summary>The gun's picture for the armoury and the HUD, centred.</summary>
+        public static Sprite SpriteFor(WeaponDef w) => Make(w, false);
+
+        /// <summary>The gun as held: pivot on the grip, HeldLength units long.</summary>
+        public static Sprite HeldSprite(WeaponDef w) => Make(w, true);
+
+        /// <summary>The barrel's end relative to the grip, in world units, for a gun held facing right.</summary>
+        public static Vector2 MuzzleOffset(WeaponDef w)
+        {
+            if (w == null || !Art.TryGetValue(w.Sprite, out var a)) return new Vector2(0.25f, 0.05f);
+            float ppu = a.w / Mathf.Max(0.05f, w.HeldLength);
+            return new Vector2((a.muzzle.x - a.grip.x) * a.w, (a.muzzle.y - a.grip.y) * a.h) / ppu;
         }
     }
 }

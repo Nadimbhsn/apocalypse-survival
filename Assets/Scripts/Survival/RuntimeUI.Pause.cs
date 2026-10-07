@@ -103,24 +103,87 @@ namespace Platformer.Survival
         {
             var rt = UiKit.CreatePanel("PausePanel", canvas.transform, UiKit.Overlay);
             pausePanel = rt.gameObject;
-            UiKit.CreateFrame("PauseFrame", rt, new Vector2(0.05f, 0.1f), new Vector2(0.95f, 0.9f));
+            UiKit.CreateFrame("PauseFrame", rt, new Vector2(0.04f, 0.045f), new Vector2(0.96f, 0.955f));
 
             UiKit.Outlined(UiKit.CreateText("PauseTitle", rt, "PAUSE", 56, TextAnchor.MiddleCenter,
-                new Vector2(0.1f, 0.80f), new Vector2(0.9f, 0.875f), ApogeeTheme.Gold), 2.5f);
-            pauseWalletText = CreateIconChip("Wallet", rt, new Vector2(0.25f, 0.748f), new Vector2(0.75f, 0.79f), 26);
+                new Vector2(0.1f, 0.865f), new Vector2(0.9f, 0.935f), ApogeeTheme.Gold), 2.5f);
+            pauseWalletText = CreateIconChip("Wallet", rt, new Vector2(0.25f, 0.82f), new Vector2(0.75f, 0.86f), 26);
             UiKit.CreateText("PauseHint", rt, "Améliore ton personnage sans quitter la partie", 20, TextAnchor.MiddleCenter,
-                new Vector2(0.08f, 0.705f), new Vector2(0.92f, 0.742f), UiKit.TextDim);
+                new Vector2(0.08f, 0.783f), new Vector2(0.92f, 0.815f), UiKit.TextDim);
 
-            BuildUpgradeRows(rt, pauseRows, 0.695f, 0.058f, 24, 0.09f, 0.91f, stat =>
+            BuildUpgradeRows(rt, pauseRows, 0.775f, 0.052f, 24, 0.09f, 0.91f, stat =>
             {
                 pauseUpgraded?.Invoke(stat);
                 pauseWalletText.text = WalletLine();
             });
 
-            UiKit.CreateButton("Resume", rt, "REPRENDRE", new Vector2(0.2f, 0.2f), new Vector2(0.8f, 0.27f), Resume, 34);
-            UiKit.CreateButton("QuitGame", rt, "QUITTER LA PARTIE", new Vector2(0.25f, 0.125f), new Vector2(0.75f, 0.185f),
+            // Sound: two knobs, kept between sessions.
+            UiKit.Outlined(UiKit.CreateText("SoundTitle", rt, "SON", 30, TextAnchor.MiddleCenter,
+                new Vector2(0.1f, 0.37f), new Vector2(0.9f, 0.405f), ApogeeTheme.Gold), 2f);
+            CreateVolumeSlider(rt, "MUSIQUE", 0.315f, 0.36f, () => GameAudio.Music, v => GameAudio.Music = v);
+            CreateVolumeSlider(rt, "EFFETS", 0.26f, 0.305f, () => GameAudio.Effects, v => GameAudio.Effects = v);
+
+            UiKit.CreateButton("Resume", rt, "REPRENDRE", new Vector2(0.2f, 0.155f), new Vector2(0.8f, 0.225f), Resume, 34);
+            UiKit.CreateButton("QuitGame", rt, "QUITTER LA PARTIE", new Vector2(0.25f, 0.08f), new Vector2(0.75f, 0.138f),
                 QuitFromPause, 22, new Color(0.22f, 0.10f, 0.08f));
             pausePanel.SetActive(false);
+        }
+
+        readonly List<Action> volumeRefresh = new();
+
+        /// <summary>A labelled 0-100 % slider: a dark pill, a golden fill and a round knob.</summary>
+        void CreateVolumeSlider(RectTransform parent, string label, float yMin, float yMax, Func<float> get, Action<float> set)
+        {
+            UiKit.Outlined(UiKit.CreateText(label + "Label", parent, label, 24, TextAnchor.MiddleLeft,
+                new Vector2(0.1f, yMin), new Vector2(0.32f, yMax), ApogeeTheme.Cream), 1.5f);
+            var value = UiKit.CreateText(label + "Value", parent, "", 22, TextAnchor.MiddleRight,
+                new Vector2(0.76f, yMin), new Vector2(0.9f, yMax), ApogeeTheme.Gold);
+
+            var track = UiKit.CreateRect(label + "Slider", parent, new Vector2(0.33f, yMin + (yMax - yMin) * 0.2f), new Vector2(0.74f, yMax - (yMax - yMin) * 0.2f));
+            var bg = track.gameObject.AddComponent<Image>();
+            bg.sprite = HubArt.Get("ui_pill", 30f) ?? ApogeeTheme.Chip;
+            bg.type = Image.Type.Sliced;
+            bg.color = new Color(0.25f, 0.13f, 0.1f);
+
+            var fillArea = UiKit.CreateRect("FillArea", track, Vector2.zero, Vector2.one);
+            fillArea.offsetMin = new Vector2(8f, 8f);
+            fillArea.offsetMax = new Vector2(-8f, -8f);
+            var fill = UiKit.CreateRect("Fill", fillArea, Vector2.zero, Vector2.one);
+            var fillImg = fill.gameObject.AddComponent<Image>();
+            fillImg.sprite = HubArt.Get("ui_pill", 30f) ?? ApogeeTheme.Chip;
+            fillImg.type = Image.Type.Sliced;
+            fillImg.color = ApogeeTheme.Gold;
+            fillImg.raycastTarget = false;
+
+            var handleArea = UiKit.CreateRect("HandleArea", track, Vector2.zero, Vector2.one);
+            handleArea.offsetMin = new Vector2(14f, 0f);
+            handleArea.offsetMax = new Vector2(-14f, 0f);
+            var handle = UiKit.CreateRect("Handle", handleArea, new Vector2(0f, 0f), new Vector2(0f, 1f));
+            handle.sizeDelta = new Vector2(52f, 14f);
+            var handleImg = handle.gameObject.AddComponent<Image>();
+            handleImg.sprite = PlaceholderVisuals.Circle(Color.white);
+            handleImg.color = ApogeeTheme.Cream;
+            handleImg.preserveAspect = true;
+            var outline = handle.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0.3f, 0.12f, 0.05f);
+            outline.effectDistance = new Vector2(3f, -3f);
+
+            var slider = track.gameObject.AddComponent<Slider>();
+            slider.fillRect = fill;
+            slider.handleRect = handle;
+            slider.targetGraphic = handleImg;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.minValue = 0f;
+            slider.maxValue = 1f;
+            void Show(float v) => value.text = v <= 0.001f ? "COUPÉ" : $"{Mathf.RoundToInt(v * 100f)} %";
+            slider.SetValueWithoutNotify(get());
+            Show(get());
+            slider.onValueChanged.AddListener(v => { set(v); Show(v); });
+            var trigger = track.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
+            var up = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = UnityEngine.EventSystems.EventTriggerType.PointerUp };
+            up.callback.AddListener(_ => { GameAudio.Save(); Sfx.Coin(); });
+            trigger.triggers.Add(up);
+            volumeRefresh.Add(() => { slider.SetValueWithoutNotify(get()); Show(get()); });
         }
 
         /// <summary>A PAUSE button for a game's HUD. It is also what Escape and leaving the app press.</summary>
@@ -146,6 +209,7 @@ namespace Platformer.Survival
             MobileInput.Reset();
             pauseWalletText.text = WalletLine();
             RefreshUpgradeRows(pauseRows);
+            foreach (var r in volumeRefresh) r();
             pausePanel.transform.SetAsLastSibling();
             pausePanel.SetActive(true);
         }

@@ -205,20 +205,24 @@ namespace Platformer.Survival
     }
 
     /// <summary>
-    /// The equipped gun, drawn in the character's hands: it faces where the character
-    /// faces, swings toward whatever it is firing at, kicks back on each shot, and hides
-    /// whenever the character's own sprite is hidden (the rhythm section, death).
+    /// The equipped gun, held in the hero's near fist: for every frame of his animation the
+    /// fist's position and the gun's lean are known (HeroSprites.HandAt), so the gun follows
+    /// the hand as he runs, jumps and aims. It is drawn just behind his body so his fingers
+    /// close over the grip and the stock passes behind the cape. Firing swings it toward the
+    /// target and kicks it back; it is put away while he lies dead or celebrates.
     /// </summary>
     public class HeldWeapon : MonoBehaviour
     {
         PlayerController player;
         SpriteRenderer body;
+        HeroAnimator hero;
         Transform pivot;
         SpriteRenderer art;
         WeaponDef weapon;
         float kick;
         Vector2 aimDir = Vector2.right;
-        float aimTimer;
+        float aimTimer, aimBlend;
+        float facing = 1f;
 
         public static HeldWeapon Attach(PlayerController target)
         {
@@ -227,23 +231,26 @@ namespace Platformer.Survival
             var held = go.AddComponent<HeldWeapon>();
             held.player = target;
             held.body = target.GetComponent<SpriteRenderer>();
+            held.hero = target.GetComponent<HeroAnimator>();
             held.pivot = go.transform;
             var artGo = new GameObject("Art");
             artGo.transform.SetParent(go.transform, false);
             held.art = artGo.AddComponent<SpriteRenderer>();
-            held.art.sortingOrder = (held.body != null ? held.body.sortingOrder : 0) + 1;
+            if (held.body != null)
+            {
+                // Same layer as the hero, one step behind him: the fist is drawn over the grip.
+                held.art.sortingLayerID = held.body.sortingLayerID;
+                held.art.sortingOrder = held.body.sortingOrder - 1;
+            }
             return held;
         }
 
         public void SetWeapon(WeaponDef w)
         {
             weapon = w;
-            art.sprite = WeaponCatalog.SpriteFor(w);
-            float width = art.sprite != null ? art.sprite.bounds.size.x : 1f;
-            float scale = w.HeldLength / Mathf.Max(0.01f, width);
-            art.transform.localScale = Vector3.one * scale;
-            // Grip a third of the way along the gun, so the barrel sticks out in front.
-            art.transform.localPosition = new Vector3(w.HeldLength * 0.22f, 0f, 0f);
+            art.sprite = WeaponCatalog.HeldSprite(w);
+            art.transform.localPosition = Vector3.zero;
+            art.transform.localScale = Vector3.one;
         }
 
         public void Kick(Vector2 dir)
@@ -258,39 +265,63 @@ namespace Platformer.Survival
         {
             get
             {
-                if (art == null || art.sprite == null) return transform.position;
-                return art.transform.TransformPoint(new Vector3(art.sprite.bounds.max.x, art.sprite.bounds.center.y, 0f));
+                if (art == null || weapon == null) return transform.position;
+                Place();   // up to date even when fired before this frame's LateUpdate
+                return art.transform.TransformPoint(WeaponCatalog.MuzzleOffset(weapon));
             }
         }
 
         void LateUpdate()
         {
             if (player == null || body == null) return;
-            bool visible = body.enabled && (player.health == null || player.health.IsAlive);
-            art.enabled = visible && art.sprite != null;
-
             float dt = Time.deltaTime;
             kick = Mathf.MoveTowards(kick, 0f, dt * 7f);
             aimTimer -= dt;
+            aimBlend = Mathf.MoveTowards(aimBlend, aimTimer > 0f ? 1f : 0f, dt * (aimTimer > 0f ? 14f : 4f));
+            Place();
+        }
 
-            // Face the target while firing at it, otherwise the way the character faces.
-            float facing = aimTimer > 0f ? Mathf.Sign(aimDir.x == 0f ? 1f : aimDir.x) : (body.flipX ? -1f : 1f);
-            var offset = player.collider2d != null ? player.collider2d.offset : Vector2.zero;
-            pivot.localPosition = new Vector3(offset.x + (0.1f - kick * 0.08f) * facing, offset.y + 0.02f, 0f);
-            pivot.localScale = new Vector3(facing, 1f, 1f);
+        void Place()
+        {
+            bool alive = player.health == null || player.health.IsAlive;
+            Vector2 hand; float lean;
+            bool holding = hero != null && hero.enabled && hero.Frame >= 0
+                ? HeroSprites.HandAt(hero.Frame, out hand, out lean)
+                : Fallback(out hand, out lean);
+            art.enabled = body.enabled && alive && holding && art.sprite != null;
+            if (!art.enabled) return;
 
-            // The pivot is mirrored (scale x = -1) when facing left, and a rotation applies
-            // after that mirror: a barrel at local +x ends up at 180 + r degrees. So to point
-            // at world angle a, rotate by a - 180 when facing left, by a when facing right.
-            float angle = 0f;
-            if (aimTimer > 0f)
+            // Face the target while firing at it, otherwise the way the hero faces.
+            facing = aimTimer > 0f ? Mathf.Sign(aimDir.x == 0f ? 1f : aimDir.x) : (body.flipX ? -1f : 1f);
+            bool bodyLeft = body.flipX;
+            float handX = bodyLeft ? -hand.x : hand.x;   // the fist is where the sprite shows it
+            float flipY = player.gravitySign < 0f ? -1f : 1f;
+            pivot.localPosition = new Vector3(handX, hand.y * flipY, 0f);
+            pivot.localScale = new Vector3(facing, flipY, 1f);
+
+            // The pivot is mirrored when facing left, so a barrel along local +x points at
+            // 180 + r degrees: to point at world angle a, rotate by a - 180 then. Aiming
+            // blends from the pose's lean toward the target, within a believable arc.
+            float angle = lean;
+            if (aimBlend > 0f)
             {
                 float world = Mathf.Atan2(aimDir.y, aimDir.x) * Mathf.Rad2Deg;
-                angle = facing > 0f ? world : Mathf.DeltaAngle(0f, world - 180f);
-                angle = Mathf.Clamp(angle, -50f, 50f);
+                float aim = facing > 0f ? world : Mathf.DeltaAngle(0f, world - 180f);
+                aim = Mathf.Clamp(aim * flipY, -40f, 40f);
+                angle = Mathf.LerpAngle(lean, aim, aimBlend);
             }
-            // Recoil lifts the barrel, whichever way it points.
-            pivot.localRotation = Quaternion.Euler(0f, 0f, angle + kick * 8f * facing);
+            // Recoil: the barrel jumps up and the gun slides back into the fist.
+            pivot.localRotation = Quaternion.Euler(0f, 0f, angle + kick * 12f);
+            art.transform.localPosition = new Vector3(-kick * 0.035f, 0f, 0f);
+        }
+
+        /// <summary>No painted hero: hold it at the collider's middle.</summary>
+        bool Fallback(out Vector2 hand, out float lean)
+        {
+            var offset = player.collider2d != null ? player.collider2d.offset : Vector2.zero;
+            hand = offset + new Vector2(0.1f, 0.02f);
+            lean = 0f;
+            return true;
         }
     }
 }

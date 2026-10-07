@@ -30,14 +30,45 @@ namespace Platformer.Survival
         {
             bobT += Time.deltaTime * 4f;
             transform.localScale = baseScale * (1f + Mathf.Sin(bobT) * 0.08f);
+            // The physics box only covers the hero's legs and belly (it is sized for
+            // platforming); anything touching his painted body - head, shoulders, cape - counts.
+            var hero = Hero;
+            if (!collected && hero != null && hero.gameObject.activeInHierarchy && TouchesBody(hero)) Collect(hero);
+        }
+
+        static PlayerController hero;
+        static PlayerController Hero
+        {
+            get
+            {
+                if (hero == null) hero = Platformer.Core.Simulation.GetModel<Platformer.Model.PlatformerModel>().player;
+                if (hero == null) hero = FindAnyObjectByType<PlayerController>();
+                return hero;
+            }
+        }
+
+        /// <summary>The hero's painted silhouette, about 1.2 units tall, feet 0.4 under his origin.</summary>
+        static readonly Rect Body = new Rect(-0.22f, -0.42f, 0.42f, 1.22f);
+
+        bool TouchesBody(PlayerController p)
+        {
+            if (p.health != null && !p.health.IsAlive) return false;
+            Vector2 local = p.transform.InverseTransformPoint(transform.position);
+            if (p.gravitySign < 0f) local.y = -local.y;   // upside down: the head is below
+            var col = GetComponent<Collider2D>();
+            float r = col != null ? Mathf.Min(col.bounds.extents.x, col.bounds.extents.y) : 0.15f;
+            return local.x > Body.xMin - r && local.x < Body.xMax + r && local.y > Body.yMin - r && local.y < Body.yMax + r;
         }
 
         void OnTriggerEnter2D(Collider2D other)
         {
-            if (collected) return;
             var controller = other.GetComponent<PlayerController>();
-            if (controller == null) return;
+            if (controller != null) Collect(controller);
+        }
 
+        void Collect(PlayerController controller)
+        {
+            if (collected) return;
             collected = true;
             var pos = transform.position;
             switch (type)
