@@ -225,14 +225,17 @@ namespace Platformer.Survival
         {
             var card = UiKit.CreateRect("Card_" + id, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             card.sizeDelta = HubCarousel.CardSize;
+            // Everything the card shows lives in one layer, so a press squashes the picture,
+            // its gold frame and its shadow together (the carousel scales the card itself).
+            var content = UiKit.CreateRect("Content", card, Vector2.zero, Vector2.one);
 
-            var shadow = UiKit.CreateImage("Shadow", card, Vector2.zero, Vector2.one, HubArt.Get("ui_shadow", 48f), Color.white, false);
+            var shadow = UiKit.CreateImage("Shadow", content, Vector2.zero, Vector2.one, HubArt.Get("ui_shadow", 48f), Color.white, false);
             shadow.type = Image.Type.Sliced;
             shadow.rectTransform.offsetMin = new Vector2(-40f, -58f);
             shadow.rectTransform.offsetMax = new Vector2(40f, 22f);
             shadow.raycastTarget = false;
 
-            var bodyRt = UiKit.CreateRect("Body", card, Vector2.zero, Vector2.one);
+            var bodyRt = UiKit.CreateRect("Body", content, Vector2.zero, Vector2.one);
             var maskImg = bodyRt.gameObject.AddComponent<Image>();
             maskImg.sprite = HubArt.Get("ui_card_mask", 32f);
             maskImg.type = Image.Type.Sliced;
@@ -240,7 +243,7 @@ namespace Platformer.Survival
             bodyRt.gameObject.AddComponent<Mask>().showMaskGraphic = true;
             body = bodyRt.gameObject.AddComponent<Button>();
             body.transition = Selectable.Transition.None;
-            bodyRt.gameObject.AddComponent<ButtonPop>();
+            bodyRt.gameObject.AddComponent<ButtonPop>().target = content;
 
             var artRt = UiKit.CreateRect("Art", bodyRt, Vector2.zero, Vector2.one);
             var art = artRt.gameObject.AddComponent<RawImage>();
@@ -301,11 +304,11 @@ namespace Platformer.Survival
                 UiKit.Outlined(UiKit.CreateText("Label", help, "TUTO", 26, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Gold), 1.2f);
             }
 
-            var frame = UiKit.CreateImage("Frame", card, Vector2.zero, Vector2.one, HubArt.Get("ui_card_frame", 32f), Color.white, false);
+            var frame = UiKit.CreateImage("Frame", content, Vector2.zero, Vector2.one, HubArt.Get("ui_card_frame", 32f), Color.white, false);
             frame.type = Image.Type.Sliced;
             frame.raycastTarget = false;
 
-            dim = UiKit.CreateImage("Dim", card, Vector2.zero, Vector2.one, HubArt.Get("ui_card_mask", 32f), new Color(0.08f, 0.02f, 0.02f, 0f), false);
+            dim = UiKit.CreateImage("Dim", content, Vector2.zero, Vector2.one, HubArt.Get("ui_card_mask", 32f), new Color(0.08f, 0.02f, 0.02f, 0f), false);
             dim.type = Image.Type.Sliced;
             dim.raycastTarget = false;
             return card;

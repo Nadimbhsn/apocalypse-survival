@@ -223,25 +223,29 @@ namespace Platformer.Survival
     /// <summary>Tiny press feedback: the button squashes a little while held.</summary>
     public class ButtonPop : MonoBehaviour, UnityEngine.EventSystems.IPointerDownHandler, UnityEngine.EventSystems.IPointerUpHandler
     {
+        /// <summary>What squashes: this object by default, or a parent holding its frame too.</summary>
+        public Transform target;
         Vector3 baseScale = Vector3.one;
         bool captured;
 
+        Transform Target => target != null ? target : transform;
+
         public void OnPointerDown(UnityEngine.EventSystems.PointerEventData e)
         {
-            if (!captured) { baseScale = transform.localScale; captured = true; }
+            if (!captured) { baseScale = Target.localScale; captured = true; }
             var b = GetComponent<Button>();
             if (b != null && !b.interactable) return;
-            transform.localScale = baseScale * 0.95f;
+            Target.localScale = baseScale * 0.95f;
         }
 
         public void OnPointerUp(UnityEngine.EventSystems.PointerEventData e)
         {
-            if (captured) transform.localScale = baseScale;
+            if (captured) Target.localScale = baseScale;
         }
 
         void OnDisable()
         {
-            if (captured) transform.localScale = baseScale;
+            if (captured) Target.localScale = baseScale;
         }
     }
 
