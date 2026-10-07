@@ -214,6 +214,8 @@ namespace Platformer.Survival
                 img.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Random.Range(-14f, 14f));
                 float fit = Mathf.Min(1f, 170f / Mathf.Max(img.rectTransform.sizeDelta.x, img.rectTransform.sizeDelta.y));
                 img.rectTransform.localScale = Vector3.one * fit;
+                img.raycastTarget = true;   // UiKit images ignore touches by default
+                img.raycastPadding = new Vector4(-35f, -35f, -35f, -35f);   // easy to grab with a finger
                 var part = img.gameObject.AddComponent<WorkshopPart>();
                 part.workshop = this;
                 part.partName = name;
@@ -299,6 +301,8 @@ namespace Platformer.Survival
             ring.raycastTarget = false;
             if (left)
             {
+                t.raycastTarget = true;
+                t.raycastPadding = new Vector4(-25f, -25f, -25f, -25f);
                 var h = t.gameObject.AddComponent<WorkshopTerminal>();
                 h.workshop = this;
                 h.index = index;
