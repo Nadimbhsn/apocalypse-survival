@@ -24,11 +24,11 @@ namespace Platformer.Survival
                 UnlockType = SkinUnlockType.Free },
             new CompanionDef { Id = "nuit", Name = "Étienne de nuit", Description = "Repeint en acier bleu pour les traversées nocturnes. Son œil voit dans le noir.",
                 UnlockType = SkinUnlockType.Coins, CoinCost = 150 },
-            new CompanionDef { Id = "braise", Name = "Étienne braise", Description = "Une coque rouge sang récupérée sur une voiture de pompiers. Il a gardé la sirène.",
+            new CompanionDef { Id = "braise", Name = "Étienne braise", Description = "Une coque rouge, la couleur des ciels de la fin du monde.",
                 UnlockType = SkinUnlockType.Coins, CoinCost = 300 },
-            new CompanionDef { Id = "prototype", Name = "Le Prototype", Description = "La toute première version d'Étienne, blanche comme au premier jour à l'atelier.",
+            new CompanionDef { Id = "prototype", Name = "Le Prototype", Description = "La toute première version d'Étienne, blanche comme au sortir de l'atelier.",
                 UnlockType = SkinUnlockType.Ad },
-            new CompanionDef { Id = "dore", Name = "Étienne doré", Description = "Plaqué or par Valentine pendant une nuit sans sommeil. Le plus fier des robots.",
+            new CompanionDef { Id = "dore", Name = "Étienne doré", Description = "Plaqué or de la tête au rotor. Le plus fier des robots.",
                 UnlockType = SkinUnlockType.Coins, CoinCost = 800 },
         };
 
