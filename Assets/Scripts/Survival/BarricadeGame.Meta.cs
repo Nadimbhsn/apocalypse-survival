@@ -59,6 +59,13 @@ namespace Platformer.Survival
             set => PlayerPrefs.SetInt(K("runs"), value);
         }
 
+        /// <summary>The run left half-way, as JSON (empty when there is none).</summary>
+        public static string Run
+        {
+            get => PlayerPrefs.GetString(K("run"), "");
+            set => PlayerPrefs.SetString(K("run"), value ?? "");
+        }
+
         public static int TotalKills
         {
             get => PlayerPrefs.GetInt(K("kills"), 0);
@@ -92,7 +99,7 @@ namespace Platformer.Survival
                 grass = new Color(0.62f, 0.5f, 0.68f), lane = new Color(0.72f, 0.62f, 0.78f), fog = new Color(0.6f, 0.4f, 0.65f) },
         };
 
-        const int UnlockWave = 15;
+        const int UnlockWave = 10;
 
         // ---- the Forge -------------------------------------------------------------------
 

@@ -166,7 +166,9 @@ namespace Platformer.Survival
         float spawnTimer, spawnInterval, lastKillTime;
         float barricadeHp, barricadeMax;
         float molotovCooldown, volleyCooldown;
-        float runShards;
+        /// <summary>Éclats are paid as the run goes (waves held, kills, chests), not at the end: quitting loses none.</summary>
+        float shardCarry;
+        int shardsThisRun;
         int burstWaves;
         bool adPending, bossWave, bossSpawned;
         int selectedLane;
@@ -398,6 +400,8 @@ namespace Platformer.Survival
 
         protected override void OnEnter()
         {
+            // A record already good enough opens the next land (records made before the rule changed count too).
+            while (BarrSave.Unlocked < Lands.Length - 1 && BarrSave.Best(BarrSave.Unlocked) >= UnlockWave) BarrSave.Unlocked++;
             land = Mathf.Clamp(BarrSave.Region, 0, BarrSave.Unlocked);
             MillCatchUp();
             ApplyLayout();
@@ -662,7 +666,8 @@ namespace Platformer.Survival
             wave = 1;
             debris = 15 + 12 * ForgeLevel(Forge.StartDebris);
             kills = 0; bossesKilled = 0; streak = 0; bestStreak = 0;
-            runShards = 0f;
+            shardCarry = 0f;
+            shardsThisRun = 0;
             molotovCooldown = 0f; volleyCooldown = 0f;
             burstWaves = 0;
             adPending = false;
@@ -672,7 +677,9 @@ namespace Platformer.Survival
             HideScreens();
             gameUi.SetActive(true);
             BarrSave.Runs++;
+            ClearRunSave();
             EnterBuildPhase(first: true);
+            SaveRun();
         }
 
         // ---- phases --------------------------------------------------------------------
@@ -721,6 +728,7 @@ namespace Platformer.Survival
             barricadeHp = Mathf.Min(barricadeMax, barricadeHp + barricadeMax * 0.2f);
             RefreshPalisade();
             int held = wave;
+            int shards = AwardShards(held);
             if (held > BarrSave.Best(land)) BarrSave.SetBest(land, held);
             if (held > SaveSystem.BarricadeBestWave) SaveSystem.BarricadeBestWave = held;
             if (held >= UnlockWave && land == BarrSave.Unlocked && land < Lands.Length - 1)
@@ -735,11 +743,23 @@ namespace Platformer.Survival
             SaveSystem.Flush();
             Sfx.Milestone();
             RewardPopup.Show(new Vector3(Origin.x, Origin.y + 1f, 0f), 0, 0, bonus);
+            if (shards > 0) Fx.Text(new Vector3(Origin.x, Origin.y + 2f, 0f), $"+{shards} ÉCLATS", new Color(0.8f, 0.65f, 1f), 1.3f);
+            SaveRun();
             if (held % PerkEvery == 0 && OfferPerks()) return;
             EnterBuildPhase(first: false);
         }
 
-        int RunShardsNow => Mathf.RoundToInt(((wave - 1) * (wave - 1) * 0.5f + kills * 0.08f + runShards) * Lands[land].reward * ForgeBonus(Forge.Fortune, 0.05f));
+        /// <summary>Banks Éclats now (raw value before the land's and the Fortune's multipliers); returns how many.</summary>
+        int AwardShards(float raw)
+        {
+            shardCarry += raw * Lands[land].reward * ForgeBonus(Forge.Fortune, 0.05f);
+            int n = Mathf.FloorToInt(shardCarry);
+            if (n <= 0) return 0;
+            shardCarry -= n;
+            shardsThisRun += n;
+            BarrSave.Shards += n;
+            return n;
+        }
 
         void GameOver()
         {
@@ -751,8 +771,8 @@ namespace Platformer.Survival
             hintRoot.SetActive(false);
             touchZone?.Clear();
             int held = wave - 1;
-            int earned = Mathf.Max(held > 0 ? 1 : 0, RunShardsNow);
-            BarrSave.Shards += earned;
+            int earned = shardsThisRun;
+            ClearRunSave();
             BarrSave.TotalKills += kills;
             int materials = held / 2 + bossesKilled;
             if (materials > 0) SaveSystem.AddMaterials(materials);
@@ -1270,6 +1290,7 @@ namespace Platformer.Survival
                 ui.ShowBanner($"SÉRIE x{streak} !", "Les débris pleuvent", 1.2f);
                 Sfx.Milestone();
             }
+            AwardShards(0.1f);
             if (Perks(Perk.Leech) > 0) barricadeHp = Mathf.Min(barricadeMax, barricadeHp + Perks(Perk.Leech));
             Fx.Burst(pos, new Color(0.45f, 0.18f, 0.35f), e.kind == Foe.Colosse ? 26 : 12, 3.5f, 0.11f);
             RewardPopup.Show(pos, 0, 0, gain);
@@ -1283,12 +1304,11 @@ namespace Platformer.Survival
             if (e.boss)
             {
                 // The chest: Éclats for the Forge, débris for the run.
-                float chest = 5f + wave * 0.5f;
-                runShards += chest;
+                int chest = AwardShards(5f + wave * 0.5f);
                 debris += 20;
                 Fx.Burst(pos, ApogeeTheme.Gold, 40, 6f, 0.14f, 0f);
                 Fx.Text(pos + Vector3.up * 0.8f, "COFFRE !", ApogeeTheme.Gold, 1.4f);
-                ui.ShowBanner("COFFRE !", $"+{Mathf.RoundToInt(chest * Lands[land].reward)} [e] en fin de partie   ·   +20 [d]", 2f);
+                ui.ShowBanner("COFFRE !", $"+{chest} [e]   ·   +20 [d]", 2f);
                 Fx.Shake(0.4f, 0.3f);
             }
 
@@ -1472,7 +1492,7 @@ namespace Platformer.Survival
             waveText.text = phase == Phase.Build ? $"AVANT LA VAGUE {wave}" : $"VAGUE {wave}";
             landText.text = $"{Lands[land].name}   ·   record {BarrSave.Best(land)}";
             debrisChip.text = $"{debris} [d]";
-            shardChip.text = $"{BarrSave.Shards} [e]  +{RunShardsNow}";
+            shardChip.text = shardsThisRun > 0 ? $"{BarrSave.Shards} [e]  (+{shardsThisRun})" : $"{BarrSave.Shards} [e]";
             float f = barricadeMax > 0f ? barricadeHp / barricadeMax : 0f;
             barricadeFill.fillAmount = f;
             barricadeFill.color = f > 0.5f ? new Color(0.86f, 0.55f, 0.22f) : f > 0.25f ? new Color(0.95f, 0.4f, 0.15f) : new Color(0.9f, 0.18f, 0.12f);

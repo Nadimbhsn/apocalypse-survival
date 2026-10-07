@@ -14,6 +14,8 @@ namespace Platformer.Survival
     public partial class BarricadeGame
     {
         GameObject menuPanel, forgePanel, perkPanel, overPanel;
+        Text playLabel;
+        Button newRunButton;
         Text landName, landSub, landStats, landBest, landLock;
         IconText menuShards, millLabel, forgeShards;
         Button playButton, prevLand, nextLand, millButton;
@@ -86,12 +88,20 @@ namespace Platformer.Survival
             prevLand = UiKit.CreateButton("Prev", m, "‹", new Vector2(0.0f, 0.53f), new Vector2(0.1f, 0.62f), () => ChangeLand(-1), 60, new Color(0.22f, 0.10f, 0.08f));
             nextLand = UiKit.CreateButton("Next", m, "›", new Vector2(0.9f, 0.53f), new Vector2(1f, 0.62f), () => ChangeLand(1), 60, new Color(0.22f, 0.10f, 0.08f));
 
-            playButton = GoldButton(m, "Play", "DÉFENDRE", new Vector2(0.12f, 0.3f), new Vector2(0.88f, 0.39f), () => { if (land <= BarrSave.Unlocked) StartRun(); }, 48);
+            playButton = GoldButton(m, "Play", "DÉFENDRE", new Vector2(0.12f, 0.3f), new Vector2(0.88f, 0.39f), OnPlay, 44);
+            playLabel = playButton.GetComponentInChildren<Text>();
+            newRunButton = UiKit.CreateButton("NewRun", m, "NOUVELLE PARTIE", new Vector2(0.25f, 0.395f), new Vector2(0.75f, 0.425f), () => { if (land <= BarrSave.Unlocked) StartRun(); }, 22, new Color(0.22f, 0.10f, 0.08f));
             UiKit.CreateButton("Forge", m, "LA FORGE", new Vector2(0.08f, 0.19f), new Vector2(0.49f, 0.27f), () => ShowForge(false), 30, new Color(0.45f, 0.22f, 0.1f));
             millButton = UiKit.CreateButton("Mill", m, "", new Vector2(0.51f, 0.19f), new Vector2(0.92f, 0.27f), CollectMill, 24, new Color(0.22f, 0.40f, 0.24f));
             millLabel = IconText.OnButton(millButton, 24);
             UiKit.CreateButton("Back", m, "RETOUR", new Vector2(0.3f, 0.07f), new Vector2(0.7f, 0.14f), ReturnToHub, 28, new Color(0.22f, 0.10f, 0.08f));
             menuPanel.SetActive(false);
+        }
+
+        void OnPlay()
+        {
+            if (LoadRunSave() != null) { ResumeRun(); return; }
+            if (land <= BarrSave.Unlocked) StartRun();
         }
 
         void ShowMenu()
@@ -125,8 +135,13 @@ namespace Platformer.Survival
             landStats.text = $"{L.lanes} couloirs   ·   morts x{L.hp:0.#}   ·   éclats x{L.reward:0.#}";
             int best = BarrSave.Best(land);
             landBest.text = open ? (best > 0 ? $"Record : vague {best}" : "Aucune vague tenue ici") : "";
-            landLock.text = open ? "" : $"VERROUILLÉ\nTiens la vague {UnlockWave} dans « {Lands[land - 1].name} »";
-            playButton.interactable = open;
+            landLock.text = open ? "" : $"VERROUILLÉ\nTiens la vague {UnlockWave} dans « {Lands[land - 1].name} »  (ton record : {BarrSave.Best(land - 1)})";
+            var saved = LoadRunSave();
+            bool resume = saved != null;
+            playLabel.text = resume ? $"REPRENDRE  ·  VAGUE {saved.wave}" : "DÉFENDRE";
+            playButton.interactable = resume || open;
+            newRunButton.gameObject.SetActive(resume && open);
+            if (resume && saved.land != land) playLabel.text = $"REPRENDRE ({Lands[Mathf.Clamp(saved.land, 0, Lands.Length - 1)].name})";
             prevLand.interactable = land > 0;
             nextLand.interactable = land < Lands.Length - 1;
             menuShards.text = $"{BarrSave.Shards} [e]";
@@ -352,6 +367,76 @@ namespace Platformer.Survival
                 hudTimer -= Time.deltaTime;
                 if (hudTimer <= 0f) { hudTimer = 1f; RefreshMillLabel(); }
             }
+        }
+
+        // ---- the run kept between two sessions ------------------------------------------------
+
+        [Serializable]
+        class RunSave
+        {
+            public int land, wave, debris, kills, bosses, bestStreak, burst, shards;
+            public float hp, max, carry;
+            public int[] levels;
+            public int[] perks;
+        }
+
+        /// <summary>Snapshot taken at the start of each build phase: leaving mid-wave replays that wave.</summary>
+        void SaveRun()
+        {
+            var r = new RunSave
+            {
+                land = land, wave = wave, debris = debris, kills = kills, bosses = bossesKilled, bestStreak = bestStreak,
+                burst = burstWaves, shards = shardsThisRun, hp = barricadeHp, max = barricadeMax, carry = shardCarry,
+                levels = new int[MaxLanes * 4], perks = (int[])perks.Clone(),
+            };
+            for (int l = 0; l < MaxLanes; l++)
+                for (int d = 0; d < 4; d++) r.levels[l * 4 + d] = lanes[l].level[d];
+            BarrSave.Run = JsonUtility.ToJson(r);
+            SaveSystem.Flush();
+        }
+
+        static RunSave LoadRunSave()
+        {
+            string json = BarrSave.Run;
+            if (string.IsNullOrEmpty(json)) return null;
+            try { return JsonUtility.FromJson<RunSave>(json); }
+            catch (Exception) { return null; }
+        }
+
+        static void ClearRunSave()
+        {
+            BarrSave.Run = "";
+            SaveSystem.Flush();
+        }
+
+        void ResumeRun()
+        {
+            var r = LoadRunSave();
+            if (r == null) return;
+            StopAllCoroutines();
+            land = Mathf.Clamp(r.land, 0, Lands.Length - 1);
+            ApplyLayout();
+            for (int l = 0; l < MaxLanes; l++)
+            {
+                Array.Clear(lanes[l].disabled, 0, 4);
+                for (int d = 0; d < 4; d++)
+                    lanes[l].level[d] = r.levels != null && r.levels.Length > l * 4 + d ? Mathf.Clamp(r.levels[l * 4 + d], 0, MaxLevel) : 0;
+                lanes[l].turretTimer = 0f;
+            }
+            for (int l = 0; l < laneCount; l++) RefreshLaneVisual(l);
+            Array.Clear(perks, 0, perks.Length);
+            if (r.perks != null) for (int i = 0; i < Mathf.Min(perks.Length, r.perks.Length); i++) perks[i] = r.perks[i];
+            wave = Mathf.Max(1, r.wave);
+            debris = r.debris; kills = r.kills; bossesKilled = r.bosses; bestStreak = r.bestStreak; streak = 0;
+            burstWaves = r.burst; shardsThisRun = r.shards; shardCarry = r.carry;
+            barricadeMax = Mathf.Max(1f, r.max); barricadeHp = Mathf.Clamp(r.hp, 1f, barricadeMax);
+            molotovCooldown = 0f; volleyCooldown = 0f; adPending = false;
+            palisadeState = -1;
+            RefreshPalisade();
+            HideScreens();
+            gameUi.SetActive(true);
+            EnterBuildPhase(first: false);
+            messageText.text = $"Partie reprise : vague {wave}";
         }
 
         // ---- the Mill -------------------------------------------------------------------------
