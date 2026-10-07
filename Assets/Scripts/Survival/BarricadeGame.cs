@@ -99,16 +99,23 @@ namespace Platformer.Survival
             public readonly List<Enemy> hit = new();
         }
 
+        /// <summary>A lane holds all three defences at once, each at its own level (0 = not built).</summary>
         class Lane
         {
-            public Def def;
-            public int level;
-            public bool disabled;
+            public readonly int[] level = new int[4];
+            public readonly bool[] disabled = new bool[4];
             public float turretTimer;
             public GameObject visual;
-            public SpriteRenderer defSr, ringSr;
-            public readonly List<SpriteRenderer> pips = new();
+            public readonly SpriteRenderer[] defSr = new SpriteRenderer[4], ringSr = new SpriteRenderer[4];
+            public readonly List<SpriteRenderer>[] pips = { new(), new(), new(), new() };
+            public bool Has(Def d) => level[(int)d] > 0;
+            public bool Active(Def d) => level[(int)d] > 0 && !disabled[(int)d];
+            public int Level(Def d) => level[(int)d];
         }
+
+        /// <summary>Where each defence stands in its lane: the fire at the top, the stakes low, the ballista to the side.</summary>
+        static float SlotY(Def d) => d switch { Def.Brasier => 0.6f, Def.Arbalete => -0.55f, _ => DefY };
+        float SlotX(Def d) => d == Def.Arbalete ? spacing * 0.3f : 0f;
 
         // ---- tuning --------------------------------------------------------------------
         const int MaxLevel = 5;
@@ -177,12 +184,8 @@ namespace Platformer.Survival
         Image barricadeFill, molotovFill, volleyFill;
         Button launchButton, molotovButton, volleyButton, repairButton, burstButton;
         IconText repairLabel, burstLabel;
-        GameObject sheet, emptyCards, builtCard, hintRoot;
-        readonly (Button button, Text name, IconText cost)[] choice = new (Button, Text, IconText)[3];
-        Image builtIcon;
-        Text builtLevel, builtBlurb;
-        Button upgradeButton, sellButton;
-        IconText upgradeLabel, sellLabel;
+        GameObject sheet, hintRoot;
+        readonly (Button button, Text name, IconText cost, Image icon, Text level)[] choice = new (Button, Text, IconText, Image, Text)[3];
 
         static readonly Dictionary<string, Sprite> art = new();
         static readonly Dictionary<string, Sprite[]> sheets = new();
@@ -313,33 +316,20 @@ namespace Platformer.Survival
             sheetInfo = UiKit.CreateText("Info", sh, "", 22, TextAnchor.MiddleLeft, new Vector2(0.05f, 0.78f), new Vector2(0.95f, 0.86f), ApogeeTheme.Cream);
             UiKit.FitLabel(sheetInfo, 22);
 
-            var cards = UiKit.CreateRect("Choices", sh, new Vector2(0.03f, 0.27f), new Vector2(0.97f, 0.77f));
-            emptyCards = cards.gameObject;
+            var cards = UiKit.CreateRect("Choices", sh, new Vector2(0.03f, 0.25f), new Vector2(0.97f, 0.77f));
             for (int i = 0; i < 3; i++)
             {
                 var kind = (Def)(i + 1);
                 float x0 = i / 3f + 0.01f, x1 = (i + 1) / 3f - 0.01f;
-                var b = UiKit.CreateButton($"Choice_{i}", cards, "", new Vector2(x0, 0f), new Vector2(x1, 1f), () => Build(selectedLane, kind), 20, UiKit.CardColor);
-                var icon = UiKit.CreateImage("Icon", b.transform, new Vector2(0.12f, 0.36f), new Vector2(0.88f, 0.97f), Art($"def_{DefArt[(int)kind]}_0", new Vector2(0.5f, 0.5f)), Color.white);
+                var b = UiKit.CreateButton($"Choice_{i}", cards, "", new Vector2(x0, 0f), new Vector2(x1, 1f), () => BuildOrUpgrade(selectedLane, kind), 20, UiKit.CardColor);
+                var icon = UiKit.CreateImage("Icon", b.transform, new Vector2(0.14f, 0.42f), new Vector2(0.86f, 0.97f), Art($"def_{DefArt[(int)kind]}_0", new Vector2(0.5f, 0.5f)), Color.white);
                 icon.raycastTarget = false;
-                var name = UiKit.Outlined(UiKit.CreateText("Name", b.transform, DefNames[(int)kind], 24, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.2f), new Vector2(0.97f, 0.38f), ApogeeTheme.Cream), 1.5f);
+                var name = UiKit.Outlined(UiKit.CreateText("Name", b.transform, DefNames[(int)kind], 24, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.3f), new Vector2(0.97f, 0.44f), ApogeeTheme.Cream), 1.5f);
                 UiKit.FitLabel(name, 24);
-                var cost = IconText.Create("Cost", b.transform, "", 24, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.02f), new Vector2(0.97f, 0.2f), ApogeeTheme.Gold, 1.5f);
-                choice[i] = (b, name, cost);
+                var level = UiKit.Outlined(UiKit.CreateText("Level", b.transform, "", 20, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.18f), new Vector2(0.97f, 0.3f), ApogeeTheme.Gold), 1.2f);
+                var cost = IconText.Create("Cost", b.transform, "", 22, TextAnchor.MiddleCenter, new Vector2(0.03f, 0.02f), new Vector2(0.97f, 0.18f), ApogeeTheme.Gold, 1.5f);
+                choice[i] = (b, name, cost, icon, level);
             }
-
-            var built = UiKit.CreateRect("Built", sh, new Vector2(0.03f, 0.27f), new Vector2(0.97f, 0.77f));
-            builtCard = built.gameObject;
-            builtIcon = UiKit.CreateImage("Icon", built, new Vector2(0f, 0f), new Vector2(0.34f, 1f), null, Color.white);
-            builtIcon.raycastTarget = false;
-            builtLevel = UiKit.Outlined(UiKit.CreateText("Level", built, "", 30, TextAnchor.MiddleLeft, new Vector2(0.37f, 0.72f), new Vector2(1f, 1f), ApogeeTheme.Gold), 1.5f);
-            UiKit.FitLabel(builtLevel, 30);
-            builtBlurb = UiKit.CreateText("Blurb", built, "", 22, TextAnchor.UpperLeft, new Vector2(0.37f, 0.42f), new Vector2(1f, 0.72f), ApogeeTheme.Cream);
-            UiKit.FitLabel(builtBlurb, 22);
-            upgradeButton = UiKit.CreateButton("Upgrade", built, "", new Vector2(0.37f, 0.02f), new Vector2(0.74f, 0.38f), () => Upgrade(selectedLane), 22);
-            upgradeLabel = IconText.OnButton(upgradeButton, 24);
-            sellButton = UiKit.CreateButton("Sell", built, "", new Vector2(0.76f, 0.02f), new Vector2(1f, 0.38f), () => Sell(selectedLane), 20, new Color(0.3f, 0.16f, 0.12f));
-            sellLabel = IconText.OnButton(sellButton, 20);
 
             repairButton = UiKit.CreateButton("Repair", sh, "", new Vector2(0.03f, 0.04f), new Vector2(0.495f, 0.22f), Repair, 20, new Color(0.25f, 0.38f, 0.2f));
             repairLabel = IconText.OnButton(repairButton, 20);
@@ -439,7 +429,7 @@ namespace Platformer.Survival
             ClearUnits();
             if (root != null) Destroy(root.gameObject);
             laneCount = Lands[land].lanes;
-            for (int l = 0; l < MaxLanes; l++) { lanes[l].visual = null; lanes[l].pips.Clear(); }
+            for (int l = 0; l < MaxLanes; l++) { lanes[l].visual = null; foreach (var list in lanes[l].pips) list.Clear(); }
             spacing = SpacingFor(laneCount);
             TakeOverCamera(new Vector3(Origin.x, Origin.y + CamY, -10f), CameraOrtho, new Color(0.3f, 0.12f, 0.16f), FieldWidth + 0.8f);
             float ortho = cam != null ? cam.orthographicSize : CameraOrtho;
@@ -568,35 +558,47 @@ namespace Platformer.Survival
             holder.SetParent(root, false);
             holder.position = new Vector3(Origin.x + x, Origin.y + DefY, 0f);
             lane.visual = holder.gameObject;
-            int order = DepthOrder(DefY);
-            var pad = Place("Pad", Art("pad", new Vector2(0.5f, 0.5f), 256f / (spacing * 0.95f)), new Vector2(x, DefY - 0.25f), order - 2, holder);
-            pad.color = new Color(1f, 1f, 1f, 0.9f);
-            lane.ringSr = Place("Ring", Art("ring", new Vector2(0.5f, 0.5f), 256f / (spacing * 0.95f)), new Vector2(x, DefY - 0.25f), order - 1, holder);
-            lane.defSr = Place("Defence", null, new Vector2(x, DefY - 0.5f), order, holder);
-            lane.defSr.transform.localScale = Vector3.one * LaneScale;
-            for (int k = 0; k < MaxLevel; k++)
+            for (int d = 1; d <= 3; d++)
             {
-                var pip = Place($"Pip_{k}", PlaceholderVisuals.Star(), new Vector2(x + (k - 2) * 0.2f * LaneScale, DefY - 0.72f), order + 1, holder);
-                pip.transform.localScale = Vector3.one * 0.17f * LaneScale;
-                lane.pips.Add(pip);
+                var def = (Def)d;
+                float sx = x + SlotX(def), sy = SlotY(def);
+                float k = def == Def.Arbalete ? 0.7f : 1f;
+                int order = DepthOrder(sy);
+                var pad = Place("Pad", Art("pad", new Vector2(0.5f, 0.5f), 256f / (spacing * 0.8f * k)), new Vector2(sx, sy - 0.25f), order - 2, holder);
+                pad.color = new Color(1f, 1f, 1f, 0.85f);
+                lane.ringSr[d] = Place("Ring", Art("ring", new Vector2(0.5f, 0.5f), 256f / (spacing * 0.8f * k)), new Vector2(sx, sy - 0.25f), order - 1, holder);
+                lane.defSr[d] = Place("Defence", null, new Vector2(sx, sy - 0.5f), order, holder);
+                lane.defSr[d].transform.localScale = Vector3.one * LaneScale * k * 0.9f;
+                for (int p = 0; p < MaxLevel; p++)
+                {
+                    var pip = Place($"Pip_{p}", PlaceholderVisuals.Star(), new Vector2(sx + (p - 2) * 0.17f * LaneScale * k, sy - 0.66f), order + 1, holder);
+                    pip.transform.localScale = Vector3.one * 0.15f * LaneScale * k;
+                    lane.pips[d].Add(pip);
+                }
             }
         }
 
         void RefreshLaneVisual(int l)
         {
             var lane = lanes[l];
-            if (lane.defSr == null) return;
-            if (lane.def == Def.None) lane.defSr.sprite = null;
-            else
+            for (int d = 1; d <= 3; d++)
             {
-                int tier = lane.level >= 5 ? 2 : lane.level >= 3 ? 1 : 0;
-                lane.defSr.sprite = Art($"def_{DefArt[(int)lane.def]}_{tier}", new Vector2(0.5f, 0.06f), 256f / 1.5f);
-            }
-            lane.defSr.color = lane.disabled ? new Color(0.35f, 0.32f, 0.36f, 0.9f) : Color.white;
-            for (int k = 0; k < lane.pips.Count; k++)
-            {
-                lane.pips[k].gameObject.SetActive(lane.def != Def.None);
-                lane.pips[k].color = k < lane.level ? ApogeeTheme.Gold : new Color(0.25f, 0.15f, 0.12f, 0.8f);
+                var sr = lane.defSr[d];
+                if (sr == null) continue;
+                int level = lane.level[d];
+                if (level <= 0) sr.sprite = null;
+                else
+                {
+                    int tier = level >= 5 ? 2 : level >= 3 ? 1 : 0;
+                    sr.sprite = Art($"def_{DefArt[d]}_{tier}", new Vector2(0.5f, 0.06f), 256f / 1.5f);
+                }
+                sr.color = lane.disabled[d] ? new Color(0.35f, 0.32f, 0.36f, 0.9f) : Color.white;
+                var pips = lane.pips[d];
+                for (int k = 0; k < pips.Count; k++)
+                {
+                    pips[k].gameObject.SetActive(level > 0);
+                    pips[k].color = k < level ? ApogeeTheme.Gold : new Color(0.25f, 0.15f, 0.12f, 0.8f);
+                }
             }
         }
 
@@ -651,7 +653,7 @@ namespace Platformer.Survival
             ApplyLayout();
             for (int l = 0; l < MaxLanes; l++)
             {
-                lanes[l].def = Def.None; lanes[l].level = 0; lanes[l].disabled = false;
+                Array.Clear(lanes[l].level, 0, 4); Array.Clear(lanes[l].disabled, 0, 4);
                 lanes[l].turretTimer = 0f; laneFireCooldown[l] = 0f;
             }
             for (int l = 0; l < laneCount; l++) RefreshLaneVisual(l);
@@ -685,7 +687,7 @@ namespace Platformer.Survival
             hintRoot.SetActive(false);
             streakText.text = "";
             if (laneHighlight != null) laneHighlight.SetActive(true);
-            messageText.text = first ? "Touche un couloir pour y bâtir une défense" : $"Vague {wave - 1} repoussée !";
+            messageText.text = first ? "Touche un couloir pour y bâtir tes défenses" : $"Vague {wave - 1} repoussée !";
             SelectLane(selectedLane);
             RefreshHud();
         }
@@ -729,7 +731,7 @@ namespace Platformer.Survival
             wave++;
             if (burstWaves > 0) burstWaves--;
             for (int l = 0; l < laneCount; l++)
-                if (lanes[l].disabled) { lanes[l].disabled = false; RefreshLaneVisual(l); }
+            { Array.Clear(lanes[l].disabled, 0, 4); RefreshLaneVisual(l); }
             SaveSystem.Flush();
             Sfx.Milestone();
             RewardPopup.Show(new Vector3(Origin.x, Origin.y + 1f, 0f), 0, 0, bonus);
@@ -806,12 +808,17 @@ namespace Platformer.Survival
             for (int l = 0; l < laneCount; l++)
             {
                 var lane = lanes[l];
-                if (lane.ringSr == null) continue;
                 bool build = phase == Phase.Build;
-                lane.ringSr.enabled = build || lane.def == Def.None;
-                lane.ringSr.color = l == selectedLane && build
-                    ? new Color(1f, 0.85f, 0.4f, 0.6f + 0.4f * pulse)
-                    : new Color(1f, 1f, 1f, lane.def == Def.None ? 0.25f + 0.25f * pulse : 0.3f);
+                for (int d = 1; d <= 3; d++)
+                {
+                    var ring = lane.ringSr[d];
+                    if (ring == null) continue;
+                    bool empty = lane.level[d] <= 0;
+                    ring.enabled = build && (empty || l == selectedLane);
+                    ring.color = l == selectedLane
+                        ? new Color(1f, 0.85f, 0.4f, 0.55f + 0.4f * pulse)
+                        : new Color(1f, 1f, 1f, 0.2f + 0.2f * pulse);
+                }
             }
             if (laneHighlight != null && laneHighlight.activeSelf)
             {
@@ -981,40 +988,45 @@ namespace Platformer.Survival
                     }
                 }
 
-                bool inZone = e.y < DefY + ZoneUp && e.y > DefY - ZoneDown;
                 float slow = Time.time < e.slowUntil ? 0.25f : 0f;
-                if (inZone && lane.def != Def.None)
+                // The wreckers knock out the first defence they reach (the saboteur also takes a level off it).
+                if ((e.kind == Foe.Colosse || e.kind == Foe.Saboteur) && !e.smashed)
                 {
-                    if ((e.kind == Foe.Colosse || e.kind == Foe.Saboteur) && !e.smashed && !lane.disabled)
+                    foreach (var d in new[] { Def.Brasier, Def.Arbalete, Def.Pieux })
                     {
+                        if (!lane.Active(d) || Mathf.Abs(e.y - SlotY(d)) > 0.4f) continue;
                         e.smashed = true;
-                        lane.disabled = true;
-                        if (e.kind == Foe.Saboteur && lane.level > 1) lane.level--;
+                        lane.disabled[(int)d] = true;
+                        if (e.kind == Foe.Saboteur && lane.level[(int)d] > 1) lane.level[(int)d]--;
                         RefreshLaneVisual(e.lane);
-                        var at = new Vector3(LaneX(e.lane), Origin.y + DefY, 0f);
+                        var at = new Vector3(LaneX(e.lane) + SlotX(d), Origin.y + SlotY(d), 0f);
                         Fx.Burst(at, new Color(0.5f, 0.45f, 0.45f), 26, 4.5f, 0.12f, 0.4f);
                         Fx.Shake(0.3f, 0.25f);
-                        Fx.Text(at + Vector3.up * 1f, e.kind == Foe.Saboteur ? $"{DefNames[(int)lane.def]} saboté !" : $"{DefNames[(int)lane.def]} hors service !",
+                        Fx.Text(at + Vector3.up * 1f, e.kind == Foe.Saboteur ? $"{DefNames[(int)d]} saboté !" : $"{DefNames[(int)d]} hors service !",
                             new Color(1f, 0.45f, 0.3f), 1.2f);
                         Sfx.Kill();
+                        break;
                     }
-                    if (!lane.disabled && !e.Flies)
+                }
+                if (!e.Flies)
+                {
+                    bool inStakes = e.y < SlotY(Def.Pieux) + ZoneUp && e.y > SlotY(Def.Pieux) - ZoneDown;
+                    bool inFire = e.y < SlotY(Def.Brasier) + ZoneUp && e.y > SlotY(Def.Brasier) - ZoneDown;
+                    if (inStakes && lane.Active(Def.Pieux))
                     {
-                        if (lane.def == Def.Pieux)
+                        int lv = lane.Level(Def.Pieux);
+                        slow = Mathf.Max(slow, 0.2f);
+                        e.trapTick -= dt;
+                        if (e.trapTick <= 0f)
                         {
-                            slow = Mathf.Max(slow, 0.2f);
-                            e.trapTick -= dt;
-                            if (e.trapTick <= 0f)
-                            {
-                                e.trapTick = 0.7f;
-                                Damage(e, 0.9f * lane.level * ForgeBonus(Forge.Pieux, 0.1f) * (e.kind == Foe.Colosse ? 0.5f : 1f), true);
-                                if (e.hp <= 0f) continue;
-                                if (Perks(Perk.Venom) > 0 && e.burn <= 0.5f) Ignite(e, 0.4f * lane.level);
-                            }
+                            e.trapTick = 0.7f;
+                            Damage(e, 0.9f * lv * ForgeBonus(Forge.Pieux, 0.1f) * (e.kind == Foe.Colosse ? 0.5f : 1f), true);
+                            if (e.hp <= 0f) continue;
+                            if (Perks(Perk.Venom) > 0 && e.burn <= 0.5f) Ignite(e, 0.4f * lv);
                         }
-                        else if (lane.def == Def.Brasier && e.burn <= 0.5f)
-                            Ignite(e, 0.55f * lane.level * ForgeBonus(Forge.Brasier, 0.1f) * (e.kind == Foe.Colosse ? 0.5f : 1f));
                     }
+                    if (inFire && lane.Active(Def.Brasier) && e.burn <= 0.5f)
+                        Ignite(e, 0.55f * lane.Level(Def.Brasier) * ForgeBonus(Forge.Brasier, 0.1f) * (e.kind == Foe.Colosse ? 0.5f : 1f));
                 }
 
                 // The Necromancer stops mid-lane and raises the dead.
@@ -1109,12 +1121,14 @@ namespace Platformer.Survival
             for (int l = 0; l < laneCount; l++)
             {
                 var lane = lanes[l];
-                if (lane.def != Def.Arbalete || lane.disabled) continue;
+                if (!lane.Active(Def.Arbalete)) continue;
                 lane.turretTimer -= dt;
                 if (lane.turretTimer > 0f) continue;
-                if (FirstInLane(l, DefY) == null) continue;
-                lane.turretTimer = 1.25f / ((1f + 0.4f * (lane.level - 1)) * (1f + 0.35f * Perks(Perk.QuickBow)));
-                FireShot(l, DefY + 0.9f, (1f + 0.6f * (lane.level - 1)) * ForgeBonus(Forge.Arbalete, 0.1f), false, true);
+                float from = SlotY(Def.Arbalete);
+                if (FirstInLane(l, from) == null) continue;
+                int lv = lane.Level(Def.Arbalete);
+                lane.turretTimer = 1.25f / ((1f + 0.4f * (lv - 1)) * (1f + 0.35f * Perks(Perk.QuickBow)));
+                FireShot(l, from + 0.9f, (1f + 0.6f * (lv - 1)) * ForgeBonus(Forge.Arbalete, 0.1f), false, true);
             }
         }
 
@@ -1353,46 +1367,24 @@ namespace Platformer.Survival
             RefreshSheet();
         }
 
-        void Build(int l, Def def)
+        /// <summary>Builds the defence in this lane, or raises it a level if it is already there.</summary>
+        void BuildOrUpgrade(int l, Def def)
         {
             if (phase != Phase.Build) return;
             var lane = lanes[l];
-            if (lane.def != Def.None) return;
-            int cost = CostOf(def, 1);
+            int level = lane.Level(def);
+            if (level >= MaxLevel) return;
+            int cost = CostOf(def, level + 1);
             if (debris < cost) { Deny(); return; }
             debris -= cost;
-            lane.def = def;
-            lane.level = 1;
-            AfterChange(l, $"{DefNames[(int)def]} bâti !");
+            lane.level[(int)def] = level + 1;
+            AfterChange(l, level == 0 ? $"{DefNames[(int)def]} bâti !" : $"{DefNames[(int)def]} niveau {level + 1} !", def);
         }
 
-        void Upgrade(int l)
-        {
-            if (phase != Phase.Build) return;
-            var lane = lanes[l];
-            if (lane.def == Def.None || lane.level >= MaxLevel) return;
-            int cost = CostOf(lane.def, lane.level + 1);
-            if (debris < cost) { Deny(); return; }
-            debris -= cost;
-            lane.level++;
-            AfterChange(l, $"Niveau {lane.level} !");
-        }
-
-        void Sell(int l)
-        {
-            if (phase != Phase.Build) return;
-            var lane = lanes[l];
-            if (lane.def == Def.None) return;
-            debris += InvestedIn(lane.def, lane.level) / 2;
-            lane.def = Def.None;
-            lane.level = 0;
-            AfterChange(l, "Défense vendue");
-        }
-
-        void AfterChange(int l, string cheer)
+        void AfterChange(int l, string cheer, Def def)
         {
             RefreshLaneVisual(l);
-            var at = new Vector3(LaneX(l), Origin.y + DefY, 0f);
+            var at = new Vector3(LaneX(l) + SlotX(def), Origin.y + SlotY(def), 0f);
             Fx.Burst(at, ApogeeTheme.Gold, 20, 3.5f, 0.1f, 0.3f);
             Fx.Text(at + Vector3.up * 1.2f, cheer, ApogeeTheme.Gold, 1f);
             Sfx.Material();
@@ -1450,32 +1442,19 @@ namespace Platformer.Survival
             if (sheet == null || !sheet.activeInHierarchy) return;
             var lane = lanes[selectedLane];
             sheetTitle.text = $"COULOIR {selectedLane + 1}";
-            bool empty = lane.def == Def.None;
-            emptyCards.SetActive(empty);
-            builtCard.SetActive(!empty);
-            if (empty)
+            sheetInfo.text = "Bâtis et améliore ses trois défenses : elles se cumulent";
+            for (int i = 0; i < 3; i++)
             {
-                sheetInfo.text = "Choisis une défense pour ce couloir";
-                for (int i = 0; i < 3; i++)
-                {
-                    int cost = CostOf((Def)(i + 1), 1);
-                    choice[i].cost.text = $"{cost} [d]";
-                    choice[i].button.interactable = debris >= cost;
-                }
-            }
-            else
-            {
-                sheetInfo.text = DefBlurb[(int)lane.def];
-                int tier = lane.level >= 5 ? 2 : lane.level >= 3 ? 1 : 0;
-                builtIcon.sprite = Art($"def_{DefArt[(int)lane.def]}_{tier}", new Vector2(0.5f, 0.5f));
-                builtIcon.preserveAspect = true;
-                builtLevel.text = $"{DefNames[(int)lane.def].ToUpperInvariant()}   niv. {lane.level}/{MaxLevel}";
-                builtBlurb.text = lane.level >= MaxLevel ? "Au maximum !" : $"Niveau {lane.level + 1} : plus fort, plus rapide";
-                bool maxed = lane.level >= MaxLevel;
-                int cost = maxed ? 0 : CostOf(lane.def, lane.level + 1);
-                upgradeLabel.text = maxed ? "MAXIMUM" : $"AMÉLIORER  {cost} [d]";
-                upgradeButton.interactable = !maxed && debris >= cost;
-                sellLabel.text = $"VENDRE  +{InvestedIn(lane.def, lane.level) / 2} [d]";
+                var def = (Def)(i + 1);
+                int level = lane.Level(def);
+                bool maxed = level >= MaxLevel;
+                int cost = maxed ? 0 : CostOf(def, level + 1);
+                int tier = level >= 5 ? 2 : level >= 3 ? 1 : 0;
+                choice[i].icon.sprite = Art($"def_{DefArt[i + 1]}_{tier}", new Vector2(0.5f, 0.5f));
+                choice[i].icon.color = level > 0 ? Color.white : new Color(1f, 1f, 1f, 0.55f);
+                choice[i].level.text = level > 0 ? $"niv. {level}/{MaxLevel}" : "à bâtir";
+                choice[i].cost.text = maxed ? "MAX" : level == 0 ? $"BÂTIR {cost} [d]" : $"+1 : {cost} [d]";
+                choice[i].button.interactable = !maxed && debris >= cost;
             }
             bool hurt = barricadeHp < barricadeMax - 0.5f;
             repairLabel.text = hurt ? $"RÉPARER  {RepairCost} [d]" : "PALISSADE OK";
