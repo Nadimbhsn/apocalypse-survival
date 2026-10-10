@@ -38,6 +38,8 @@ namespace Platformer.Survival
         Zone[] zones;
         readonly List<Door> doors = new();
         readonly List<Rect> walls = new();
+        /// <summary>The walls that stop bullets and sight: brick and metal, not the chain-link fences.</summary>
+        readonly List<Rect> sightWalls = new();
         readonly List<Rect> obstacles = new();
         readonly List<(SpriteRenderer sr, int zone)> lights = new();
         readonly List<(SpriteRenderer sr, int zone)> loots = new();
@@ -177,7 +179,7 @@ namespace Platformer.Survival
             foes.Clear();
             foreach (var s in shots) if (s.T != null) Destroy(s.T.gameObject);
             shots.Clear();
-            foreach (var t in turrets) if (t.Base != null) Destroy(t.Base.transform.parent.gameObject);
+            foreach (var t in turrets) if (t.Base != null) Destroy(t.Base.gameObject);
             turrets.Clear();
             foreach (var m in meteors) { if (m.Shadow != null) Destroy(m.Shadow.gameObject); if (m.Rock != null) Destroy(m.Rock.gameObject); }
             meteors.Clear();
@@ -235,7 +237,7 @@ namespace Platformer.Survival
             if (root != null) Destroy(root.gameObject);
             root = new GameObject("NuitWorld").transform;
             zones ??= NewZones();
-            walls.Clear(); obstacles.Clear(); doors.Clear(); lights.Clear(); loots.Clear(); motes.Clear();
+            walls.Clear(); sightWalls.Clear(); obstacles.Clear(); doors.Clear(); lights.Clear(); loots.Clear(); motes.Clear();
 
             // ground, road, floors
             Floor("floor_ground", WorldBounds, -2000);
@@ -367,12 +369,14 @@ namespace Platformer.Survival
                     var sr = Put("Wall", Art("wall_h_" + kind, 0f), new Vector2((a + b) / 2f, at - 0.2f), Depth(at - 0.2f));
                     if (sr.sprite != null) { sr.drawMode = SpriteDrawMode.Tiled; sr.size = new Vector2(b - a, sr.sprite.bounds.size.y); }
                     walls.Add(new Rect(a, at - 0.2f, b - a, 0.4f));
+                    if (kind != "fence") sightWalls.Add(walls[walls.Count - 1]);
                 }
                 else
                 {
                     var sr = Put("Wall", Art("wall_v_" + kind, 0f), new Vector2(at, a - 0.2f), -1495);
                     if (sr.sprite != null) { sr.drawMode = SpriteDrawMode.Tiled; sr.size = new Vector2(0.4f, b - a + 1.2f); }
                     walls.Add(new Rect(at - 0.2f, a, 0.4f, b - a));
+                    if (kind != "fence") sightWalls.Add(walls[walls.Count - 1]);
                 }
             }
         }
@@ -444,10 +448,10 @@ namespace Platformer.Survival
             return new Vector2(p.x, box.yMax + r);
         }
 
-        /// <summary>True when nothing solid stands between two points (bullets and sight).</summary>
+        /// <summary>True when nothing solid stands between two points (bullets and sight go through the fences' mesh).</summary>
         bool Clear(Vector2 a, Vector2 b)
         {
-            foreach (var w in walls) if (SegHits(a, b, w)) return false;
+            foreach (var w in sightWalls) if (SegHits(a, b, w)) return false;
             foreach (var d in doors) if ((d.Intact || !zones[d.Zone].Open) && SegHits(a, b, DoorRect(d))) return false;
             for (int z = 1; z < zones.Length; z++) if (!zones[z].Open && SegHits(a, b, GateRect(zones[z]))) return false;
             return true;
@@ -555,6 +559,7 @@ namespace Platformer.Survival
             var g = Guns[gunIndex];
             fireTimer -= dt;
             var target = NearestFoe(heroPos + Vector2.up * 0.5f, g.Range * RangeMult, true);
+            aiming = target != null;
             if (target != null)
             {
                 aimDir = (target.Pos + Vector2.up * 0.45f * target.Scale - (heroPos + Vector2.up * 0.5f)).normalized;
@@ -805,7 +810,8 @@ namespace Platformer.Survival
             var frames = EnemySprite.Frames(def.sheet, 0f);
             var bodyGo = new GameObject("Body");
             bodyGo.transform.SetParent(go.transform, false);
-            float natural = def.sheet switch { "hound" => 0.8f, "brute" => 1.85f, "wisp" => 1.3f, _ => 1.25f };
+            // the painted bodies' real heights in their sheets (measured), so each one ends up def.height tall
+            float natural = def.sheet switch { "hound" => 1.04f, "brute" => 2.16f, "wisp" => 1.64f, _ => 1.77f };
             bodyGo.transform.localScale = Vector3.one * (def.height / natural);
             f.Sr = bodyGo.AddComponent<SpriteRenderer>();
             f.Frames = frames;
@@ -922,8 +928,11 @@ namespace Platformer.Survival
             if (z.GateHorizontal) into = new Vector2(0f, Mathf.Sign(into.y));
             else into = new Vector2(Mathf.Sign(into.x), 0f);
             var before = gate - into * 0.9f;
-            // line up with the opening first, then go through
-            return (f.Pos - before).sqrMagnitude < 0.5f ? gate + into * 1.2f : before;
+            // line up with the opening first, then walk straight through it
+            float lateral = z.GateHorizontal ? Mathf.Abs(f.Pos.x - gate.x) : Mathf.Abs(f.Pos.y - gate.y);
+            float depth = Vector2.Dot(f.Pos - gate, into);
+            bool lined = lateral < 0.75f && depth > -1.4f;
+            return lined ? gate + into * 1.6f : before;
         }
 
         void UpdateBoss(Foe f, float dt, ref Vector2 goal)
@@ -1214,13 +1223,17 @@ namespace Platformer.Survival
         void EndNight(bool died)
         {
             if (phase == Phase.Over || phase == Phase.Menu) return;
+            // waves fully held: the one being fought does not count, one already cleared does
+            int held = Mathf.Max(0, phase == Phase.Wave ? wave - 1 : wave);
             phase = Phase.Over;
+            anim = 0f;
+            aiming = false;
             EndEvent();
-            int score = Mathf.Max(0, (wave - 1) * 100 + kills * 5 + bosses * 300);
-            int coins = Mathf.Max(0, wave - 1) * 4 + bosses * 25;
+            int score = held * 100 + kills * 5 + bosses * 300;
+            int coins = held * 4 + bosses * 25;
             if (coins > 0) SaveSystem.AddCoins(coins);
-            if (wave - 1 > BestWave) BestWave = wave - 1;
-            var entry = new BoardEntry { score = score, wave = Mathf.Max(0, wave - 1), kills = kills, date = System.DateTime.Now.ToString("dd/MM") };
+            if (held > BestWave) BestWave = held;
+            var entry = new BoardEntry { score = score, wave = held, kills = kills, date = System.DateTime.Now.ToString("dd/MM") };
             int rank = Record(entry);
             if (died) ShowOver(entry, rank, coins);
         }
@@ -1239,7 +1252,7 @@ namespace Platformer.Survival
             int count = HeroSprites.Count(state);
             int index = state == "death" ? Mathf.Min((int)anim, count - 1) : (int)anim % count;
             heroSr.sprite = HeroSprites.Get(state, index) ?? heroSr.sprite;
-            bool firing = NearestFoeCached;
+            bool firing = aiming && phase == Phase.Wave;
             bool left = firing ? aimDir.x < 0f : facingLeft;
             heroSr.flipX = left;
             heroSr.sortingOrder = order;
@@ -1270,17 +1283,8 @@ namespace Platformer.Survival
             shadowSr.sortingOrder = -1500;
         }
 
-        bool NearestFoeCached
-        {
-            get
-            {
-                if (phase != Phase.Wave) return false;
-                var g = Guns[gunIndex];
-                float r = g.Range * RangeMult;
-                foreach (var f in foes) if (!f.Dead && (f.Pos - heroPos).sqrMagnitude < r * r) return true;
-                return false;
-            }
-        }
+        /// <summary>Whether the gun has someone in sight this frame (he faces and aims at them).</summary>
+        bool aiming;
 
         void RefreshGun()
         {
@@ -1291,7 +1295,7 @@ namespace Platformer.Survival
         void FrameCamera(Vector2 focus, bool snap)
         {
             if (cam == null) return;
-            float ortho = cam.aspect < 1f ? 7.2f : 6f;
+            float ortho = cam.aspect < 1f ? 6.6f : 5.6f;
             if (!IsActive) return;
             TakeOverCamera(cam.transform.position, ortho, new Color(0.04f, 0.05f, 0.1f));
             float halfW = ortho * cam.aspect, halfH = ortho;
