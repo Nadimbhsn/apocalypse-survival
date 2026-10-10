@@ -299,19 +299,21 @@ namespace Platformer.Survival
             pivot.localPosition = new Vector3(handX, hand.y * flipY, 0f);
             pivot.localScale = new Vector3(facing, flipY, 1f);
 
-            // The pivot is mirrored when facing left, so a barrel along local +x points at
-            // 180 + r degrees: to point at world angle a, rotate by a - 180 then. Aiming
-            // blends from the pose's lean toward the target, within a believable arc.
-            float angle = lean;
+            // Angles are worked out as an elevation (positive = up, from the hero's point of
+            // view, forward = the way he faces), then mirrored into the pivot: with the pivot
+            // scaled by (facing, flipY), a rotation of facing * flipY * e shows that elevation.
+            float elevation = lean;
             if (aimBlend > 0f)
             {
-                float world = Mathf.Atan2(aimDir.y, aimDir.x) * Mathf.Rad2Deg;
-                float aim = facing > 0f ? world : Mathf.DeltaAngle(0f, world - 180f);
-                aim = Mathf.Clamp(aim * flipY, -40f, 40f);
-                angle = Mathf.LerpAngle(lean, aim, aimBlend);
+                var forward = new Vector2(facing, 0f);
+                var up = new Vector2(0f, flipY);
+                float aim = Mathf.Atan2(Vector2.Dot(aimDir, up), Vector2.Dot(aimDir, forward)) * Mathf.Rad2Deg;
+                aim = Mathf.Clamp(aim, -40f, 40f);
+                elevation = Mathf.LerpAngle(lean, aim, aimBlend);
             }
             // Recoil: the barrel jumps up and the gun slides back into the fist.
-            pivot.localRotation = Quaternion.Euler(0f, 0f, angle + kick * 12f);
+            elevation += kick * 12f;
+            pivot.localRotation = Quaternion.Euler(0f, 0f, facing * flipY * elevation);
             art.transform.localPosition = new Vector3(-kick * 0.035f, 0f, 0f);
         }
 

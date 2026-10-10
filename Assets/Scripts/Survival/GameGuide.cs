@@ -50,6 +50,14 @@ namespace Platformer.Survival
                 Tip = "Vise la faiblesse du boss, c'est super efficace. Les améliorations de la boutique renforcent ton combattant.",
                 Rewards = "[c]   [g]",
             },
+            "nuit" => new GameGuide
+            {
+                Title = "DERNIÈRE NUIT",
+                Goal = "Piégé dans une station-service abandonnée, tiens le plus longtemps possible. Les morts arrivent par la route, cassent les portes barricadées puis te traquent, vague après vague.",
+                Controls = "Pose le pouce n'importe où en bas de l'écran : le joystick apparaît. Tu tires tout seul sur le mort le plus proche. Sur PC : ZQSD ou les flèches, Espace pour l'ESQUIVE.",
+                Tip = "Chaque mort rapporte de la ferraille. Entre deux vagues : choisis un bonus parmi trois, puis répare les portes, achète des armes, une tourelle, un bouclier, l'esquive, ou ouvre la boutique, le garage et le parking. Un boss toutes les 5 vagues, la planète frappe toutes les 10. Une seule seconde chance !",
+                Rewards = "[c]",
+            },
             "barricade" => new GameGuide
             {
                 Title = "BARRICADE",

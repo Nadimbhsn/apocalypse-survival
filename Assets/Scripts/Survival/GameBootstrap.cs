@@ -51,9 +51,10 @@ namespace Platformer.Survival
             var invasion = new GameObject("InvasionGame").AddComponent<InvasionGame>();
             var labyrinth = new GameObject("LabyrinthGame").AddComponent<LabyrinthGame>();
             var bastion = new GameObject("BastionGame").AddComponent<BastionGame>();
+            var nuit = new GameObject("NuitGame").AddComponent<NuitGame>();
 
             director.Configure(player, ui);
-            ui.Init(director, new MiniGame[] { fusion, arena, barricade, invasion, labyrinth, bastion });
+            ui.Init(director, new MiniGame[] { nuit, fusion, arena, barricade, invasion, labyrinth, bastion });
         }
 
         static void DisableSampleContent()

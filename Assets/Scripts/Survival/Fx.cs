@@ -52,6 +52,9 @@ namespace Platformer.Survival
             if (fx.composer != null && fx.shakeRoutine == null) fx.composer.TargetOffset = offset;
         }
 
+        /// <summary>Raised by a game whose world draws above the usual orders (Dernière Nuit's night), reset on leaving.</summary>
+        public static int OrderBoost;
+
         public static void Burst(Vector3 position, Color color, int count, float speed = 3f, float size = 0.12f, float gravity = 0.8f)
         {
             var fx = Ensure();
@@ -86,7 +89,7 @@ namespace Platformer.Survival
 
             var renderer = go.GetComponent<ParticleSystemRenderer>();
             renderer.material = fx.particleMaterial;
-            renderer.sortingOrder = 9;
+            renderer.sortingOrder = 9 + OrderBoost;
 
             ps.Emit(count);
             Destroy(go, 1.5f);
@@ -161,7 +164,7 @@ namespace Platformer.Survival
             mesh.color = color;
             var renderer = go.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = UiKit.Font.material;
-            renderer.sortingOrder = 20;
+            renderer.sortingOrder = 20 + Fx.OrderBoost;
             var ft = go.AddComponent<FloatingText>();
             ft.mesh = mesh;
             ft.baseColor = color;
