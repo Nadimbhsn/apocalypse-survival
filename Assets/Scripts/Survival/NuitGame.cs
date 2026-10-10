@@ -500,6 +500,7 @@ namespace Platformer.Survival
             UpdateZoneShutters(Time.unscaledDeltaTime);
             DrawHero(dt);
             UpdateHud();
+            UpdateShopToast();
             FrameCamera(heroPos, false);
         }
 

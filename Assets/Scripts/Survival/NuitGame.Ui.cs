@@ -383,84 +383,303 @@ namespace Platformer.Survival
 
         // ---- the shop between waves -----------------------------------------------------------------------
 
+        // The shop is four tabs of clear cards: what it is, what it does, where it stands,
+        // and one big price button that says plainly whether it can be paid.
+        enum ShopTab { Defense, Guns, Gadgets, Station }
+        ShopTab shopTab;
+        RectTransform shopContent;
+        Image shopHpFill;
+        Text shopHpText, shopToast, shopNext;
+        float shopToastTime;
+        readonly List<(Image bg, Text label, GameObject badge)> shopTabs = new();
+
+        static readonly string[] DoorNames =
+        {
+            "Porte sud-ouest", "Porte sud-est", "Porte arrière de la boutique", "Porte du garage",
+            "Grand portail du garage", "Porte sud du parking", "Porte ouest du parking",
+        };
+
+        static readonly string[][] GadgetLevels =
+        {
+            new[] { "Une tourelle posée là où tu te tiens", "Les tourelles tirent plus fort et plus vite", "Une deuxième tourelle à tes pieds" },
+            new[] { "Un bouclier de 25 qui encaisse avant ta vie", "Bouclier de 45", "Bouclier de 70" },
+            new[] { "Le bouton ESQUIVE : un bond intouchable (3 s)", "Esquive toutes les 2,2 s", "Esquive toutes les 1,5 s" },
+        };
+
         void BuildShop()
         {
             var rt = MakeScreen("Shop", false);
             shopUi = rt.gameObject;
-            shopTitle = UiKit.Outlined(UiKit.CreateText("Title", rt, "", 46, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.925f), new Vector2(0.95f, 0.975f), ApogeeTheme.Gold), 2.5f);
-            shopScrap = Pill(rt, "Scrap", new Vector2(0.3f, 0.885f), new Vector2(0.7f, 0.92f), 28);
+            ((Image)rt.GetComponent<Image>()).color = new Color(0.03f, 0.03f, 0.08f, 0.92f);
 
-            float y = 0.87f;
-            const float rowH = 0.047f;
-            void Header(string text)
+            shopTitle = UiKit.Outlined(UiKit.CreateText("Title", rt, "ENTRE DEUX VAGUES", 48, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.94f), new Vector2(0.96f, 0.985f), ApogeeTheme.Gold), 2.5f);
+            shopNext = UiKit.CreateText("Next", rt, "", 24, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.912f), new Vector2(0.96f, 0.942f), ApogeeTheme.Cream);
+            UiKit.FitLabel(shopNext, 24);
+
+            // what you have: health and scrap, big
+            Bar(rt, "Hp", new Vector2(0.04f, 0.862f), new Vector2(0.5f, 0.902f), new Color(0.85f, 0.24f, 0.2f), out shopHpFill);
+            shopHpText = UiKit.Outlined(UiKit.CreateText("HpText", shopHpFill.rectTransform.parent, "", 22, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream), 1.2f);
+            shopScrap = Pill(rt, "Scrap", new Vector2(0.53f, 0.858f), new Vector2(0.96f, 0.906f), 32);
+
+            // the four tabs
+            var tabs = new (ShopTab tab, string label, Sprite icon)[]
             {
-                UiKit.Outlined(UiKit.CreateText("H_" + text, rt, text, 24, TextAnchor.LowerLeft, new Vector2(0.05f, y - 0.03f), new Vector2(0.95f, y), ApogeeTheme.Gold), 1.4f);
-                y -= 0.032f;
-            }
-            void Row(string label, System.Func<string> detail, System.Func<(string text, bool enabled)> button, UnityEngine.Events.UnityAction onClick)
+                (ShopTab.Defense, "DÉFENSE", Art("door_h_0", 0f)),
+                (ShopTab.Guns, "ARMES", WeaponCatalog.SpriteFor(WeaponCatalog.Find("pistol"))),
+                (ShopTab.Gadgets, "GADGETS", Art("turret", 0.1f)),
+                (ShopTab.Station, "STATION", Art("crate_loot", 0.08f)),
+            };
+            for (int i = 0; i < tabs.Length; i++)
             {
-                float y0 = y - rowH + 0.006f;
-                var name = UiKit.Outlined(UiKit.CreateText("L_" + label, rt, label, 26, TextAnchor.MiddleLeft, new Vector2(0.05f, y0 + rowH * 0.42f), new Vector2(0.66f, y), ApogeeTheme.Cream), 1.2f);
-                UiKit.FitLabel(name, 26);
-                var det = UiKit.CreateText("D_" + label, rt, "", 18, TextAnchor.UpperLeft, new Vector2(0.05f, y0), new Vector2(0.66f, y0 + rowH * 0.45f), UiKit.TextDim);
-                UiKit.FitLabel(det, 18);
-                var btn = UiKit.CreateButton("B_" + label, rt, "", new Vector2(0.68f, y0 + 0.004f), new Vector2(0.95f, y - 0.004f), onClick, 22);
-                var lbl = IconText.OnButton(btn, 22);
-                shopRefresh.Add(() =>
-                {
-                    det.text = detail();
-                    var (t, en) = button();
-                    lbl.text = t;
-                    btn.interactable = en;
-                });
-                y -= rowH;
+                var t = tabs[i];
+                float x0 = 0.03f + i * 0.2375f;
+                var tr = UiKit.CreateRect("Tab_" + t.label, rt, new Vector2(x0, 0.775f), new Vector2(x0 + 0.225f, 0.848f));
+                var bg = tr.gameObject.AddComponent<Image>();
+                bg.sprite = HubArt.Get("ui_tile", 32f) ?? ApogeeTheme.Panel;
+                bg.type = Image.Type.Sliced;
+                var btn = tr.gameObject.AddComponent<Button>();
+                btn.targetGraphic = bg;
+                var captured = t.tab;
+                btn.onClick.AddListener(() => { shopTab = captured; Sfx.Drop(); RefreshShop(); });
+                tr.gameObject.AddComponent<ButtonPop>();
+                var icon = UiKit.CreateImage("Icon", tr, new Vector2(0.2f, 0.36f), new Vector2(0.8f, 0.94f), t.icon, Color.white, true);
+                icon.raycastTarget = false;
+                var label = UiKit.Outlined(UiKit.CreateText("Label", tr, t.label, 22, TextAnchor.MiddleCenter, new Vector2(0.02f, 0.02f), new Vector2(0.98f, 0.36f), ApogeeTheme.Cream), 1.2f);
+                UiKit.FitLabel(label, 22);
+                var badge = UiKit.CreateImage("Badge", tr, new Vector2(0.82f, 0.74f), new Vector2(0.98f, 0.98f), PlaceholderVisuals.Circle(Color.white), new Color(0.95f, 0.22f, 0.18f), true);
+                badge.raycastTarget = false;
+                shopTabs.Add((bg, label, badge.gameObject));
             }
 
-            Header("PORTES ET SOINS");
-            Row("Réparer les portes", () => { int s = 0, n = 0; foreach (var d in doors) if (zones[d.Zone].Open) { n++; if (d.Hp >= d.MaxHp - 0.5f) s++; } return $"{s}/{n} intactes"; },
-                () => { int c = RepairCost; return c > 0 ? ($"{c} [d]", scrap >= c) : ("INTACTES", false); },
-                () => { int c = RepairCost; if (c <= 0 || scrap < c) return; scrap -= c; foreach (var d in doors) if (zones[d.Zone].Open) { d.Hp = d.MaxHp; SetDoorLook(d); } Sfx.Material(); RefreshShop(); });
-            Row("Trousse de soin", () => $"+40 PV ({Mathf.CeilToInt(hp)}/{Mathf.CeilToInt(maxHp)})",
-                () => hp >= maxHp - 0.5f ? ("PLEIN", false) : ("30 [d]", scrap >= 30),
-                () => { if (scrap < 30 || hp >= maxHp) return; scrap -= 30; hp = Mathf.Min(maxHp, hp + 40f); Sfx.Heal(); RefreshShop(); });
+            // the cards of the open tab
+            shopContent = UiKit.CreateRect("Content", rt, new Vector2(0.03f, 0.15f), new Vector2(0.97f, 0.765f));
 
-            Header("ARMES");
+            shopToast = UiKit.Outlined(UiKit.CreateText("Toast", rt, "", 26, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.105f), new Vector2(0.96f, 0.145f), ApogeeTheme.Gold), 1.5f);
+            UiKit.FitLabel(shopToast, 26);
+            nextWaveButton = UiKit.CreateButton("Launch", rt, "", new Vector2(0.12f, 0.02f), new Vector2(0.88f, 0.098f), () => { HideScreens(); NextWave(); }, 40);
+            nextWaveLabel = nextWaveButton.GetComponentInChildren<Text>();
+            shopUi.SetActive(false);
+        }
+
+        void Toast(string text)
+        {
+            shopToast.text = text;
+            shopToastTime = 2.5f;
+        }
+
+        /// <summary>One card: picture, name, what it does, its state, and the button that buys it.</summary>
+        Button ShopCard(float y0, float y1, Sprite icon, string title, string text, string state, string price, bool canPay, int missing, UnityEngine.Events.UnityAction onClick, Color? tint = null)
+        {
+            var card = UiKit.CreateRect("Card_" + title, shopContent, new Vector2(0f, y0), new Vector2(1f, y1));
+            var bg = card.gameObject.AddComponent<Image>();
+            bg.sprite = HubArt.Get("ui_tile", 32f) ?? ApogeeTheme.Panel;
+            bg.type = Image.Type.Sliced;
+            bg.color = tint ?? new Color(0.85f, 0.8f, 0.85f, 0.95f);
+            bg.raycastTarget = false;
+            if (icon != null)
+            {
+                var ic = UiKit.CreateImage("Icon", card, new Vector2(0.025f, 0.12f), new Vector2(0.21f, 0.88f), icon, Color.white, true);
+                ic.raycastTarget = false;
+            }
+            var name = UiKit.Outlined(UiKit.CreateText("Name", card, title, 32, TextAnchor.LowerLeft, new Vector2(0.23f, 0.55f), new Vector2(0.66f, 0.92f), ApogeeTheme.Gold), 1.6f);
+            UiKit.FitLabel(name, 32);
+            var desc = UiKit.CreateText("Text", card, text, 22, TextAnchor.UpperLeft, new Vector2(0.23f, 0.08f), new Vector2(0.66f, 0.55f), ApogeeTheme.Cream);
+            UiKit.FitLabel(desc, 22);
+            Button btn = null;
+            if (price != null)
+            {
+                btn = UiKit.CreateButton("Buy", card, "", new Vector2(0.68f, 0.3f), new Vector2(0.97f, 0.86f), onClick, 26);
+                var lbl = IconText.OnButton(btn, 26);
+                lbl.text = price;
+                btn.interactable = canPay;
+                btn.gameObject.AddComponent<ButtonPop>();
+            }
+            if (missing > 0)
+            {
+                // what is lacking, in red, with the scrap icon
+                IconText.Create("Missing", card, $"il manque {missing} [d]", 20, TextAnchor.MiddleCenter, new Vector2(0.66f, 0.04f), new Vector2(0.99f, 0.3f), new Color(1f, 0.55f, 0.45f), 1f);
+            }
+            else if (state != null)
+            {
+                bool alone = price == null;
+                var st = UiKit.Outlined(UiKit.CreateText("State", card, state, alone ? 28 : 20, TextAnchor.MiddleCenter,
+                    alone ? new Vector2(0.66f, 0.2f) : new Vector2(0.66f, 0.04f), alone ? new Vector2(0.99f, 0.8f) : new Vector2(0.99f, 0.3f),
+                    alone ? ApogeeTheme.Gold : ApogeeTheme.Cream), 1.2f);
+                UiKit.FitLabel(st, alone ? 28 : 20);
+            }
+            return btn;
+        }
+
+        static void StatBar(RectTransform card, string label, float value, float y)
+        {
+            UiKit.CreateText("S_" + label, card, label, 16, TextAnchor.MiddleLeft, new Vector2(0.23f, y), new Vector2(0.36f, y + 0.14f), UiKit.TextDim);
+            var bg = UiKit.CreateImage("SB_" + label, card, new Vector2(0.36f, y + 0.035f), new Vector2(0.64f, y + 0.105f), PlaceholderVisuals.Square(Color.white), new Color(0f, 0f, 0f, 0.45f), false);
+            bg.raycastTarget = false;
+            var fill = UiKit.CreateImage("SF_" + label, card, new Vector2(0.36f, y + 0.035f), new Vector2(0.36f + 0.28f * Mathf.Clamp01(value), y + 0.105f), PlaceholderVisuals.Square(Color.white), ApogeeTheme.Gold, false);
+            fill.raycastTarget = false;
+        }
+
+        void BuildShopTab()
+        {
+            for (int i = shopContent.childCount - 1; i >= 0; i--) Destroy(shopContent.GetChild(i).gameObject);
+            switch (shopTab)
+            {
+                case ShopTab.Defense: BuildDefenseTab(); break;
+                case ShopTab.Guns: BuildGunsTab(); break;
+                case ShopTab.Gadgets: BuildGadgetsTab(); break;
+                default: BuildStationTab(); break;
+            }
+        }
+
+        void BuildDefenseTab()
+        {
+            int cost = RepairCost;
+            int open = 0, intact = 0;
+            foreach (var d in doors) if (zones[d.Zone].Open) { open++; if (d.Hp >= d.MaxHp - 0.5f) intact++; }
+            ShopCard(0.6f, 1f, Art("door_h_0", 0f), "Réparer les portes",
+                cost > 0 ? "Les morts cassent les portes pour entrer. Remets-les toutes à neuf avant la vague." : "Toutes tes portes tiennent. Rien à réparer.",
+                cost > 0 ? null : "INTACTES", cost > 0 ? $"TOUT RÉPARER\n{cost} [d]" : null, scrap >= cost, cost > 0 && scrap < cost ? cost - scrap : 0,
+                () => { int c = RepairCost; if (c <= 0 || scrap < c) return; scrap -= c; foreach (var d in doors) if (zones[d.Zone].Open) { d.Hp = d.MaxHp; SetDoorLook(d); } Sfx.Material(); Toast("Portes réparées !"); RefreshShop(); });
+            // each door's state
+            var list = UiKit.CreateRect("Doors", shopContent, new Vector2(0f, 0.34f), new Vector2(1f, 0.585f));
+            int row = 0;
+            for (int i = 0; i < doors.Count; i++)
+            {
+                var d = doors[i];
+                if (!zones[d.Zone].Open) continue;
+                int col = row % 2, line = row / 2;
+                float x0 = col * 0.5f, y1 = 1f - line * 0.25f;
+                var t = UiKit.CreateText("D" + i, list, DoorNames[i], 18, TextAnchor.MiddleLeft, new Vector2(x0 + 0.02f, y1 - 0.24f), new Vector2(x0 + 0.3f, y1), ApogeeTheme.Cream);
+                UiKit.FitLabel(t, 18);
+                float k = Mathf.Clamp01(d.Hp / d.MaxHp);
+                var bg = UiKit.CreateImage("DB" + i, list, new Vector2(x0 + 0.31f, y1 - 0.17f), new Vector2(x0 + 0.48f, y1 - 0.07f), PlaceholderVisuals.Square(Color.white), new Color(0f, 0f, 0f, 0.5f), false);
+                bg.raycastTarget = false;
+                var fill = UiKit.CreateImage("DF" + i, list, new Vector2(x0 + 0.31f, y1 - 0.17f), new Vector2(x0 + 0.31f + 0.17f * k, y1 - 0.07f), PlaceholderVisuals.Square(Color.white),
+                    k > 0.66f ? new Color(0.45f, 0.85f, 0.4f) : k > 0.01f ? new Color(1f, 0.65f, 0.25f) : new Color(0.9f, 0.2f, 0.18f), false);
+                fill.raycastTarget = false;
+                row++;
+            }
+            bool full = hp >= maxHp - 0.5f;
+            ShopCard(0f, 0.32f, GameIcons.Kit, "Trousse de soin", $"Rend 40 points de vie. Tu as {Mathf.CeilToInt(hp)} sur {Mathf.CeilToInt(maxHp)}.",
+                full ? "VIE PLEINE" : null, full ? null : "+40 PV\n30 [d]", scrap >= 30, !full && scrap < 30 ? 30 - scrap : 0,
+                () => { if (scrap < 30 || hp >= maxHp) return; scrap -= 30; hp = Mathf.Min(maxHp, hp + 40f); Sfx.Heal(); Toast("+40 PV"); RefreshShop(); });
+        }
+
+        void BuildGunsTab()
+        {
+            float h = 1f / Guns.Length;
             for (int i = 0; i < Guns.Length; i++)
             {
                 int gi = i;
-                var gun = Guns[i];
-                Row(gun.Name, () => gun.Blurb,
-                    () => gunIndex == gi ? ("ÉQUIPÉE", false) : gunsOwned[gi] ? ("PRENDRE", true) : ($"{gun.Cost} [d]", scrap >= gun.Cost),
+                var g = Guns[i];
+                float y1 = 1f - i * h, y0 = y1 - h + 0.012f;
+                bool owned = gunsOwned[i], equipped = gunIndex == i;
+                string price = equipped ? null : owned ? "PRENDRE" : $"{g.Cost} [d]";
+                var btn = ShopCard(y0, y1, WeaponCatalog.SpriteFor(ArtOf(g)), g.Name, "",
+                    equipped ? "EN MAIN" : owned ? "à toi" : null, price, owned || scrap >= g.Cost, !owned && scrap < g.Cost ? g.Cost - scrap : 0,
                     () =>
                     {
-                        if (!gunsOwned[gi]) { if (scrap < gun.Cost) return; scrap -= gun.Cost; gunsOwned[gi] = true; Sfx.Coin(); }
+                        if (!gunsOwned[gi]) { if (scrap < g.Cost) return; scrap -= g.Cost; gunsOwned[gi] = true; Sfx.Coin(); Toast($"{g.Name} acheté et pris en main !"); }
+                        else Toast($"{g.Name} en main");
                         gunIndex = gi;
                         RefreshGun();
                         RefreshShop();
-                    });
+                    }, equipped ? new Color(1f, 0.85f, 0.55f, 0.95f) : (Color?)null);
+                var card = (RectTransform)shopContent.GetChild(shopContent.childCount - 1);
+                // compare at a glance
+                StatBar(card, "DÉGÂTS", g.Damage * (g.Splash > 0f ? 1.3f : 1f) / 45f, 0.38f);
+                StatBar(card, "CADENCE", g.Rate / 9f, 0.22f);
+                StatBar(card, "PORTÉE", g.Range / 8.5f, 0.06f);
+                var name = card.Find("Name") as RectTransform;
+                if (name != null) { name.anchorMin = new Vector2(0.23f, 0.56f); name.anchorMax = new Vector2(0.66f, 0.96f); }
             }
+        }
 
-            Header("GADGETS");
+        void BuildGadgetsTab()
+        {
+            var icons = new[] { Art("turret", 0.1f), PlaceholderVisuals.RimCircle(new Color(0.55f, 0.85f, 1f)), NuitUiSprite("btn_dodge") };
+            float h = 1f / 3f;
             for (int i = 0; i < 3; i++)
             {
                 int gi = i;
-                Row(GadgetNames[i], () => GadgetBlurbs[gi] + (gadget[gi] > 0 ? $"  ·  niveau {gadget[gi]}/3" : ""),
-                    () => gadget[gi] >= 3 ? ("MAX", false) : ($"{GadgetCosts[gi][gadget[gi]]} [d]", scrap >= GadgetCosts[gi][gadget[gi]]),
-                    () => BuyGadget(gi));
+                int lv = gadget[i];
+                float y1 = 1f - i * h, y0 = y1 - h + 0.015f;
+                string text = lv >= 3 ? "Au maximum. " + GadgetLevels[i][2] : (lv == 0 ? "" : "Niveau suivant : ") + GadgetLevels[i][lv];
+                int cost = lv < 3 ? GadgetCosts[i][lv] : 0;
+                ShopCard(y0, y1, icons[i], GadgetNames[i], text, lv >= 3 ? "MAX" : null, lv >= 3 ? null : (lv == 0 ? $"ACHETER\n{cost} [d]" : $"NIVEAU {lv + 1}\n{cost} [d]"),
+                    scrap >= cost, lv < 3 && scrap < cost ? cost - scrap : 0,
+                    () =>
+                    {
+                        int before = gadget[gi];
+                        BuyGadget(gi);
+                        if (gadget[gi] > before) Toast($"{GadgetNames[gi]} niveau {gadget[gi]} !" + (gi == 0 && (gadget[gi] == 1 || gadget[gi] == 3) ? " Elle est posée à tes pieds." : ""));
+                    });
+                var card = (RectTransform)shopContent.GetChild(shopContent.childCount - 1);
+                for (int k = 0; k < 3; k++)
+                {
+                    var pip = UiKit.CreateImage("Pip" + k, card, new Vector2(0.23f + k * 0.045f, 0.62f), new Vector2(0.26f + k * 0.045f, 0.62f + 0.17f), PlaceholderVisuals.Circle(Color.white),
+                        k < lv ? ApogeeTheme.Gold : new Color(0f, 0f, 0f, 0.45f), true);
+                    pip.raycastTarget = false;
+                }
+                var name = card.Find("Name") as RectTransform;
+                if (name != null) { name.anchorMin = new Vector2(0.38f, 0.55f); }
             }
+        }
 
-            Header("LA STATION");
+        void BuildStationTab()
+        {
+            // a plan of the station: rooms open or closed, the doors and their state, where you stand
+            var map = UiKit.CreateRect("Map", shopContent, new Vector2(0.02f, 0.47f), new Vector2(0.98f, 1f));
+            var mbg = map.gameObject.AddComponent<Image>();
+            mbg.color = new Color(0.06f, 0.07f, 0.12f, 0.95f);
+            mbg.raycastTarget = false;
+            var area = new Rect(-20.5f, -9.5f, 39f, 26f);
+            Vector2 A(Vector2 p) => new Vector2((p.x - area.xMin) / area.width, (p.y - area.yMin) / area.height);
+            for (int z = 0; z < zones.Length; z++)
+            {
+                var zr = zones[z].Area;
+                var img = UiKit.CreateImage("Z" + z, map, A(zr.min), A(zr.max), PlaceholderVisuals.Square(Color.white),
+                    zones[z].Open ? new Color(0.62f, 0.44f, 0.26f, 0.95f) : new Color(0.22f, 0.22f, 0.28f, 0.95f), false);
+                img.raycastTarget = false;
+                var o = img.gameObject.AddComponent<Outline>();
+                o.effectColor = new Color(0f, 0f, 0f, 0.8f);
+                o.effectDistance = new Vector2(3f, -3f);
+                var lbl = UiKit.Outlined(UiKit.CreateText("L", img.rectTransform, zones[z].Name.ToUpperInvariant() + (zones[z].Open ? "" : "\nfermé"), 20, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one,
+                    zones[z].Open ? ApogeeTheme.Cream : new Color(0.75f, 0.75f, 0.8f)), 1.2f);
+                UiKit.FitLabel(lbl, 20);
+            }
+            for (int i = 0; i < doors.Count; i++)
+            {
+                var d = doors[i];
+                bool on = zones[d.Zone].Open;
+                var half = d.Horizontal ? new Vector2(1.3f, 0.45f) : new Vector2(0.45f, 1.3f);
+                float k = d.Hp / d.MaxHp;
+                var col = !on ? new Color(0.4f, 0.4f, 0.45f) : k > 0.66f ? new Color(0.45f, 0.9f, 0.4f) : k > 0.01f ? new Color(1f, 0.65f, 0.25f) : new Color(1f, 0.2f, 0.18f);
+                var di = UiKit.CreateImage("D" + i, map, A(d.Pos - half), A(d.Pos + half), PlaceholderVisuals.Square(Color.white), col, false);
+                di.raycastTarget = false;
+            }
+            foreach (var t in turrets)
+            {
+                var ti = UiKit.CreateImage("T", map, A(t.Pos - Vector2.one * 0.5f), A(t.Pos + Vector2.one * 0.5f), PlaceholderVisuals.Circle(Color.white), new Color(0.5f, 0.9f, 1f), false);
+                ti.raycastTarget = false;
+            }
+            var me = UiKit.CreateImage("Me", map, A(heroPos - Vector2.one * 0.6f), A(heroPos + Vector2.one * 0.6f), PlaceholderVisuals.Circle(Color.white), Color.white, false);
+            me.raycastTarget = false;
+            UiKit.CreateText("Legend", map, "portes :  vert = solide   orange = abîmée   rouge = cassée     blanc = toi", 16, TextAnchor.LowerCenter, new Vector2(0f, 0f), new Vector2(1f, 0.08f), UiKit.TextDim);
+
+            float h = 0.45f / 3f;
             for (int z = 1; z < 4; z++)
             {
                 int zi = z;
-                Row(NewZones()[z].Name, () => zones != null ? zones[zi].Blurb + (zones[zi].Open ? "" : "  ·  plus de portes à tenir") : "",
-                    () => zones == null ? ("", false) : zones[zi].Open ? ("OUVERTE", false) : ($"{zones[zi].Cost} [d]", scrap >= zones[zi].Cost),
-                    () => { if (zones[zi].Open || scrap < zones[zi].Cost) return; scrap -= zones[zi].Cost; OpenZone(zi); RefreshShop(); });
+                var zone = zones[z];
+                int extra = 0;
+                foreach (var d in doors) if (d.Zone == z) extra++;
+                float y1 = 0.455f - (z - 1) * h, y0 = y1 - h + 0.01f;
+                string text = zone.Open ? zone.Blurb : $"{zone.Blurb}. Une caisse : +{25 + z * 15} ferraille et +25 PV. Attention : {extra} porte{(extra > 1 ? "s" : "")} de plus à tenir.";
+                ShopCard(y0, y1, Art(zone.Open ? "crate" : "crate_loot", 0.08f), zone.Name, text, zone.Open ? "OUVERTE" : null, zone.Open ? null : $"OUVRIR\n{zone.Cost} [d]",
+                    scrap >= zone.Cost, !zone.Open && scrap < zone.Cost ? zone.Cost - scrap : 0,
+                    () => { if (zones[zi].Open || scrap < zones[zi].Cost) return; scrap -= zones[zi].Cost; OpenZone(zi); Toast($"{zones[zi].Name} ouverte ! Ses portes sont barricadées."); RefreshShop(); });
             }
-
-            nextWaveButton = UiKit.CreateButton("Next", rt, "", new Vector2(0.15f, 0.025f), new Vector2(0.85f, 0.095f), () => { HideScreens(); NextWave(); }, 38);
-            nextWaveLabel = nextWaveButton.GetComponentInChildren<Text>();
-            shopUi.SetActive(false);
         }
 
         int RepairCost
@@ -496,19 +715,40 @@ namespace Platformer.Survival
         {
             HideScreens();
             phase = Phase.Shop;
-            shopTitle.text = $"AVANT LA VAGUE {wave + 1}";
             bool bossNext = (wave + 1) % 5 == 0;
             var ev = EventFor(wave + 1);
-            nextWaveLabel.text = ev != NightEvent.None ? $"VAGUE {wave + 1} : {EventTitle(ev)}" : bossNext ? $"VAGUE {wave + 1} : BOSS" : $"VAGUE {wave + 1}";
-            UiKit.FitLabel(nextWaveLabel, 38);
+            shopNext.text = ev != NightEvent.None ? $"Prochaine vague : {EventTitle(ev)} - {EventText(ev)}" : bossNext ? "Prochaine vague : un BOSS arrive" : $"Prochaine vague : {wave + 1}";
+            nextWaveLabel.text = bossNext ? $"VAGUE {wave + 1} : BOSS" : $"LANCER LA VAGUE {wave + 1}";
+            UiKit.FitLabel(nextWaveLabel, 40);
+            // open where something needs doing
+            shopTab = RepairCost > 0 || hp < maxHp * 0.5f ? ShopTab.Defense : ShopTab.Guns;
+            shopToast.text = "";
             RefreshShop();
             shopUi.SetActive(true);
         }
 
         void RefreshShop()
         {
-            shopScrap.text = $"{scrap} [d] ferraille";
-            foreach (var r in shopRefresh) r();
+            shopScrap.text = $"{scrap} [d]  ferraille";
+            shopHpFill.fillAmount = maxHp > 0f ? hp / maxHp : 0f;
+            shopHpText.text = $"Vie {Mathf.CeilToInt(hp)} / {Mathf.CeilToInt(maxHp)}" + (shield > 0.5f ? $"  +{Mathf.CeilToInt(shield)} bouclier" : "");
+            bool doorsHurt = RepairCost > 0, low = hp < maxHp * 0.5f;
+            for (int i = 0; i < shopTabs.Count; i++)
+            {
+                bool on = (int)shopTab == i;
+                shopTabs[i].bg.color = on ? ApogeeTheme.Gold : new Color(0.55f, 0.5f, 0.6f, 0.9f);
+                shopTabs[i].label.color = on ? new Color(0.25f, 0.08f, 0.03f) : ApogeeTheme.Cream;
+                shopTabs[i].badge.SetActive(i == 0 && (doorsHurt || low));
+            }
+            BuildShopTab();
+        }
+
+        void UpdateShopToast()
+        {
+            if (shopToastTime <= 0f || shopToast == null) return;
+            shopToastTime -= Time.unscaledDeltaTime;
+            var c = shopToast.color; c.a = Mathf.Clamp01(shopToastTime / 0.5f); shopToast.color = c;
+            if (shopToastTime <= 0f) { shopToast.text = ""; c.a = 1f; shopToast.color = c; }
         }
 
         // ---- end of the night and the leaderboard ---------------------------------------------------------
