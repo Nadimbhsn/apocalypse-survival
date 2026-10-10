@@ -114,20 +114,9 @@ namespace Platformer.Survival
             var g = UiKit.CreateRect("GameUi", uiRoot, Vector2.zero, Vector2.one);
             gameUi = g.gameObject;
 
-            // the joystick: anywhere on the lower part of the screen
-            var stickZone = UiKit.CreateRect("StickZone", g, new Vector2(0f, 0f), new Vector2(1f, 0.7f));
-            stickZone.gameObject.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0f);
-            var stick = stickZone.gameObject.AddComponent<NuitStick>();
-            var ring = UiKit.CreateImage("Ring", stickZone, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), PlaceholderVisuals.RimCircle(Color.white), new Color(1f, 1f, 1f, 0.35f), false);
-            ring.rectTransform.sizeDelta = new Vector2(260f, 260f);
-            ring.raycastTarget = false;
-            var knob = UiKit.CreateImage("Knob", stickZone, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), PlaceholderVisuals.Circle(Color.white), new Color(1f, 0.9f, 0.7f, 0.6f), false);
-            knob.rectTransform.sizeDelta = new Vector2(110f, 110f);
-            knob.raycastTarget = false;
-            stick.ring = ring.rectTransform;
-            stick.knob = knob.rectTransform;
-            ring.gameObject.SetActive(false);
-            knob.gameObject.SetActive(false);
+            // two fixed joysticks: move on the left, aim and fire on the right
+            CreatePad(g, "MovePad", new Vector2(0.21f, 0.135f), false);
+            CreatePad(g, "AimPad", new Vector2(0.79f, 0.135f), true);
 
             // top: the wave, the threat, pause
             var top = UiKit.CreateRect("Top", g, new Vector2(0f, 0.92f), new Vector2(1f, 1f));
@@ -163,21 +152,22 @@ namespace Platformer.Survival
             messageText = UiKit.Outlined(UiKit.CreateText("Message", g, "", 28, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.74f), new Vector2(0.96f, 0.79f), ApogeeTheme.Cream), 2f);
             UiKit.FitLabel(messageText, 28);
 
-            // the dodge button
-            var dr = UiKit.CreateRect("Dodge", g, new Vector2(0.72f, 0.06f), new Vector2(0.96f, 0.19f));
+            // the dodge button, above the aiming stick
+            var dr = UiKit.CreateRect("Dodge", g, new Vector2(0.86f, 0.3f), new Vector2(0.86f, 0.3f));
+            dr.sizeDelta = new Vector2(170f, 170f);
             dodgeButton = dr.gameObject;
             var dimg = dr.gameObject.AddComponent<Image>();
-            dimg.sprite = HubArt.Get("ui_disc") ?? PlaceholderVisuals.Circle(Color.white);
-            dimg.color = new Color(0.45f, 0.75f, 1f, 0.9f);
+            dimg.sprite = NuitUiSprite("btn_dodge") ?? PlaceholderVisuals.Circle(new Color(0.45f, 0.75f, 1f));
             dimg.preserveAspect = true;
             var hold = dr.gameObject.AddComponent<HoldButton>();
             hold.onDown = TryDodge;
-            var df = UiKit.CreateImage("Cooldown", dr, Vector2.zero, Vector2.one, PlaceholderVisuals.Circle(Color.white), new Color(0f, 0f, 0f, 0.55f), true);
+            var df = UiKit.CreateImage("Cooldown", dr, Vector2.zero, Vector2.one, PlaceholderVisuals.Circle(Color.white), new Color(0f, 0f, 0f, 0.6f), true);
             dodgeFill = df;
             dodgeFill.type = Image.Type.Filled;
             dodgeFill.fillMethod = Image.FillMethod.Radial360;
             dodgeFill.raycastTarget = false;
-            UiKit.Outlined(UiKit.CreateText("Label", dr, "ESQUIVE", 22, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, ApogeeTheme.Cream), 1.5f);
+            var dl = UiKit.Outlined(UiKit.CreateText("Label", dr, "ESQUIVE", 20, TextAnchor.UpperCenter, new Vector2(-0.3f, -0.32f), new Vector2(1.3f, 0f), ApogeeTheme.Cream), 1.5f);
+            dl.raycastTarget = false;
 
             // the big banner for waves, bosses and the planet's events
             var bn = UiKit.CreateRect("Banner", g, new Vector2(0f, 0.55f), new Vector2(1f, 0.7f));
@@ -194,6 +184,37 @@ namespace Platformer.Survival
             gameUi.SetActive(false);
         }
 
+        static readonly Dictionary<string, Sprite> uiSprites = new();
+
+        static Sprite NuitUiSprite(string name)
+        {
+            if (uiSprites.TryGetValue(name, out var s)) return s;
+            var tex = Resources.Load<Texture2D>("Nuit/" + name);
+            s = tex != null ? Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f) : null;
+            uiSprites[name] = s;
+            return s;
+        }
+
+        /// <summary>A fixed joystick: a gold-rimmed dial with a brass knob; the touch area around it is generous.</summary>
+        void CreatePad(RectTransform parent, string name, Vector2 centre, bool aim)
+        {
+            var area = UiKit.CreateRect(name, parent, centre, centre);
+            area.sizeDelta = new Vector2(480f, 480f);
+            area.gameObject.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0f);
+            var pad = area.gameObject.AddComponent<NuitPad>();
+            pad.aim = aim;
+            var dial = UiKit.CreateImage("Dial", area, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                NuitUiSprite(aim ? "stick_base_aim" : "stick_base_move") ?? PlaceholderVisuals.RimCircle(Color.white), Color.white, true);
+            dial.rectTransform.sizeDelta = new Vector2(330f, 330f);
+            dial.raycastTarget = false;
+            var knob = UiKit.CreateImage("Knob", area, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                NuitUiSprite(aim ? "stick_knob_aim" : "stick_knob_move") ?? PlaceholderVisuals.Circle(Color.white), Color.white, true);
+            knob.rectTransform.sizeDelta = new Vector2(190f, 190f);
+            knob.raycastTarget = false;
+            pad.knob = knob.rectTransform;
+            pad.dial = dial;
+        }
+
         void ShowGameUi()
         {
             HideScreens();
@@ -204,7 +225,7 @@ namespace Platformer.Survival
         {
             gameUi.SetActive(false); menuUi.SetActive(false); bonusUi.SetActive(false);
             shopUi.SetActive(false); overUi.SetActive(false); boardUi.SetActive(false);
-            NuitStick.Release();
+            NuitPad.Release();
         }
 
         void ShowBanner(string title, string sub)
@@ -549,72 +570,66 @@ namespace Platformer.Survival
     }
 
     /// <summary>
-    /// The two-way joystick of DERNIÈRE NUIT: the ring appears where the thumb lands and the
-    /// knob follows it; Move is the direction (0..1 strength), shared with the game.
+    /// A fixed joystick of DERNIÈRE NUIT. The left one moves the hero, the right one aims and
+    /// fires while it is held. Each follows its own finger (several touches at once); the
+    /// knob slides within the dial and springs back to the middle when let go.
     /// </summary>
-    public class NuitStick : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
+    public class NuitPad : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
     {
-        public static Vector2 Move;
-        public RectTransform ring, knob;
-        const float Travel = 120f;
-        static NuitStick current;
+        public static Vector2 Move, Aim;
+        public bool aim;
+        public RectTransform knob;
+        public Image dial;
+        const float Travel = 115f;
+        static readonly List<NuitPad> all = new();
         RectTransform rect;
         int pointer = int.MinValue;
-        Vector2 origin;
 
-        void Awake()
-        {
-            rect = (RectTransform)transform;
-            Show(false);
-        }
-
-        void Show(bool on)
-        {
-            if (ring != null) ring.gameObject.SetActive(on);
-            if (knob != null) knob.gameObject.SetActive(on);
-        }
+        void Awake() { rect = (RectTransform)transform; all.Add(this); }
+        void OnDestroy() => all.Remove(this);
 
         public static void Release()
         {
-            Move = Vector2.zero;
-            if (current != null) { current.pointer = int.MinValue; current.Show(false); }
+            Move = Aim = Vector2.zero;
+            foreach (var p in all) p.Recentre();
+        }
+
+        void Recentre()
+        {
+            pointer = int.MinValue;
+            if (knob != null) knob.anchoredPosition = Vector2.zero;
+            if (dial != null) dial.color = Color.white;
+            if (aim) Aim = Vector2.zero; else Move = Vector2.zero;
         }
 
         public void OnPointerDown(PointerEventData e)
         {
             if (pointer != int.MinValue) return;
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, e.pressEventCamera, out origin)) return;
             pointer = e.pointerId;
-            current = this;
-            ring.localPosition = origin;
-            knob.localPosition = origin;
-            Show(true);
-            Move = Vector2.zero;
+            if (dial != null) dial.color = new Color(1f, 0.95f, 0.85f);
+            Apply(e);
         }
 
         public void OnDrag(PointerEventData e)
         {
-            if (e.pointerId != pointer) return;
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, e.pressEventCamera, out var p)) return;
-            var d = Vector2.ClampMagnitude(p - origin, Travel);
-            knob.localPosition = origin + d;
-            var v = d / Travel;
-            Move = v.magnitude < 0.12f ? Vector2.zero : v;
+            if (e.pointerId == pointer) Apply(e);
         }
 
         public void OnPointerUp(PointerEventData e)
         {
-            if (e.pointerId != pointer) return;
-            pointer = int.MinValue;
-            Move = Vector2.zero;
-            Show(false);
+            if (e.pointerId == pointer) Recentre();
         }
 
-        void OnDisable()
+        void OnDisable() => Recentre();
+
+        void Apply(PointerEventData e)
         {
-            pointer = int.MinValue;
-            Move = Vector2.zero;
-            Show(false);
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, e.pressEventCamera, out var p)) return;
+            var d = Vector2.ClampMagnitude(p - rect.rect.center, Travel);
+            if (knob != null) knob.anchoredPosition = d;
+            var v = d / Travel;
+            if (v.magnitude < 0.15f) v = Vector2.zero;
+            if (aim) Aim = v; else Move = v;
         }
     }
 }

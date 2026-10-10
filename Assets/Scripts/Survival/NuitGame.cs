@@ -139,7 +139,7 @@ namespace Platformer.Survival
             if (phase == Phase.Wave || phase == Phase.Bonus || phase == Phase.Shop) EndNight(false);
             phase = Phase.Menu;
             Fx.OrderBoost = 0;
-            NuitStick.Release();
+            NuitPad.Release();
             if (root != null) Destroy(root.gameObject);
             root = null;
             foes.Clear(); shots.Clear(); turrets.Clear(); meteors.Clear(); doors.Clear(); motes.Clear();
@@ -304,6 +304,8 @@ namespace Platformer.Survival
                 loots.Add((c, z));
                 c.gameObject.SetActive(!zones[z].Open);
             }
+
+            BuildGrid();
 
             // night: a cold tint over everything, warm pools from the lamps
             nightTint = Put("Night", line, WorldBounds.center, 2900);
@@ -487,6 +489,7 @@ namespace Platformer.Survival
             {
                 UpdateHero(dt);
                 UpdateSpawning(dt);
+                UpdateField(dt);
                 UpdateFoes(dt);
                 UpdateShots(dt);
                 UpdateTurrets(dt);
@@ -504,7 +507,7 @@ namespace Platformer.Survival
 
         Vector2 MoveInput()
         {
-            var v = NuitStick.Move;
+            var v = NuitPad.Move;
             var kb = Keyboard.current;
             if (kb != null)
             {
@@ -555,14 +558,23 @@ namespace Platformer.Survival
                 if (regenAcc >= 1f) { hp = Mathf.Min(maxHp, hp + Mathf.Floor(regenAcc)); regenAcc -= Mathf.Floor(regenAcc); }
             }
 
-            // the gun fires by itself at the nearest of the dead in sight
+            // the right stick (or the mouse, or a pad's right stick) aims; holding it fires
             var g = Guns[gunIndex];
             fireTimer -= dt;
-            var target = NearestFoe(heroPos + Vector2.up * 0.5f, g.Range * RangeMult, true);
-            aiming = target != null;
-            if (target != null)
+            Vector2 aimIn = NuitPad.Aim;
+            var gp = Gamepad.current;
+            if (aimIn.sqrMagnitude < 0.09f && gp != null && gp.rightStick.ReadValue().sqrMagnitude > 0.09f) aimIn = gp.rightStick.ReadValue();
+            var mouse = Mouse.current;
+            if (aimIn.sqrMagnitude < 0.09f && mouse != null && mouse.leftButton.isPressed && cam != null
+                && (UnityEngine.EventSystems.EventSystem.current == null || !UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()))
             {
-                aimDir = (target.Pos + Vector2.up * 0.45f * target.Scale - (heroPos + Vector2.up * 0.5f)).normalized;
+                var wp = cam.ScreenToWorldPoint(mouse.position.ReadValue());
+                aimIn = new Vector2(wp.x - Origin.x, wp.y - Origin.y) - (heroPos + Vector2.up * 0.5f);
+            }
+            aiming = aimIn.sqrMagnitude >= 0.09f;
+            if (aiming)
+            {
+                aimDir = aimIn.normalized;
                 if (fireTimer <= 0f)
                 {
                     fireTimer = 1f / (g.Rate * (1f + 0.15f * perkStacks[(int)Perk.Rate]));
@@ -835,21 +847,15 @@ namespace Platformer.Survival
                 bool ghost = f.Kind == FoeKind.Wisp;
                 Vector2 goal;
                 bool atDoor = false;
-                Door door = f.Door >= 0 ? doors[f.Door] : null;
-
-                if (!f.Inside && !ghost && door != null)
+                Door door = null;
+                if (ghost) goal = heroPos;
+                else
                 {
-                    // Outside: up the road to the barricade, break it, then through.
-                    var beyond = door.Pos - door.Out * 1.1f;
-                    if (door.Intact)
-                    {
-                        goal = door.Pos + door.Out * (0.35f + f.Radius);
-                        if ((f.Pos - goal).magnitude < 0.6f + f.Radius) atDoor = true;
-                    }
-                    else goal = beyond;
-                    if (Vector2.Dot(f.Pos - door.Pos, door.Out) < -0.4f) f.Inside = true;
+                    // downhill on the distance field: round the cars, through the openings, to a door to break
+                    int attack = PathStep(f, out goal);
+                    if (attack >= 0) { door = doors[attack]; atDoor = true; f.Door = attack; }
                 }
-                else goal = ChaseGoal(f, ghost);
+                f.Inside = RoomOf(f.Pos) >= 0;
 
                 // the boss charges and calls for help
                 if (f.Kind == FoeKind.Boss && f.Inside) UpdateBoss(f, dt, ref goal);
@@ -913,26 +919,6 @@ namespace Platformer.Survival
                 f.Sr.sortingOrder = Depth(f.Pos.y);
             }
             foes.RemoveAll(f => f.Dead);
-        }
-
-        /// <summary>Where a foe inside the station heads: the hero, or the opening that leads to his room.</summary>
-        Vector2 ChaseGoal(Foe f, bool ghost)
-        {
-            if (ghost) return heroPos;
-            int mine = RoomOf(f.Pos), his = RoomOf(heroPos);
-            if (mine < 0 || his < 0 || mine == his) return heroPos;
-            // the forecourt links everything: leave my room by its opening, or enter his by his
-            var z = mine != 0 ? zones[mine] : zones[his];
-            var gate = z.Gate;
-            var into = mine != 0 ? (zones[0].Area.center - gate).normalized : (z.Area.center - gate).normalized;
-            if (z.GateHorizontal) into = new Vector2(0f, Mathf.Sign(into.y));
-            else into = new Vector2(Mathf.Sign(into.x), 0f);
-            var before = gate - into * 0.9f;
-            // line up with the opening first, then walk straight through it
-            float lateral = z.GateHorizontal ? Mathf.Abs(f.Pos.x - gate.x) : Mathf.Abs(f.Pos.y - gate.y);
-            float depth = Vector2.Dot(f.Pos - gate, into);
-            bool lined = lateral < 0.75f && depth > -1.4f;
-            return lined ? gate + into * 1.6f : before;
         }
 
         void UpdateBoss(Foe f, float dt, ref Vector2 goal)
@@ -1075,6 +1061,7 @@ namespace Platformer.Survival
                     Fx.Text(sr.transform.position + Vector3.up * 1.2f, $"Caisse : +{bonus} ferraille, +25 PV", new Color(1f, 0.85f, 0.45f), 1.4f);
                 }
             RefreshLights();
+            BuildGrid();
             Sfx.Milestone();
         }
 
@@ -1275,6 +1262,23 @@ namespace Platformer.Survival
                 gunSr.transform.localPosition = new Vector3(-kick * 0.035f, 0f, 0f);
                 gunSr.sortingOrder = order - 1;
             }
+            // a faint sight line where the shots will go
+            if (sight == null)
+            {
+                sight = Put("Sight", PlaceholderVisuals.Square(Color.white), heroPos, 3090);
+                sight.color = new Color(1f, 0.35f, 0.25f, 0.28f);
+            }
+            bool showSight = firing && holding;
+            sight.gameObject.SetActive(showSight);
+            if (showSight)
+            {
+                var from = MuzzleWorld();
+                float len = Guns[gunIndex].Range * RangeMult;
+                sight.transform.position = W(from + aimDir * len * 0.5f);
+                sight.transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(aimDir.y, aimDir.x) * Mathf.Rad2Deg);
+                sight.transform.localScale = new Vector3(len, 0.035f, 1f);
+            }
+
             // shield bubble
             float cap = ShieldCap;
             shieldSr.enabled = cap > 0f && shield > 0.5f;
@@ -1283,8 +1287,9 @@ namespace Platformer.Survival
             shadowSr.sortingOrder = -1500;
         }
 
-        /// <summary>Whether the gun has someone in sight this frame (he faces and aims at them).</summary>
+        /// <summary>Whether the player is aiming (and so firing) this frame.</summary>
         bool aiming;
+        SpriteRenderer sight;
 
         void RefreshGun()
         {
@@ -1300,7 +1305,9 @@ namespace Platformer.Survival
             TakeOverCamera(cam.transform.position, ortho, new Color(0.04f, 0.05f, 0.1f));
             float halfW = ortho * cam.aspect, halfH = ortho;
             var b = WorldBounds;
-            var want = new Vector2(Mathf.Clamp(focus.x, b.xMin + halfW, b.xMax - halfW), Mathf.Clamp(focus.y + 0.6f, b.yMin + halfH, b.yMax - halfH));
+            // the joysticks cover the bottom quarter: centre the hero in what stays visible above them
+            float lift = cam.aspect < 1f ? -0.65f : -0.1f;
+            var want = new Vector2(Mathf.Clamp(focus.x, b.xMin + halfW, b.xMax - halfW), Mathf.Clamp(focus.y + lift, b.yMin + halfH, b.yMax - halfH));
             var cur = snap ? (Vector3)W(want, -10f) : Vector3.Lerp(cam.transform.position, W(want, -10f), 1f - Mathf.Exp(-6f * Time.unscaledDeltaTime));
             cur.z = -10f;
             shake = Mathf.MoveTowards(shake, 0f, Time.unscaledDeltaTime);
