@@ -204,6 +204,8 @@ namespace Platformer.Survival
             CreateNavTile(nav, "PERSONNAGES", HubArt.Get("icon_hero"), ShowCharacters, out _);
             var arms = CreateNavTile(nav, "ARMES", null, ShowArmory, out hubWeaponIcon);
             hubWeaponIcon.color = Color.white;
+            // the laboratory: Fusion is no longer a game of its own, it is where the healing kits are made
+            CreateNavTile(nav, "LABORATOIRE", GameIcons.Kit, OpenLaboratory, out _);
             var missions = CreateNavTile(nav, "MISSIONS", HubArt.Get("icon_missions"), () => { ShowMissions(); missionsFromHub = true; }, out _);
             var badge = UiKit.CreateImage("Badge", missions, new Vector2(1f, 1f), new Vector2(1f, 1f), PlaceholderVisuals.Circle(Color.white), ApogeeTheme.Crimson);
             badge.rectTransform.sizeDelta = new Vector2(64f, 44f);
@@ -319,7 +321,7 @@ namespace Platformer.Survival
         {
             var tile = UiKit.CreateRect("Tile_" + label, parent, Vector2.zero, Vector2.one);
             var le = tile.gameObject.AddComponent<LayoutElement>();
-            le.preferredWidth = 230f;
+            le.preferredWidth = 192f;
             le.preferredHeight = 170f;
             var img = tile.gameObject.AddComponent<Image>();
             img.sprite = HubArt.Get("ui_tile", 32f);
@@ -337,6 +339,13 @@ namespace Platformer.Survival
                 new Vector2(0.04f, 0.06f), new Vector2(0.96f, 0.34f), ApogeeTheme.Gold), 1.2f);
             UiKit.FitLabel(text, 24);
             return tile;
+        }
+
+        /// <summary>The LABORATOIRE tile: the remedies are fused into healing kits there.</summary>
+        void OpenLaboratory()
+        {
+            foreach (var g in miniGames)
+                if (g != null && g.Id == "fusion") { LaunchWithGuide("fusion", () => EnterMiniGame(g)); return; }
         }
 
         /// <summary>Opens the missions page from the hub (its back button then returns here).</summary>

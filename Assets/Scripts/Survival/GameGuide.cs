@@ -36,7 +36,7 @@ namespace Platformer.Survival
             },
             "fusion" => new GameGuide
             {
-                Title = "FUSION",
+                Title = "LE LABORATOIRE",
                 Goal = "Bienvenue au laboratoire ! Lâche les remèdes dans le bécher : deux identiques qui se touchent fusionnent. Pilule, gélule, comprimé, pansement, sirop, seringue, fiole, flacon, élixir...",
                 Controls = "Glisse pour viser, relâche pour lâcher.",
                 Tip = "Chaque fusion fait monter le liquide : au trait MAX, 50 pièces et des points bonus. Deux élixirs font un kit de soin (3 en stock maximum). Un kit te fait reprendre une course du Runner là où tu es tombé. Ne laisse rien dépasser du bord !",
@@ -87,8 +87,8 @@ namespace Platformer.Survival
                 Title = "BASTION",
                 Goal = "Les morts suivent le chemin jusqu'au bastion. Pose des tours où tu veux au bord du chemin pour les arrêter avant la porte.",
                 Controls = "Touche l'herbe pour bâtir : une tour touchée montre sa fiche, touche-la encore pour la poser. Touche une tour pour l'améliorer (5 niveaux). Le crâne lance la vague suivante à tout moment, même pendant une vague. Touche ton héros puis le terrain pour le déplacer. Zoome avec deux doigts, la molette ou + et -, glisse pour te déplacer ; VOIR ZONES montre en vert où une tour peut aller.",
-                Tip = "Archers et pylône touchent les volants, le canon frappe les groupes, le givre ralentit. Ton héros a un pouvoir selon ton personnage : utilise-le au bon moment ! En mode infini, quitte quand tu veux : ta partie t'attend.",
-                Rewards = "[c]   [g]",
+                Tip = "Une tour au niveau 5 peut s'ÉVEILLER sans fin : chaque Éveil la rend bien plus forte, et à l'Éveil 3 elle gagne un don. Sur l'île sans fin, un ÎLOT accoste toutes les 10 vagues avec deux socles en hauteur (plus de portée). Chaque vague tenue y rapporte des LUMENS : au SANCTUAIRE, ils rendent toutes tes défenses plus fortes, pour toujours. Quitte quand tu veux : ta partie t'attend.",
+                Rewards = "[c]   [g]   [l]",
             },
             _ => new GameGuide { Title = id.ToUpperInvariant(), Goal = "", Controls = "", Tip = "", Rewards = "" },
         };

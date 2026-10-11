@@ -754,13 +754,13 @@ namespace Platformer.Survival
 
             levelStarsTitle.text = def.Name;
             string secretLine = def.SecretCount > 0
-                ? (secrets >= def.SecretCount ? "★ Tous les secrets trouvés" : $"☆ Secrets : {secrets} / {def.SecretCount}")
+                ? (secrets >= def.SecretCount ? "• Tous les secrets trouvés" : $"– Secrets : {secrets} / {def.SecretCount}")
                 : "";
             string healthLine = health >= 0.6f
-                ? $"★ Arrivé au boss à {Mathf.RoundToInt(health * 100f)} % de vie"
-                : $"☆ Arrivé au boss à {Mathf.RoundToInt(health * 100f)} % de vie (60 % requis)";
+                ? $"• Arrivé au boss à {Mathf.RoundToInt(health * 100f)} % de vie"
+                : $"– Arrivé au boss à {Mathf.RoundToInt(health * 100f)} % de vie (60 % requis)";
             string nextLine = index + 1 < LevelCatalog.Count ? $"\n{LevelCatalog.Get(index + 1).Name} est débloqué !" : "\nTu as terminé l'expédition !";
-            levelStarsBody.text = $"★ Niveau terminé\n{secretLine}\n{healthLine}{nextLine}";
+            levelStarsBody.text = $"• Niveau terminé\n{secretLine}\n{healthLine}{nextLine}";
         }
 
         void ResumeFromCheckpoint()

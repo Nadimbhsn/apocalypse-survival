@@ -28,7 +28,9 @@ namespace Platformer.Survival
     public class FusionGame : MiniGame
     {
         public override string Id => "fusion";
-        public override string Title => "FUSION";
+        /// <summary>Not a game on the home screen any more: it is the LABORATOIRE tile of the bottom bar.</summary>
+        public override bool ShowOnHub => false;
+        public override string Title => "LABORATOIRE";
         public override string Description => "Le laboratoire : fusionne les remèdes jusqu'au kit de soin";
         public override string BestLine => SaveSystem.FusionBest > 0 ? $"Record : {SaveSystem.FusionBest} pts" : "Aucun record";
 

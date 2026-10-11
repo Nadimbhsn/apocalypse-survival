@@ -37,7 +37,7 @@ namespace Platformer.Survival
     /// is purely positional: the dead advance by distance along the road, towers aim at
     /// the one furthest along within reach.
     /// </summary>
-    public class BastionGame : MiniGame
+    public partial class BastionGame : MiniGame
     {
         public override string Id => "bastion";
         public override string Title => "BASTION";
@@ -60,9 +60,7 @@ namespace Platformer.Survival
         static readonly Vector2 MapCentre = new Vector2(0f, -1f);
         const float IslandHalfW = 8.75f, IslandHalfH = 4.8f;
         /// <summary>What the camera fits at zoom 1: the island's grass, edge to edge (the HUD floats over it).</summary>
-        const float FitTop = 4.95f, FitBottom = -5.1f, FitHalfW = 9.5f;
         /// <summary>How far the view may pan when zoomed in.</summary>
-        const float PanLeft = -9.8f, PanRight = 9.8f, PanBottom = -6.2f, PanTop = 5.3f;
         const float MaxZoom = 2.6f;
         const float BetweenWaves = 12f;
         const float HeroRange = 1.9f, HeroInterval = 0.7f, HeroSpeed = 3f;
@@ -91,6 +89,10 @@ namespace Platformer.Survival
         {
             public TowerDef def;
             public int level, seed;
+            /// <summary>Awakening stars past level 5, and the gold spent on them.</summary>
+            public int stars, spent;
+            /// <summary>On a pad of a moored islet: sees further.</summary>
+            public bool islet;
             public Vector2 at;
             public float cooldown;
             public GameObject pad;
@@ -240,6 +242,7 @@ namespace Platformer.Survival
             BuildHud(rt);
             BuildOver(rt);
             BuildSelect(rt);
+            BuildSanctuary(rt);
             BuildRotatePrompt(rt);
         }
 
@@ -429,6 +432,9 @@ namespace Platformer.Survival
                 else mapCards.Add((card, stars, thumb));
             }
             UiKit.CreateButton("SelectBack", sel, "RETOUR", new Vector2(0.4f, 0.04f), new Vector2(0.6f, 0.13f), ReturnToHub, 30);
+            // the Sanctuary: Lumens earned on the endless island, spent on lasting rites
+            sanctuaryButton = UiKit.CreateButton("Sanctuary", sel, "", new Vector2(0.66f, 0.04f), new Vector2(0.95f, 0.13f), ShowSanctuary, 26, new Color(0.45f, 0.3f, 0.12f));
+            sanctuaryButtonLabel = IconText.OnButton(sanctuaryButton, 26);
         }
 
         void BuildRotatePrompt(RectTransform rt)
@@ -521,6 +527,8 @@ namespace Platformer.Survival
             var saved = LoadEndlessSave();
             endlessBestText.text = saved != null ? $"REPRENDRE : vague {saved.wave + 1}" : best > 0 ? $"Record : vague {best}" : "Aucun record";
             endlessNewButton.gameObject.SetActive(saved != null);
+            if (sanctuaryPanel != null) sanctuaryPanel.SetActive(false);
+            RefreshSanctuary();
         }
 
         void ClearWorld()
@@ -559,8 +567,13 @@ namespace Platformer.Survival
             obstacles = index < 0 ? BastionObstacles.Endless
                 : BastionObstacles.Campaign[Mathf.Clamp(index, 0, BastionObstacles.Campaign.Length - 1)];
 
-            gold = map.StartGold;
-            lives = BastionCatalog.StartLives;
+            gold = map.StartGold + StartGoldBonus;
+            lives = MaxLives;
+            isletsShown = 0;
+            heldThisRun = 0;
+            lootCarry = 0f;
+            isletMoves.Clear();
+            lumensThisRun = 0;
             wave = 0;
             clock = 0f;
             speed = 1;
@@ -824,6 +837,7 @@ namespace Platformer.Survival
             AnimateZones();
             UpdateShots(realDt * speed);
             UpdateBolts();
+            AnimateIslets(realDt);
             if (MenuOpen) PlaceRing();
             if (!playing) return;
             if (messageUntil > 0f && Time.time > messageUntil) { messageUntil = 0f; messageText.text = ""; }
@@ -941,6 +955,14 @@ namespace Platformer.Survival
             int bonus = BastionCatalog.WaveBonus(n);
             gold += bonus;
             Sfx.Milestone();
+            if (map.Endless)
+            {
+                AwardLumens(n);
+                int before = isletsShown;
+                heldThisRun = Mathf.Max(heldThisRun, n);
+                SyncIslets(true);
+                if (isletsShown > before) ui.ShowBanner("UN ÎLOT ACCOSTE", "Deux socles en hauteur : une tour y voit plus loin", 2.6f);
+            }
             if (!map.Endless && openWaves.Count == 0 && wave >= map.Waves) { EndMap(true); return; }
             if (openWaves.Count == 0) nextWaveTimer = BetweenWaves;
             Say($"Vague {n} repoussée   ·   +{bonus} or", 2.5f);
@@ -1109,10 +1131,11 @@ namespace Platformer.Survival
                 c.hpFill.localPosition = new Vector3(-0.34f * (1f - f), 0f, -0.01f);
                 return;
             }
-            gold += c.def.Gold;
+            int loot = Loot(c.def.Gold);
+            gold += loot;
             var at = c.go.transform.position;
             Fx.Burst(at, new Color(0.6f, 0.2f, 0.15f), c.def.Kind == CreepKind.Colossus ? 34 : 12, 3f, 0.09f);
-            Fx.Text(at + Vector3.up * 0.9f, $"+{c.def.Gold}", PlaceholderVisuals.CoinColor, 0.75f);
+            Fx.Text(at + Vector3.up * 0.9f, $"+{loot}", PlaceholderVisuals.CoinColor, 0.75f);
             if (c.def.Kind == CreepKind.Colossus) { Fx.Shake(0.4f, 0.3f); Sfx.Milestone(); }
             else Sfx.Kill();
             Destroy(c.go);
@@ -1129,8 +1152,9 @@ namespace Platformer.Survival
                 t.cooldown -= dt;
                 if (t.cooldown > 0f) continue;
                 Vector2 at = t.at;
-                float range = BastionCatalog.RangeAt(t.def, t.level);
-                float dmg = BastionCatalog.DamageAt(t.def, t.level);
+                float range = TRange(t);
+                float dmg = TDamage(t);
+                bool gifted = t.stars >= 3;
 
                 if (t.def.Kind == TowerKind.Brazier)
                 {
@@ -1146,7 +1170,7 @@ namespace Platformer.Survival
                     }
                     if (any)
                     {
-                        t.cooldown = BastionCatalog.IntervalAt(t.def, t.level);
+                        t.cooldown = TInterval(t);
                         if (t.flame != null) t.anim = 1f;
                     }
                     continue;
@@ -1154,7 +1178,7 @@ namespace Platformer.Survival
 
                 var target = FirstInRange(at, range, t.def.HitsAir);
                 if (target == null) continue;
-                t.cooldown = BastionCatalog.IntervalAt(t.def, t.level);
+                t.cooldown = TInterval(t);
                 Vector3 muzzle = t.go.transform.position + Vector3.up * 0.75f;
                 var aim = target.go.transform.position + Vector3.up * 0.35f;
                 var def = t.def;
@@ -1162,7 +1186,16 @@ namespace Platformer.Survival
                 switch (def.Kind)
                 {
                     case TowerKind.Archer:
-                        Launch("arrow", muzzle, aim, 0.18f, 0.45f, 0.25f, true, () => Hit(target, dmg, def));
+                        Launch("arrow", muzzle, aim, 0.18f, 0.45f, 0.25f, true, () =>
+                        {
+                            Hit(target, dmg, def);
+                            if (!gifted) return;
+                            // ★3: the arrow goes through and finds the next one
+                            Creep next = null;
+                            float best = 1.3f * 1.3f;
+                            foreach (var c in creeps) { if (c == target) continue; float d = (c.pos - target.pos).sqrMagnitude; if (d < best) { best = d; next = c; } }
+                            if (next != null) Hit(next, dmg * 0.7f, def);
+                        });
                         Sfx.Shoot();
                         break;
                     case TowerKind.Cannon:
@@ -1175,7 +1208,8 @@ namespace Platformer.Survival
                             muzzle = t.barrel.position + (Vector3)((Vector2)dir.normalized * 0.55f);
                         }
                         Vector2 impact = target.pos;
-                        Launch("ball", muzzle, W(impact, aim.z) + Vector3.up * 0.2f, 0.45f, 0.24f, 1.4f, false, () => CannonImpact(impact, dmg, def));
+                        float splash = def.Splash * (gifted ? 1.5f : 1f);
+                        Launch("ball", muzzle, W(impact, aim.z) + Vector3.up * 0.2f, 0.45f, 0.24f, 1.4f, false, () => CannonImpact(impact, dmg, def, splash));
                         Sfx.Attack();
                         break;
                     case TowerKind.Frost:
@@ -1184,6 +1218,7 @@ namespace Platformer.Survival
                             if (target.go == null) return;
                             target.slowUntil = clock + def.SlowTime;
                             target.slowFactor = 1f - def.Slow;
+                            if (gifted) target.stunUntil = Mathf.Max(target.stunUntil, clock + 0.45f);
                             Fx.Burst(target.go.transform.position + Vector3.up * 0.3f, new Color(0.7f, 0.92f, 1f), 6, 1.6f, 0.06f, 0f);
                             Hit(target, dmg, def);
                         });
@@ -1192,7 +1227,8 @@ namespace Platformer.Survival
                     case TowerKind.Pylon:
                         var chain = new List<Creep> { target };
                         Creep prev = target;
-                        for (int j = 1; j < def.Chain; j++)
+                        int links = def.Chain + (gifted ? 2 : 0);
+                        for (int j = 1; j < links; j++)
                         {
                             Creep next = null;
                             float best = 1.5f * 1.5f;
@@ -1217,7 +1253,7 @@ namespace Platformer.Survival
             }
         }
 
-        void CannonImpact(Vector2 at, float dmg, TowerDef def)
+        void CannonImpact(Vector2 at, float dmg, TowerDef def, float splash)
         {
             var p = W(at, -3f);
             Fx.Burst(p, new Color(1f, 0.6f, 0.2f), 16, 3.5f, 0.1f, 0.2f);
@@ -1226,7 +1262,7 @@ namespace Platformer.Survival
             for (int i = creeps.Count - 1; i >= 0; i--)
             {
                 var c = creeps[i];
-                if (!c.def.Flies && (c.pos - at).sqrMagnitude <= def.Splash * def.Splash) Hit(c, dmg, def);
+                if (!c.def.Flies && (c.pos - at).sqrMagnitude <= splash * splash) Hit(c, dmg, def);
             }
         }
 
@@ -1367,7 +1403,7 @@ namespace Platformer.Survival
         void OnPower()
         {
             if (!playing || powerCooldown > 0f || hero == null) return;
-            powerCooldown = BastionCatalog.PowerCooldown;
+            powerCooldown = PowerCooldownNow;
             float k = Mathf.Max(1f, healthScale);
             var at = heroPos;
             Sfx.Spring();
@@ -1392,7 +1428,7 @@ namespace Platformer.Survival
                     AddZone(at, 1.9f, 7f * k, 6f, new Color(0.45f, 0.85f, 0.25f, 0.35f));
                     break;
                 case BastionCatalog.HeroPower.Rampart:
-                    lives = Mathf.Min(BastionCatalog.StartLives, lives + 3);
+                    lives = Mathf.Min(MaxLives, lives + 3);
                     Fx.Burst(W(path[path.Length - 1], -3f), new Color(0.5f, 1f, 0.6f), 30, 4f, 0.1f, 0f);
                     break;
                 case BastionCatalog.HeroPower.FireWall:
@@ -1409,7 +1445,7 @@ namespace Platformer.Survival
                 case BastionCatalog.HeroPower.Drain:
                     for (int i = creeps.Count - 1; i >= 0; i--)
                         if ((creeps[i].pos - at).sqrMagnitude <= 9f) Hit(creeps[i], 25f * k, null);
-                    lives = Mathf.Min(BastionCatalog.StartLives, lives + 1);
+                    lives = Mathf.Min(MaxLives, lives + 1);
                     Fx.Burst(hero.position, new Color(0.6f, 0.2f, 0.7f), 26, 4f, 0.1f, 0f);
                     break;
                 case BastionCatalog.HeroPower.Ambush:
@@ -1510,6 +1546,7 @@ namespace Platformer.Survival
                     t.glow = Place("Orb", Art("orb"), new Vector2(0f, topY), 0.7f, order + 1, -0.05f, go.transform);
                     break;
             }
+            DrawAwakening(t, go.transform, order, scale);
             // Levels 4 and 5 keep the level 3 look, crowned by a golden aura and a star each.
             if (t.level > 3)
             {
@@ -1522,6 +1559,15 @@ namespace Platformer.Survival
                     star.transform.localScale = Vector3.one * 0.3f;
                 }
             }
+        }
+
+        /// <summary>What a tower cost, levels and stars, at today's prices (for its resale).</summary>
+        int TowerValue(Tower t)
+        {
+            int v = Price(BastionCatalog.Invested(t.def, t.level));
+            int stars = t.stars;
+            for (t.stars = 0; t.stars < stars; t.stars++) v += AwakenCost(t);
+            return v;
         }
 
         void AnimateTower(Tower t, float dt)
@@ -1655,6 +1701,7 @@ namespace Platformer.Survival
             }
             // A tap beside an open menu closes it; otherwise the grass tapped becomes a building spot.
             if (MenuOpen) { CloseMenus(); return; }
+            if (IsletPadAt(p, out var pad)) { OpenSpotMenu(pad); return; }
             string problem = PlacementProblem(p);
             if (problem != null)
             {
@@ -1692,7 +1739,7 @@ namespace Platformer.Survival
             selected = t;
             spotOpen = false;
             previewKind = -1;
-            OpenMenuAt(t.at, BastionCatalog.RangeAt(t.def, t.level));
+            OpenMenuAt(t.at, TRange(t));
         }
 
         void OpenSpotMenu(Vector2 p)
@@ -1770,14 +1817,16 @@ namespace Platformer.Survival
                     brt.localScale = Vector3.one * (previewKind == i ? 1.18f : 1f);
                     icon.sprite = Art(TowerArt(def.Kind, 1));
                     icon.preserveAspect = true;
-                    cost.text = previewKind == i ? $"OK {def.Cost}" : $"{def.Cost}";
-                    b.interactable = gold >= def.Cost || previewKind != i;
+                    int price = Price(def.Cost);
+                    cost.text = previewKind == i ? $"OK {price}" : $"{price}";
+                    b.interactable = gold >= price || previewKind != i;
                     ((Image)b.targetGraphic).color = previewKind == i ? new Color(1f, 0.92f, 0.6f) : new Color(0.95f, 0.85f, 0.75f);
                 }
                 if (previewKind >= 0)
                 {
                     var def = BastionCatalog.Towers[previewKind];
-                    ringInfo.text = gold >= def.Cost ? "Touche encore pour bâtir" : $"Il manque {def.Cost - gold} or";
+                    int price = Price(def.Cost);
+                    ringInfo.text = gold >= price ? "Touche encore pour bâtir" : $"Il manque {price - gold} or";
                     ShowCard(def, 1, false);
                 }
                 else
@@ -1801,39 +1850,50 @@ namespace Platformer.Survival
             bool maxed = t.level >= BastionCatalog.MaxTowerLevel;
             if (!maxed)
             {
-                int c = BastionCatalog.UpgradeCost(t.def, t.level + 1);
+                int c = Price(BastionCatalog.UpgradeCost(t.def, t.level + 1));
                 uicon.sprite = Art(TowerArt(t.def.Kind, t.level + 1));
                 ucost.text = $"{c}";
                 ub.interactable = gold >= c;
             }
             else
             {
-                uicon.sprite = Art(TowerArt(t.def.Kind, t.level));
-                ucost.text = "MAX";
-                ub.interactable = false;
+                // past level 5: the Awakening, star after star
+                int c = AwakenCost(t);
+                uicon.sprite = PlaceholderVisuals.Star();
+                ucost.text = $"{c}";
+                ub.interactable = gold >= c;
             }
             var (sb, sicon, scost) = ringButtons[1];
             ((RectTransform)sb.transform).anchoredPosition = new Vector2(0f, -radius);
             sicon.sprite = GameIcons.Coin;
-            scost.text = $"+{Mathf.RoundToInt(BastionCatalog.Invested(t.def, t.level) * BastionCatalog.SellRefund)}";
+            scost.text = $"+{Mathf.RoundToInt(TowerValue(t) * BastionCatalog.SellRefund)}";
             sb.interactable = true;
-            ringInfo.text = "";
-            ShowCard(t.def, t.level, !maxed);
+            ringInfo.text = maxed ? $"Niveau max : Éveil {t.stars + 1}" : "";
+            ShowTowerCard(t);
         }
 
         static string Num(float v) => v >= 10f ? Mathf.RoundToInt(v).ToString() : v.ToString("0.#");
-        static string Next(string now, string next, bool show) => show && next != now ? $"{now} <color=#9BFF8A>→ {next}</color>" : now;
+        static string Next(string now, string next, bool show) => show && next != now ? $"{now} <color=#9BFF8A>» {next}</color>" : now;
 
-        /// <summary>The tower card: damage, range and rate of fire, with the next level's numbers in green.</summary>
-        void ShowCard(TowerDef d, int level, bool withNext)
+        /// <summary>The card of a tower about to be built: its numbers at level 1.</summary>
+        void ShowCard(TowerDef d, int level, bool withNext) => ShowTowerCard(new Tower { def = d, level = level, islet = spotOpen && IsIsletPad(spot) }, false);
+
+        /// <summary>
+        /// The tower card: damage, range and rate of fire (Sanctuary, stars and islet
+        /// counted), with what the next level - or the next star - brings in green.
+        /// </summary>
+        void ShowTowerCard(Tower t, bool built = true)
         {
             infoPanel.SetActive(true);
-            int nl = Mathf.Min(level + 1, BastionCatalog.MaxTowerLevel);
-            float dmg = BastionCatalog.DamageAt(d, level), dmg2 = BastionCatalog.DamageAt(d, nl);
-            float rng = BastionCatalog.RangeAt(d, level), rng2 = BastionCatalog.RangeAt(d, nl);
-            float rate = 1f / BastionCatalog.IntervalAt(d, level), rate2 = 1f / BastionCatalog.IntervalAt(d, nl);
-            string stars = level > 1 || withNext ? $"   niv. {level}/{BastionCatalog.MaxTowerLevel}" : "";
-            infoTitle.text = d.Name.ToUpperInvariant() + stars;
+            var d = t.def;
+            bool maxed = t.level >= BastionCatalog.MaxTowerLevel;
+            var next = new Tower { def = d, level = maxed ? t.level : t.level + 1, stars = maxed ? t.stars + 1 : t.stars, islet = t.islet };
+            bool withNext = built;
+            float dmg = TDamage(t), dmg2 = TDamage(next);
+            float rng = TRange(t), rng2 = TRange(next);
+            float rate = 1f / TInterval(t), rate2 = 1f / TInterval(next);
+            string head = built ? $"   niv. {t.level}/{BastionCatalog.MaxTowerLevel}" + (t.stars > 0 ? $"  ·  Éveil {t.stars}" : "") : "";
+            infoTitle.text = d.Name.ToUpperInvariant() + head;
 
             var sb = new System.Text.StringBuilder();
             sb.Append($"<color=#F5C25C>Dégâts</color>   {Next(Num(dmg), Num(dmg2), withNext)}\n");
@@ -1842,14 +1902,25 @@ namespace Platformer.Survival
             sb.Append($"<color=#F5C25C>Dégâts/s</color>   {Next(Num(dmg * rate), Num(dmg2 * rate2), withNext)}\n");
             switch (d.Kind)
             {
-                case TowerKind.Cannon: sb.Append($"Explose sur {Num(d.Splash)} m autour de l'impact\n"); break;
+                case TowerKind.Cannon: sb.Append($"Explose sur {Num(d.Splash * (t.stars >= 3 ? 1.5f : 1f))} m autour de l'impact\n"); break;
                 case TowerKind.Brazier: sb.Append("Brûle tout ce qui marche à portée\n"); break;
                 case TowerKind.Frost: sb.Append($"Ralentit de {Mathf.RoundToInt(d.Slow * 100f)} % pendant {Num(d.SlowTime)} s\n"); break;
-                case TowerKind.Pylon: sb.Append($"Éclair sur {d.Chain} morts, double sur les volants\n"); break;
+                case TowerKind.Pylon: sb.Append($"Éclair sur {d.Chain + (t.stars >= 3 ? 2 : 0)} morts, double sur les volants\n"); break;
             }
             sb.Append(d.HitsAir ? "Touche les volants" : "Ne touche pas les volants");
             if (d.Physical) sb.Append("\nMoitié des dégâts sur les cuirassés");
-            if (withNext) sb.Append($"\n<color=#F5C25C>Niveau {nl} :</color> {BastionCatalog.UpgradeCost(d, nl)} or");
+            if (t.islet) sb.Append($"\nSur un îlot : +{Num(IsletReach)} m de portée");
+            if (t.stars >= 3) sb.Append($"\n<color=#FFE38A>Éveil 3 :</color> {Gift(d.Kind)}");
+            if (built)
+            {
+                if (!maxed) sb.Append($"\n<color=#F5C25C>Niveau {t.level + 1} :</color> {Price(BastionCatalog.UpgradeCost(d, t.level + 1))} or");
+                else
+                {
+                    sb.Append($"\n<color=#FFE38A>Éveil {t.stars + 1} :</color> {AwakenCost(t)} or");
+                    if (t.stars < 3) sb.Append($"\n<color=#B9A98F>à l'Éveil 3 : {Gift(d.Kind)}</color>");
+                }
+            }
+            else sb.Append($"\n<color=#F5C25C>Prix :</color> {Price(d.Cost)} or");
             infoBody.text = sb.ToString();
         }
 
@@ -1864,7 +1935,7 @@ namespace Platformer.Survival
                     previewKind = i;
                     var def = BastionCatalog.Towers[i];
                     rangeRing.SetActive(true);
-                    rangeRing.transform.localScale = Vector3.one * def.Range * 2f;
+                    rangeRing.transform.localScale = Vector3.one * TRange(new Tower { def = def, level = 1, islet = IsIsletPad(spot) }) * 2f;
                     Sfx.Drop();
                     RefreshRing();
                     return;
@@ -1872,7 +1943,7 @@ namespace Platformer.Survival
                 Build((TowerKind)i);
                 return;
             }
-            if (i == 0) Upgrade();
+            if (i == 0) { if (selected != null && selected.level >= BastionCatalog.MaxTowerLevel) Awaken(); else Upgrade(); }
             else Sell();
         }
 
@@ -1880,9 +1951,10 @@ namespace Platformer.Survival
         {
             if (!spotOpen) return;
             var def = BastionCatalog.Tower(kind);
-            if (gold < def.Cost) return;
-            gold -= def.Cost;
-            var t = new Tower { def = def, level = 1, at = spot, seed = towerSeed++ };
+            int price = Price(def.Cost);
+            if (gold < price) return;
+            gold -= price;
+            var t = new Tower { def = def, level = 1, at = spot, seed = towerSeed++, islet = IsIsletPad(spot) };
             towers.Add(t);
             DrawTower(t);
             Sfx.Material();
@@ -1897,7 +1969,7 @@ namespace Platformer.Survival
         {
             var t = selected;
             if (t == null || t.level >= BastionCatalog.MaxTowerLevel) return;
-            int cost = BastionCatalog.UpgradeCost(t.def, t.level + 1);
+            int cost = Price(BastionCatalog.UpgradeCost(t.def, t.level + 1));
             if (gold < cost) return;
             gold -= cost;
             t.level++;
@@ -1905,7 +1977,7 @@ namespace Platformer.Survival
             Sfx.Milestone();
             Fx.Burst(W(t.at, -3f) + Vector3.up * 0.6f, ApogeeTheme.Gold, 24, 3.5f, 0.1f, 0f);
             // Stay on the tower: its card now shows the next step.
-            rangeRing.transform.localScale = Vector3.one * BastionCatalog.RangeAt(t.def, t.level) * 2f;
+            rangeRing.transform.localScale = Vector3.one * TRange(t) * 2f;
             RefreshRing();
             RefreshHud();
         }
@@ -1914,7 +1986,7 @@ namespace Platformer.Survival
         {
             var t = selected;
             if (t == null) return;
-            gold += Mathf.RoundToInt(BastionCatalog.Invested(t.def, t.level) * BastionCatalog.SellRefund);
+            gold += Mathf.RoundToInt(TowerValue(t) * BastionCatalog.SellRefund);
             if (t.go != null) Destroy(t.go);
             if (t.pad != null) Destroy(t.pad);
             Fx.Burst(W(t.at, -3f), new Color(0.6f, 0.55f, 0.5f), 18, 3f, 0.1f, 0.5f);
@@ -1958,7 +2030,7 @@ namespace Platformer.Survival
                 materials = held / 4;
                 if (record && held / 25 > old / 25 && SaveSystem.TryAddReviveKit()) extra = "      1 [k]";
                 overTitle.text = record ? "NOUVEAU RECORD !" : "LE BASTION EST TOMBÉ";
-                overDetail.text = $"Vagues tenues : {held}   ·   record : {Mathf.Max(held, old)}";
+                overDetail.text = $"Vagues tenues : {held}   ·   record : {Mathf.Max(held, old)}   ·   +{lumensThisRun} Lumens pour le Sanctuaire";
                 for (int s = 0; s < 3; s++) overStars[s].gameObject.SetActive(false);
                 Sfx.Death();
             }
@@ -1971,7 +2043,7 @@ namespace Platformer.Survival
                 materials = stars + mapIndex;
                 if (firstThree && SaveSystem.TryAddReviveKit()) extra = "      1 [k]";
                 overTitle.text = "VICTOIRE !";
-                overDetail.text = $"{map.Name}   ·   {lives} vies sur {BastionCatalog.StartLives}";
+                overDetail.text = $"{map.Name}   ·   {lives} vies sur {MaxLives}";
                 for (int s = 0; s < 3; s++)
                 {
                     overStars[s].gameObject.SetActive(true);
@@ -2065,7 +2137,7 @@ namespace Platformer.Survival
         const string EndlessSaveKey = "bastion_endless_run";
 
         [Serializable]
-        class SavedTower { public int kind, level; public float x, y; }
+        class SavedTower { public int kind, level, stars; public float x, y; }
 
         [Serializable]
         class EndlessSave
@@ -2100,7 +2172,7 @@ namespace Platformer.Survival
             foreach (int n in openWaves) beaten = Mathf.Min(beaten, n - 1);
             var save = new EndlessSave { wave = Mathf.Max(0, beaten), gold = gold, lives = lives, heroX = heroTarget.x, heroY = heroTarget.y };
             foreach (var t in towers)
-                save.towers.Add(new SavedTower { kind = (int)t.def.Kind, level = t.level, x = t.at.x, y = t.at.y });
+                save.towers.Add(new SavedTower { kind = (int)t.def.Kind, level = t.level, stars = t.stars, x = t.at.x, y = t.at.y });
             PlayerPrefs.SetString(EndlessSaveKey, JsonUtility.ToJson(save));
             PlayerPrefs.Save();
         }
@@ -2111,14 +2183,18 @@ namespace Platformer.Survival
             if (save == null) return false;
             StartMap(-1);
             gold = save.gold;
-            lives = Mathf.Clamp(save.lives, 1, BastionCatalog.StartLives);
+            lives = Mathf.Clamp(save.lives, 1, MaxLives);
             wave = save.wave;
             healthScale = BastionCatalog.HealthScale(Mathf.Max(1, wave), map.Toughness);
             nextWaveTimer = BetweenWaves;
+            heldThisRun = wave;
+            SyncIslets(false);
             foreach (var st in save.towers)
             {
                 if (st.kind < 0 || st.kind >= BastionCatalog.Towers.Length) continue;
-                var t = new Tower { def = BastionCatalog.Towers[st.kind], level = Mathf.Clamp(st.level, 1, BastionCatalog.MaxTowerLevel), at = new Vector2(st.x, st.y), seed = towerSeed++ };
+                var pos = new Vector2(st.x, st.y);
+                var t = new Tower { def = BastionCatalog.Towers[st.kind], level = Mathf.Clamp(st.level, 1, BastionCatalog.MaxTowerLevel), at = pos, seed = towerSeed++,
+                    stars = Mathf.Max(0, st.stars), islet = IsIsletPad(pos) };
                 towers.Add(t);
                 DrawTower(t);
             }
@@ -2152,7 +2228,7 @@ namespace Platformer.Survival
             else callLabel.text = $"VAGUE SUIVANTE  {Mathf.CeilToInt(nextWaveTimer)} s  +{bonus}";
             callButton.interactable = CanCallWave;
 
-            powerFill.fillAmount = powerCooldown / BastionCatalog.PowerCooldown;
+            powerFill.fillAmount = powerCooldown / PowerCooldownNow;
             powerTimer.text = powerCooldown > 0f ? Mathf.CeilToInt(powerCooldown).ToString() : "";
             powerButton.interactable = powerCooldown <= 0f && playing;
             if (ringMenu.activeSelf) RefreshRing();

@@ -25,6 +25,8 @@ namespace Platformer.Survival
         public static Sprite Debris => Get("debris", DebrisShade);
         /// <summary>A violet crystal: the Barricade's Éclats, spent at the Forge.</summary>
         public static Sprite Shard => Get("shard", ShardShade);
+        /// <summary>A golden four-pointed star with a soft glow: Bastion's Lumens, spent at the Sanctuary.</summary>
+        public static Sprite Lumen => Get("lumen", LumenShade);
         public static Sprite TrapSpikes => Get("trap_spikes", SpikesShade);
         public static Sprite TrapToxic => Get("trap_toxic", ToxicShade);
         public static Sprite TrapWire => Get("trap_wire", WireShade);
@@ -68,6 +70,7 @@ namespace Platformer.Survival
             'g' => Gear,
             'd' => Debris,
             'e' => Shard,
+            'l' => Lumen,
             'a' => Ammo,
             'k' => Kit,
             _ => null,
@@ -106,6 +109,25 @@ namespace Platformer.Survival
         static Color Mix(Color a, Color b, float t) => Color.Lerp(a, b, Mathf.Clamp01(t));
 
         // A tall violet crystal, lit on its left face, with a white glint.
+        static Color LumenShade(float u, float v)
+        {
+            float au = Mathf.Abs(u), av = Mathf.Abs(v);
+            // a four-pointed star: thin where the arms are long
+            float star = Mathf.Pow(au, 0.55f) + Mathf.Pow(av, 0.55f);
+            float r = Mathf.Sqrt(u * u + v * v);
+            if (star > 1.12f)
+            {
+                float glow = Mathf.Clamp01(1f - r / 0.95f);
+                return glow > 0.02f ? new Color(1f, 0.85f, 0.4f, glow * 0.55f) : Color.clear;
+            }
+            if (star > 1.0f) return new Color(0.62f, 0.38f, 0.06f);
+            var deep = new Color(0.95f, 0.66f, 0.15f);
+            var bright = new Color(1f, 0.97f, 0.75f);
+            var c = Mix(deep, bright, Mathf.Clamp01(1.1f - star + (u < 0f && v > 0f ? 0.2f : 0f)));
+            if (r < 0.14f) c = Mix(c, Color.white, 0.7f);
+            return c;
+        }
+
         static Color ShardShade(float u, float v)
         {
             float d = Mathf.Abs(u) / 0.56f + Mathf.Abs(v) / 0.94f;
