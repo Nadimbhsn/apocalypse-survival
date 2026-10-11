@@ -24,7 +24,8 @@ namespace Platformer.Survival
         float bannerTime, messageTime;
 
         // menu / over / board
-        Text menuRecord, overTitle, overStats, overRank;
+        Text menuRecord, overTitle, overStats, overRank, playLabel;
+        Button playButton, newRunButton;
         IconText overCoins;
         readonly List<Text> boardRows = new();
 
@@ -307,9 +308,11 @@ namespace Platformer.Survival
             UiKit.CreateText("Pitch", rt, "Piégé dans une station-service abandonnée. Les morts arrivent par vagues, toujours plus nombreux. Tiens le plus longtemps possible.", 26, TextAnchor.UpperCenter,
                 new Vector2(0.08f, 0.4f), new Vector2(0.92f, 0.49f), ApogeeTheme.Cream);
             menuRecord = UiKit.Outlined(UiKit.CreateText("Record", rt, "", 28, TextAnchor.MiddleCenter, new Vector2(0.08f, 0.35f), new Vector2(0.92f, 0.39f), ApogeeTheme.Gold), 1.5f);
-            UiKit.CreateButton("Play", rt, "JOUER", new Vector2(0.18f, 0.24f), new Vector2(0.82f, 0.32f), StartNight, 44);
-            UiKit.CreateButton("Board", rt, "CLASSEMENT", new Vector2(0.24f, 0.155f), new Vector2(0.76f, 0.215f), ShowBoard, 28, new Color(0.22f, 0.10f, 0.08f));
-            UiKit.CreateButton("Back", rt, "RETOUR", new Vector2(0.32f, 0.06f), new Vector2(0.68f, 0.12f), ReturnToHub, 26, new Color(0.22f, 0.10f, 0.08f));
+            playButton = UiKit.CreateButton("Play", rt, "JOUER", new Vector2(0.15f, 0.245f), new Vector2(0.85f, 0.325f), () => { if (LoadSave() != null) ResumeNight(); else StartNight(); }, 42);
+            playLabel = playButton.GetComponentInChildren<Text>();
+            newRunButton = UiKit.CreateButton("NewRun", rt, "NOUVELLE PARTIE", new Vector2(0.26f, 0.185f), new Vector2(0.74f, 0.232f), NewNight, 24, new Color(0.35f, 0.14f, 0.1f));
+            UiKit.CreateButton("Board", rt, "CLASSEMENT", new Vector2(0.26f, 0.12f), new Vector2(0.74f, 0.172f), ShowBoard, 26, new Color(0.22f, 0.10f, 0.08f));
+            UiKit.CreateButton("Back", rt, "RETOUR", new Vector2(0.32f, 0.04f), new Vector2(0.68f, 0.1f), ReturnToHub, 26, new Color(0.22f, 0.10f, 0.08f));
             menuUi.SetActive(false);
         }
 
@@ -320,6 +323,10 @@ namespace Platformer.Survival
             if (hero != null) hero.gameObject.SetActive(false);
             var b = LoadBoard();
             menuRecord.text = b.entries.Count > 0 ? $"Record : {b.entries[0].score} pts  ·  vague {b.entries[0].wave}" : "Aucune nuit au classement";
+            var saved = LoadSave();
+            playLabel.text = saved != null ? $"REPRENDRE  ·  VAGUE {saved.wave + 1}" : "JOUER";
+            UiKit.FitLabel(playLabel, 42);
+            newRunButton.gameObject.SetActive(saved != null);
             menuUi.SetActive(true);
         }
 
@@ -331,6 +338,7 @@ namespace Platformer.Survival
             bonusUi = rt.gameObject;
             UiKit.Outlined(UiKit.CreateText("Title", rt, "VAGUE TENUE !", 60, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.8f), new Vector2(0.95f, 0.88f), ApogeeTheme.Gold), 3f);
             UiKit.CreateText("Hint", rt, "Choisis un bonus pour la suite de la nuit", 28, TextAnchor.MiddleCenter, new Vector2(0.05f, 0.75f), new Vector2(0.95f, 0.8f), ApogeeTheme.Cream);
+            QuitButton(rt);
             for (int i = 0; i < 3; i++)
             {
                 float y1 = 0.72f - i * 0.2f, y0 = y1 - 0.18f;
@@ -435,6 +443,7 @@ namespace Platformer.Survival
 
             shopTitle = UiKit.Outlined(UiKit.CreateText("Title", rt, "ENTRE DEUX VAGUES", 48, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.94f), new Vector2(0.96f, 0.985f), ApogeeTheme.Gold), 2.5f);
             shopNext = UiKit.CreateText("Next", rt, "", 24, TextAnchor.MiddleCenter, new Vector2(0.04f, 0.912f), new Vector2(0.96f, 0.942f), ApogeeTheme.Cream);
+            QuitButton(rt);
             UiKit.FitLabel(shopNext, 24);
 
             // what you have: health and scrap, big
@@ -480,6 +489,13 @@ namespace Platformer.Survival
             nextWaveButton = UiKit.CreateButton("Launch", rt, "", new Vector2(0.12f, 0.02f), new Vector2(0.88f, 0.098f), () => { HideScreens(); NextWave(); }, 40);
             nextWaveLabel = nextWaveButton.GetComponentInChildren<Text>();
             shopUi.SetActive(false);
+        }
+
+        /// <summary>Leave between waves: the night is kept exactly as it is.</summary>
+        void QuitButton(RectTransform rt)
+        {
+            var b = UiKit.CreateButton("Quit", rt, "QUITTER", new Vector2(0.02f, 0.945f), new Vector2(0.2f, 0.985f), QuitNight, 20, new Color(0.22f, 0.10f, 0.08f));
+            b.transform.SetAsLastSibling();
         }
 
         void Toast(string text)

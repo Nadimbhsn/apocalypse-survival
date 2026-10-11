@@ -136,7 +136,8 @@ namespace Platformer.Survival
 
         protected override void OnExit()
         {
-            if (phase == Phase.Wave || phase == Phase.Bonus || phase == Phase.Shop) EndNight(false);
+            // leaving keeps the night (see NuitGame.Save)
+            SaveRun();
             phase = Phase.Menu;
             Fx.OrderBoost = 0;
             NuitPad.Release();
@@ -147,15 +148,17 @@ namespace Platformer.Survival
             boss = null;
         }
 
-        /// <summary>Quitting from the pause ends the night properly: its score still counts.</summary>
+        /// <summary>Quitting keeps the night: REPRENDRE picks it up before the wave that was running.</summary>
         void QuitNight()
         {
-            if (phase == Phase.Wave || phase == Phase.Bonus || phase == Phase.Shop) EndNight(false);
+            SaveRun();
+            phase = Phase.Menu;
             ReturnToHub();
         }
 
         void StartNight()
         {
+            ClearSave();
             ClearRun();
             wave = 0; scrap = 0; kills = 0; bosses = 0; scrapCarry = 0f;
             for (int i = 0; i < perkStacks.Length; i++) perkStacks[i] = 0;
@@ -1180,6 +1183,8 @@ namespace Platformer.Survival
             spawnTimer = 1.5f;
             waveClock = 0f;
             phase = Phase.Wave;
+            // what to come back to if the night is left during this wave
+            waveStart = Snapshot(wave - 1, false);
             BeginEvent();
             if (bossWave)
             {
@@ -1221,6 +1226,7 @@ namespace Platformer.Survival
             if (coins > 0) SaveSystem.AddCoins(coins);
             if (held > BestWave) BestWave = held;
             var entry = new BoardEntry { score = score, wave = held, kills = kills, date = System.DateTime.Now.ToString("dd/MM") };
+            ClearSave();
             int rank = Record(entry);
             if (died) ShowOver(entry, rank, coins);
         }
