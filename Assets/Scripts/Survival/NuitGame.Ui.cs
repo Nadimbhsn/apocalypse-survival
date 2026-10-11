@@ -116,7 +116,7 @@ namespace Platformer.Survival
 
             // two fixed joysticks: move on the left, aim and fire on the right
             CreatePad(g, "MovePad", new Vector2(0.21f, 0.135f), false);
-            CreatePad(g, "AimPad", new Vector2(0.79f, 0.135f), true);
+            CreateFireButton(g, new Vector2(0.79f, 0.135f));
 
             // top: the wave, the threat, pause
             var top = UiKit.CreateRect("Top", g, new Vector2(0f, 0.92f), new Vector2(1f, 1f));
@@ -213,6 +213,27 @@ namespace Platformer.Survival
             knob.raycastTarget = false;
             pad.knob = knob.rectTransform;
             pad.dial = dial;
+        }
+
+        /// <summary>The big TIR button: a gold-rimmed dial with the brass gunsight knob, held to fire.</summary>
+        void CreateFireButton(RectTransform parent, Vector2 centre)
+        {
+            var area = UiKit.CreateRect("Fire", parent, centre, centre);
+            area.sizeDelta = new Vector2(400f, 400f);
+            area.gameObject.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0f);
+            var dial = UiKit.CreateImage("Dial", area, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                NuitUiSprite("stick_base_aim") ?? PlaceholderVisuals.RimCircle(Color.white), Color.white, true);
+            dial.rectTransform.sizeDelta = new Vector2(320f, 320f);
+            dial.raycastTarget = false;
+            var knob = UiKit.CreateImage("Knob", area, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                NuitUiSprite("stick_knob_aim") ?? PlaceholderVisuals.Circle(new Color(0.8f, 0.3f, 0.2f)), Color.white, true);
+            knob.rectTransform.sizeDelta = new Vector2(240f, 240f);
+            knob.raycastTarget = false;
+            var label = UiKit.Outlined(UiKit.CreateText("Label", area, "TIR", 30, TextAnchor.MiddleCenter, new Vector2(0.3f, 0.02f), new Vector2(0.7f, 0.16f), ApogeeTheme.Cream), 2f);
+            label.raycastTarget = false;
+            var hold = area.gameObject.AddComponent<HoldButton>();
+            hold.onDown = () => { NuitPad.FireHeld = true; knob.rectTransform.localScale = Vector3.one * 0.9f; dial.color = new Color(1f, 0.9f, 0.75f); };
+            hold.onUp = () => { NuitPad.FireHeld = false; knob.rectTransform.localScale = Vector3.one; dial.color = Color.white; };
         }
 
         void ShowGameUi()
@@ -817,6 +838,8 @@ namespace Platformer.Survival
     public class NuitPad : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
     {
         public static Vector2 Move, Aim;
+        /// <summary>The TIR button is held.</summary>
+        public static bool FireHeld;
         public bool aim;
         public RectTransform knob;
         public Image dial;
@@ -831,6 +854,7 @@ namespace Platformer.Survival
         public static void Release()
         {
             Move = Aim = Vector2.zero;
+            FireHeld = false;
             foreach (var p in all) p.Recentre();
         }
 

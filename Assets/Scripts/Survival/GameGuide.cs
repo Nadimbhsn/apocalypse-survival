@@ -54,7 +54,7 @@ namespace Platformer.Survival
             {
                 Title = "DERNIÈRE NUIT",
                 Goal = "Piégé dans une station-service abandonnée, tiens le plus longtemps possible. Les morts arrivent par la route, cassent les portes barricadées puis te traquent, vague après vague.",
-                Controls = "Joystick de gauche : te déplacer. Joystick de droite : viser - tant que tu le tiens, tu tires. Sur PC : ZQSD pour bouger, la souris pour viser, clic maintenu pour tirer, Espace pour l'ESQUIVE.",
+                Controls = "Joystick à gauche : te déplacer. Bouton TIR à droite : tant que tu le tiens, tu tires - l'arme vise toute seule le mort le plus proche. Sur PC : ZQSD pour bouger, clic gauche (ou F) pour tirer, Espace pour l'ESQUIVE.",
                 Tip = "Chaque mort rapporte de la ferraille. Entre deux vagues : choisis un bonus parmi trois, puis répare les portes, achète des armes, une tourelle, un bouclier, l'esquive, ou ouvre la boutique, le garage et le parking. Un boss toutes les 5 vagues, la planète frappe toutes les 10. Une seule seconde chance !",
                 Rewards = "[c]",
             },

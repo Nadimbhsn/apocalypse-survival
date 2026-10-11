@@ -559,30 +559,29 @@ namespace Platformer.Survival
                 if (regenAcc >= 1f) { hp = Mathf.Min(maxHp, hp + Mathf.Floor(regenAcc)); regenAcc -= Mathf.Floor(regenAcc); }
             }
 
-            // the right stick (or the mouse, or a pad's right stick) aims; holding it fires
+            // holding TIR (or the mouse button, F, Enter, a pad's trigger) fires; the gun finds
+            // the nearest of the dead in sight by itself, or shoots straight ahead
             var g = Guns[gunIndex];
             fireTimer -= dt;
-            Vector2 aimIn = NuitPad.Aim;
+            bool fire = NuitPad.FireHeld;
+            var kb = Keyboard.current;
+            if (kb != null && (kb.fKey.isPressed || kb.enterKey.isPressed || kb.jKey.isPressed || kb.leftCtrlKey.isPressed)) fire = true;
             var gp = Gamepad.current;
-            if (aimIn.sqrMagnitude < 0.09f && gp != null && gp.rightStick.ReadValue().sqrMagnitude > 0.09f) aimIn = gp.rightStick.ReadValue();
+            if (gp != null && (gp.rightTrigger.isPressed || gp.buttonWest.isPressed)) fire = true;
             var mouse = Mouse.current;
-            if (aimIn.sqrMagnitude < 0.09f && mouse != null && mouse.leftButton.isPressed && cam != null
-                && (UnityEngine.EventSystems.EventSystem.current == null || !UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()))
-            {
-                var wp = cam.ScreenToWorldPoint(mouse.position.ReadValue());
-                aimIn = new Vector2(wp.x - Origin.x, wp.y - Origin.y) - (heroPos + Vector2.up * 0.5f);
-            }
-            aiming = aimIn.sqrMagnitude >= 0.09f;
-            if (aiming)
-            {
-                aimDir = aimIn.normalized;
-                if (fireTimer <= 0f)
-                {
-                    fireTimer = 1f / (g.Rate * (1f + 0.15f * perkStacks[(int)Perk.Rate]));
-                    FireGun(g);
-                }
-            }
+            if (mouse != null && mouse.leftButton.isPressed
+                && (UnityEngine.EventSystems.EventSystem.current == null || !UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())) fire = true;
+            var target = NearestFoe(heroPos + Vector2.up * 0.5f, g.Range * RangeMult, true);
+            if (target != null) aimDir = (target.Pos + Vector2.up * 0.45f * target.Scale - (heroPos + Vector2.up * 0.5f)).normalized;
             else if (heroVel.sqrMagnitude > 0.1f) aimDir = heroVel.normalized;
+            else if (aimDir.sqrMagnitude < 0.01f) aimDir = facingLeft ? Vector2.left : Vector2.right;
+            aimTarget = target != null;
+            aiming = fire;
+            if (fire && fireTimer <= 0f)
+            {
+                fireTimer = 1f / (g.Rate * (1f + 0.15f * perkStacks[(int)Perk.Rate]));
+                FireGun(g);
+            }
         }
 
         float RangeMult => 1f + 0.15f * perkStacks[(int)Perk.Range];
@@ -1240,7 +1239,7 @@ namespace Platformer.Survival
             int count = HeroSprites.Count(state);
             int index = state == "death" ? Mathf.Min((int)anim, count - 1) : (int)anim % count;
             heroSr.sprite = HeroSprites.Get(state, index) ?? heroSr.sprite;
-            bool firing = aiming && phase == Phase.Wave;
+            bool firing = (aiming || aimTarget) && phase == Phase.Wave;
             bool left = firing ? aimDir.x < 0f : facingLeft;
             heroSr.flipX = left;
             heroSr.sortingOrder = order;
@@ -1269,7 +1268,7 @@ namespace Platformer.Survival
                 sight = Put("Sight", PlaceholderVisuals.Square(Color.white), heroPos, 3090);
                 sight.color = new Color(1f, 0.35f, 0.25f, 0.28f);
             }
-            bool showSight = firing && holding;
+            bool showSight = aimTarget && holding && phase == Phase.Wave;
             sight.gameObject.SetActive(showSight);
             if (showSight)
             {
@@ -1290,6 +1289,8 @@ namespace Platformer.Survival
 
         /// <summary>Whether the player is aiming (and so firing) this frame.</summary>
         bool aiming;
+        /// <summary>Whether someone is in the gun's sights (the aim line shows it).</summary>
+        bool aimTarget;
         SpriteRenderer sight;
 
         void RefreshGun()
