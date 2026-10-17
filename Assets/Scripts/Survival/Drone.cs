@@ -45,7 +45,7 @@ namespace Platformer.Survival
         SpriteRenderer body;
         Sprite[] frames;
         float anim;
-        /// <summary>Unarmed: Étienne only keeps the hero company (the shop's upgrade arms him).</summary>
+        /// <summary>He always fires: slowly at first, faster with each level bought in the shop.</summary>
         public bool armed = true;
         SpriteRenderer followSr;
         float cooldown;
@@ -53,7 +53,7 @@ namespace Platformer.Survival
         float recoil;
 
         /// <summary>Fire interval and reach for a given shop level (1..3). Level 0 has no drone.</summary>
-        public static float IntervalForLevel(int level) => level >= 3 ? 1.7f : level == 2 ? 2.2f : 2.8f;
+        public static float IntervalForLevel(int level) => level >= 3 ? 1.7f : level == 2 ? 2.2f : level == 1 ? 2.8f : 3.6f;
         public static float RangeForLevel(int level) => 6f + Mathf.Clamp(level, 1, 3) * 0.6f;
 
         public static Drone Create(Transform parent, Transform follow, int level)
@@ -67,7 +67,7 @@ namespace Platformer.Survival
             drone.range = RangeForLevel(level);
             drone.followSr = follow != null ? follow.GetComponent<SpriteRenderer>() : null;
             drone.bobPhase = UnityEngine.Random.Range(0f, 6.28f);
-            drone.armed = level > 0;
+            drone.armed = true;
             if (!drone.BuildPainted()) drone.Build(level);
 
             if (follow != null) go.transform.position = follow.position + drone.offset;
@@ -210,11 +210,19 @@ namespace Platformer.Survival
             var go = new GameObject("DroneBolt");
             go.transform.SetParent(parent, false);
             go.transform.position = origin;
-            go.transform.localScale = Vector3.one * 0.18f;
+            go.transform.localScale = Vector3.one * 0.26f;
 
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = PlaceholderVisuals.Circle(ApogeeTheme.Gold);
-            sr.sortingOrder = 5;
+            sr.sortingOrder = 30;           // above the painted scenery, never hidden behind a bush
+            // a warm halo so the shot reads at a glance
+            var halo = new GameObject("Halo");
+            halo.transform.SetParent(go.transform, false);
+            halo.transform.localScale = Vector3.one * 2.2f;
+            var hs = halo.AddComponent<SpriteRenderer>();
+            hs.sprite = PlaceholderVisuals.Circle(Color.white);
+            hs.color = new Color(1f, 0.75f, 0.3f, 0.35f);
+            hs.sortingOrder = 29;
 
             var col = go.AddComponent<CircleCollider2D>();
             col.isTrigger = true;
