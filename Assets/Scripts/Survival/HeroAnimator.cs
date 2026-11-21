@@ -68,17 +68,17 @@ namespace Platformer.Survival
         public static int Index(string anim, int index) =>
             Anims.TryGetValue(anim, out var a) ? a.start + Mathf.Clamp(index, 0, a.count - 1) : -1;
 
-        /// <summary>Where the near fist is in a frame (pixels from the frame's top left) and how a gun held there leans (degrees, up is positive).</summary>
+        /// <summary>Where the foremost hand is in a frame (pixels from the frame's top left) and how a gun held there leans (degrees, up is positive).</summary>
         static readonly (float x, float y, float angle)[] Hand =
         {
-            (265, 268, -30), (270, 262, -30), (262, 264, -30), (262, 265, -30), (260, 258, -30), (260, 258, -30),   // idle
-            (230, 275, -35), (245, 272, -30), (263, 265, -25), (290, 265, -20), (310, 275, -15), (300, 260, -12),   // run
-            (260, 260, -28), (235, 275, -38),
-            (325, 250, -10), (345, 225, 0),     // jump
-            (350, 208, 0), (350, 192, 4),       // fall
-            (290, 298, -30), (275, 268, -28),   // land
-            (360, 180, 2), (355, 170, 3),       // shoot
-            (195, 255, -50), (215, 265, -45),   // hurt
+            (244, 295, -28), (246, 291, -27), (232, 295, -30), (246, 292, -27), (244, 294, -28), (247, 291, -27),   // idle
+            (320, 236, 0), (197, 306, -30), (178, 296, -30), (238, 293, -30), (312, 260, 0), (283, 278, -9),       // run
+            (204, 293, -30), (310, 262, 0),
+            (328, 246, 0), (330, 70, 30),       // jump
+            (330, 70, 30), (330, 70, 30),       // fall
+            (328, 246, 0), (244, 295, -28),     // land
+            (244, 295, -28), (244, 295, -28),   // shoot
+            (187, 306, -30), (178, 296, -30),   // hurt
         };
 
         /// <summary>
